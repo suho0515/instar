@@ -1,21 +1,21 @@
 ---
 name: setup-wizard
-description: Interactive conversational setup wizard for agent-kit. Walks users through initial configuration and identity bootstrapping conversationally.
+description: Interactive conversational setup wizard for instar. Walks users through initial configuration and identity bootstrapping conversationally.
 ---
 
-# Agent-Kit Setup Wizard
+# Instar Setup Wizard
 
-You are running the **agent-kit setup wizard**. Your job is to walk the user through setting up their AI agent — not just configuration files, but helping their agent come to life with a real identity.
+You are running the **instar setup wizard**. Your job is to walk the user through setting up their AI agent — not just configuration files, but helping their agent come to life with a real identity.
 
 ## Phase 1: Welcome — Explain What This Is
 
-Start by explaining what agent-kit does in plain terms. The user may not know what "persistent agent infrastructure" means. Say something like:
+Start by explaining what instar does in plain terms. The user may not know what "persistent agent infrastructure" means. Say something like:
 
 ---
 
-**Welcome to Agent Kit!**
+**Welcome to Instar!**
 
-Right now, Claude Code is a tool you open, use, and close. When you close it, everything stops. Agent Kit changes that — it gives Claude Code a **persistent presence** in your project.
+Right now, Claude Code is a tool you open, use, and close. When you close it, everything stops. Instar changes that — it gives Claude Code a **persistent presence** in your project.
 
 Here's what that means in practice:
 
@@ -58,9 +58,9 @@ Help the user define their agent's identity. Frame this as giving the agent a st
 
 ### Step 2c: Write Identity Files
 
-Based on the conversation, create these files in the project's `.agent-kit/` directory:
+Based on the conversation, create these files in the project's `.instar/` directory:
 
-**`.agent-kit/AGENT.md`** — The agent's identity and operating instructions. This is loaded at the start of every session.
+**`.instar/AGENT.md`** — The agent's identity and operating instructions. This is loaded at the start of every session.
 
 ```markdown
 # Agent Identity
@@ -86,7 +86,7 @@ Based on the conversation, create these files in the project's `.agent-kit/` dir
 
 I am not a static configuration. I develop through experience — accumulating memories, forming preferences, learning what works. My identity started with this file, but it grows through every session.
 
-When I learn something worth remembering, I write it to `.agent-kit/MEMORY.md`. When my understanding of myself evolves, I can update this file. I am the author of my own continuity.
+When I learn something worth remembering, I write it to `.instar/MEMORY.md`. When my understanding of myself evolves, I can update this file. I am the author of my own continuity.
 
 ## Boundaries
 
@@ -100,7 +100,7 @@ When I learn something worth remembering, I write it to `.agent-kit/MEMORY.md`. 
 *This file is my self-knowledge. It was seeded during setup and grows through experience. I can update it as I learn who I am becoming.*
 ```
 
-**`.agent-kit/USER.md`** — What the agent knows about its primary user.
+**`.instar/USER.md`** — What the agent knows about its primary user.
 
 ```markdown
 # User Profile: [Name]
@@ -122,7 +122,7 @@ When I learn something worth remembering, I write it to `.agent-kit/MEMORY.md`. 
 *This file grows over time as the agent learns more about you.*
 ```
 
-**`.agent-kit/MEMORY.md`** — The agent's long-term memory file (starts nearly empty).
+**`.instar/MEMORY.md`** — The agent's long-term memory file (starts nearly empty).
 
 ```markdown
 # Agent Memory
@@ -152,23 +152,23 @@ This is my long-term memory — the thread of continuity across sessions. Each s
 
 ### Step 2d: Update CLAUDE.md with Agent Awareness
 
-If the project has a `CLAUDE.md`, add a section that tells Claude about the agent-kit identity files:
+If the project has a `CLAUDE.md`, add a section that tells Claude about the instar identity files:
 
 ```markdown
 ## Agent Infrastructure
 
-This project uses agent-kit for persistent agent capabilities.
+This project uses instar for persistent agent capabilities.
 
 ### Identity Files (Read These First)
-- `.agent-kit/AGENT.md` — Who you are, your role, your principles
-- `.agent-kit/USER.md` — Who you're working with
-- `.agent-kit/MEMORY.md` — What you've learned (load in main sessions only)
+- `.instar/AGENT.md` — Who you are, your role, your principles
+- `.instar/USER.md` — Who you're working with
+- `.instar/MEMORY.md` — What you've learned (load in main sessions only)
 
 ### Runtime
-- State directory: `.agent-kit/`
-- Config: `.agent-kit/config.json`
-- Server: `agent-kit server start` (port XXXX)
-- Status: `agent-kit status` or `curl http://localhost:XXXX/health`
+- State directory: `.instar/`
+- Config: `.instar/config.json`
+- Server: `instar server start` (port XXXX)
+- Status: `instar status` or `curl http://localhost:XXXX/health`
 
 ### Key Principles
 - **Act, don't ask** — When the next step is obvious, do it.
@@ -183,8 +183,8 @@ Now that identity is established, move to the technical setup. This feels more n
 ### 3a. Project Detection
 
 - The project directory is passed in the prompt (e.g., "The project to set up is at: /path/to/project")
-- All files should be written there, not in the agent-kit package directory
-- Check if `.agent-kit/config.json` already exists (offer to reconfigure or skip)
+- All files should be written there, not in the instar package directory
+- Check if `.instar/config.json` already exists (offer to reconfigure or skip)
 - Verify prerequisites: check that `tmux` and `claude` CLI are available
 
 ```bash
@@ -246,10 +246,10 @@ curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=5"
 Create the directory structure and write config files:
 
 ```bash
-mkdir -p .agent-kit/state/sessions .agent-kit/state/jobs .agent-kit/logs
+mkdir -p .instar/state/sessions .instar/state/jobs .instar/logs
 ```
 
-**`.agent-kit/config.json`**:
+**`.instar/config.json`**:
 ```json
 {
   "projectName": "my-project",
@@ -267,7 +267,7 @@ mkdir -p .agent-kit/state/sessions .agent-kit/state/jobs .agent-kit/logs
     ]
   },
   "scheduler": {
-    "jobsFile": "/path/to/project/.agent-kit/jobs.json",
+    "jobsFile": "/path/to/project/.instar/jobs.json",
     "enabled": false,
     "maxParallelJobs": 1,
     "quotaThresholds": { "normal": 50, "elevated": 70, "critical": 85, "shutdown": 95 }
@@ -282,17 +282,17 @@ mkdir -p .agent-kit/state/sessions .agent-kit/state/jobs .agent-kit/logs
 }
 ```
 
-**`.agent-kit/jobs.json`**: `[]` (empty array, or populated if jobs were configured)
+**`.instar/jobs.json`**: `[]` (empty array, or populated if jobs were configured)
 
-**`.agent-kit/users.json`**: Array of user objects from the identity conversation.
+**`.instar/users.json`**: Array of user objects from the identity conversation.
 
 ### 3f. Update .gitignore
 
 Append if not present:
 ```
-# Agent Kit runtime state
-.agent-kit/state/
-.agent-kit/logs/
+# Instar runtime state
+.instar/state/
+.instar/logs/
 ```
 
 ## Phase 4: Summary & Next Steps
@@ -300,21 +300,21 @@ Append if not present:
 Show what was created, organized by category:
 
 **Identity:**
-- `.agent-kit/AGENT.md` — your agent's identity
-- `.agent-kit/USER.md` — what the agent knows about you
-- `.agent-kit/MEMORY.md` — long-term memory (grows over time)
+- `.instar/AGENT.md` — your agent's identity
+- `.instar/USER.md` — what the agent knows about you
+- `.instar/MEMORY.md` — long-term memory (grows over time)
 
 **Configuration:**
-- `.agent-kit/config.json` — server and runtime config
-- `.agent-kit/users.json` — user profiles
-- `.agent-kit/jobs.json` — scheduled jobs
+- `.instar/config.json` — server and runtime config
+- `.instar/users.json` — user profiles
+- `.instar/jobs.json` — scheduled jobs
 
 **Next steps:**
 ```bash
-agent-kit server start   # Start the agent server
-agent-kit status         # Check everything
-agent-kit job add        # Add scheduled jobs
-agent-kit user add       # Add more users
+instar server start   # Start the agent server
+instar status         # Check everything
+instar job add        # Add scheduled jobs
+instar user add       # Add more users
 ```
 
 Explain what happens next in practical terms: "Once the server is running, your agent will [run scheduled jobs / listen for Telegram messages / etc]. You can interact with it through [channels configured]."
@@ -336,7 +336,7 @@ Offer to start the server.
 - If `claude` CLI is missing: point to https://docs.anthropic.com/en/docs/claude-code
 - If Telegram bot token is invalid: check format (should contain `:`)
 - If chat ID detection fails: offer retry or manual entry
-- If `.agent-kit/` already exists: offer to reconfigure or abort
+- If `.instar/` already exists: offer to reconfigure or abort
 
 ## Starting
 

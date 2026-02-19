@@ -1,19 +1,19 @@
 #!/usr/bin/env node
 
 /**
- * agent-kit CLI — Give any Claude Code project a persistent body.
+ * instar CLI — Persistent autonomy infrastructure for AI agents.
  *
  * Usage:
- *   agent-kit init my-project         # Create a new agent project from scratch
- *   agent-kit init                    # Add agent infrastructure to existing project
- *   agent-kit setup                   # Interactive setup wizard
- *   agent-kit server start            # Start the persistent agent server
- *   agent-kit server stop             # Stop the server
- *   agent-kit status                  # Show agent infrastructure status
- *   agent-kit user add                # Add a user profile
- *   agent-kit job add                 # Add a job definition
- *   agent-kit job list                # List all jobs
- *   agent-kit add telegram            # Add Telegram messaging adapter
+ *   instar init my-project         # Create a new agent project from scratch
+ *   instar init                    # Add agent infrastructure to existing project
+ *   instar setup                   # Interactive setup wizard
+ *   instar server start            # Start the persistent agent server
+ *   instar server stop             # Stop the server
+ *   instar status                  # Show agent infrastructure status
+ *   instar user add                # Add a user profile
+ *   instar job add                 # Add a job definition
+ *   instar job list                # List all jobs
+ *   instar add telegram            # Add Telegram messaging adapter
  */
 
 import { Command } from 'commander';
@@ -27,8 +27,8 @@ import { addJob, listJobs } from './commands/job.js';
 const program = new Command();
 
 program
-  .name('agent-kit')
-  .description('Give any Claude Code project a persistent body')
+  .name('instar')
+  .description('Persistent autonomy infrastructure for AI agents')
   .version('0.1.0')
   .option('--classic', 'Use the classic inquirer-based setup wizard instead of Claude')
   .action((opts) => runSetup(opts)); // Default: run interactive setup when no subcommand given
@@ -37,7 +37,7 @@ program
 
 program
   .command('setup')
-  .description('Interactive setup wizard (same as running `agent-kit` with no args)')
+  .description('Interactive setup wizard (same as running `instar` with no args)')
   .option('--classic', 'Use the classic inquirer-based setup wizard instead of Claude')
   .action((opts) => runSetup(opts));
 

@@ -1,5 +1,5 @@
 /**
- * claude-agent-kit — Bootstrap persistent agent infrastructure into any Claude Code project.
+ * instar — Persistent autonomy infrastructure for AI agents.
  *
  * Public API for programmatic usage.
  */

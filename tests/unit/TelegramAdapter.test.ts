@@ -9,7 +9,7 @@ describe('TelegramAdapter', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-telegram-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-telegram-test-'));
     adapter = new TelegramAdapter({
       token: 'test-token-123',
       chatId: '-100123456',

@@ -1,5 +1,5 @@
 #!/bin/bash
-# telegram-reply.sh — Send a message back to a Telegram topic via agent-kit server.
+# telegram-reply.sh — Send a message back to a Telegram topic via instar server.
 #
 # Usage:
 #   ./telegram-reply.sh TOPIC_ID "message text"
@@ -8,7 +8,7 @@
 #   Multi-line message here
 #   EOF
 #
-# Reads AGENT_KIT_PORT from environment (default: 4040).
+# Reads INSTAR_PORT from environment (default: 4040).
 
 TOPIC_ID="$1"
 shift
@@ -30,7 +30,7 @@ if [ -z "$MSG" ]; then
   exit 1
 fi
 
-PORT="${AGENT_KIT_PORT:-4040}"
+PORT="${INSTAR_PORT:-4040}"
 
 # Escape for JSON
 JSON_MSG=$(printf '%s' "$MSG" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null)

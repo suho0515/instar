@@ -14,7 +14,7 @@ describe('AgentServer', () => {
   const fakeConfig: AgentKitConfig = {
     projectName: 'test-project',
     projectDir: '/tmp/test',
-    stateDir: '/tmp/test/.agent-kit',
+    stateDir: '/tmp/test/.instar',
     port: 0, // not actually listening in tests
     sessions: {
       tmuxPath: '/usr/bin/tmux',

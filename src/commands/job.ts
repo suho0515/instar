@@ -1,5 +1,5 @@
 /**
- * `agent-kit job add|list` — Manage scheduled jobs.
+ * `instar job add|list` — Manage scheduled jobs.
  */
 
 import fs from 'node:fs';
@@ -78,7 +78,7 @@ export async function listJobs(_options: { dir?: string }): Promise<void> {
     jobs = loadJobs(config.scheduler.jobsFile);
   } catch {
     console.log(pc.dim('No jobs configured.'));
-    console.log(`Add one: ${pc.cyan("agent-kit job add --slug health-check --name 'Health Check' --schedule '0 */4 * * *'")}`);
+    console.log(`Add one: ${pc.cyan("instar job add --slug health-check --name 'Health Check' --schedule '0 */4 * * *'")}`);
     return;
   }
 

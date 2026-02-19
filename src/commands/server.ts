@@ -1,5 +1,5 @@
 /**
- * `agent-kit server start|stop` — Manage the persistent agent server.
+ * `instar server start|stop` — Manage the persistent agent server.
  *
  * Start launches the server in a tmux session (background) or foreground.
  * Stop kills the server tmux session.
@@ -69,7 +69,7 @@ async function respawnSessionForTopic(
 
   if (historyLines.length > 0) {
     const historyContent = historyLines.join('\n');
-    const tmpDir = '/tmp/agent-kit-telegram';
+    const tmpDir = '/tmp/instar-telegram';
     fs.mkdirSync(tmpDir, { recursive: true });
     const filepath = path.join(tmpDir, `history-${topicId}-${Date.now()}.txt`);
     fs.writeFileSync(filepath, historyContent);
@@ -206,7 +206,7 @@ export async function startServer(options: StartOptions): Promise<void> {
 
   if (options.foreground) {
     // Run in foreground — useful for development
-    console.log(pc.bold(`Starting agent-kit server for ${pc.cyan(config.projectName)}`));
+    console.log(pc.bold(`Starting instar server for ${pc.cyan(config.projectName)}`));
     console.log(`  Port: ${config.port}`);
     console.log(`  State: ${config.stateDir}`);
     console.log();

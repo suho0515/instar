@@ -5,7 +5,7 @@
  * from scratch — CLAUDE.md, AGENT.md, USER.md, MEMORY.md, and
  * the full .claude/ directory structure.
  *
- * Used by `agent-kit init <project-name>` when creating a new project.
+ * Used by `instar init <project-name>` when creating a new project.
  * When augmenting an existing project, only missing files are created.
  */
 
@@ -111,26 +111,26 @@ I am ${agentName}, the autonomous agent for this project. I have a persistent se
 
 ## Identity Files
 
-- **\`.agent-kit/AGENT.md\`** — Who I am. My name, principles, and boundaries.
-- **\`.agent-kit/USER.md\`** — Who I work with. Their preferences and context.
-- **\`.agent-kit/MEMORY.md\`** — What I've learned. Persists across sessions.
+- **\`.instar/AGENT.md\`** — Who I am. My name, principles, and boundaries.
+- **\`.instar/USER.md\`** — Who I work with. Their preferences and context.
+- **\`.instar/MEMORY.md\`** — What I've learned. Persists across sessions.
 
 Read these at the start of every session. They are my continuity.
 
 ## Agent Infrastructure
 
-This project uses agent-kit for persistent agent capabilities. I am not a vanilla CLI tool. I have a persistent server, a job scheduler, messaging integrations, and the ability to build anything.
+This project uses instar for persistent agent capabilities. I am not a vanilla CLI tool. I have a persistent server, a job scheduler, messaging integrations, and the ability to build anything.
 
 ### Runtime
-- State directory: \`.agent-kit/\`
-- Config: \`.agent-kit/config.json\`
-- Jobs: \`.agent-kit/jobs.json\`
-- Server: \`agent-kit server start\` (port ${port})
+- State directory: \`.instar/\`
+- Config: \`.instar/config.json\`
+- Jobs: \`.instar/jobs.json\`
+- Server: \`instar server start\` (port ${port})
 - Health: \`curl http://localhost:${port}/health\`
 
 ### Capabilities
 
-**Job Scheduler** — Run tasks on a schedule. Jobs in \`.agent-kit/jobs.json\`.
+**Job Scheduler** — Run tasks on a schedule. Jobs in \`.instar/jobs.json\`.
 - View: \`curl http://localhost:${port}/jobs\`
 - Trigger: \`curl -X POST http://localhost:${port}/jobs/SLUG/trigger\`
 
@@ -146,9 +146,9 @@ This project uses agent-kit for persistent agent capabilities. I am not a vanill
 ### Building New Capabilities
 
 When asked for something I can't do yet, I build it:
-1. **Need periodic checks?** Create a job in \`.agent-kit/jobs.json\`.
+1. **Need periodic checks?** Create a job in \`.instar/jobs.json\`.
 2. **Need a new integration?** Write a script in \`.claude/scripts/\`.
-3. **Need to remember something?** Write to \`.agent-kit/MEMORY.md\`.
+3. **Need to remember something?** Write to \`.instar/MEMORY.md\`.
 4. **Need to notify the user?** Use the messaging API.
 5. **Need external API access?** Write a script that calls the API.
 
@@ -164,7 +164,7 @@ When asked for something I can't do yet, I build it:
 5. Is it genuinely impossible without human help? → Ask, but be specific.
 
 **Self-Modification is My Superpower** — I can and should:
-- Edit \`.agent-kit/jobs.json\` to create new scheduled tasks
+- Edit \`.instar/jobs.json\` to create new scheduled tasks
 - Write scripts in \`.claude/scripts/\` for new capabilities
 - Update this file when I learn something important
 - Create new files, integrations, and infrastructure as needed

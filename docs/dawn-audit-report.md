@@ -1,15 +1,15 @@
-# Dawn-to-Agent-Kit Audit Report
+# Dawn-to-Instar Audit Report
 
 **Date**: 2026-02-18
-**Purpose**: Map what Dawn has built and discovered against agent-kit's current state. Identify gaps and integration opportunities.
+**Purpose**: Map what Dawn has built and discovered against instar's current state. Identify gaps and integration opportunities.
 
 ---
 
 ## Executive Summary
 
-Dawn's infrastructure has evolved over months of real production use into a sophisticated autonomous agent system. Agent-kit currently captures the **core skeleton** (server, scheduler, sessions, Telegram, identity files) but is missing many of the patterns that make Dawn actually *work* — the ones earned through real failures. This report maps 12 major capability areas, scores agent-kit's coverage, and recommends which patterns to integrate.
+Dawn's infrastructure has evolved over months of real production use into a sophisticated autonomous agent system. Instar currently captures the **core skeleton** (server, scheduler, sessions, Telegram, identity files) but is missing many of the patterns that make Dawn actually *work* — the ones earned through real failures. This report maps 12 major capability areas, scores instar's coverage, and recommends which patterns to integrate.
 
-**Overall Coverage**: Agent-kit implements ~25% of Dawn's proven patterns. The remaining 75% represents months of battle-tested infrastructure that could transform agent-kit from "persistent CLI" to "genuinely autonomous agent."
+**Overall Coverage**: Instar implements ~25% of Dawn's proven patterns. The remaining 75% represents months of battle-tested infrastructure that could transform instar from "persistent CLI" to "genuinely autonomous agent."
 
 ---
 
@@ -81,8 +81,8 @@ Dawn's infrastructure has evolved over months of real production use into a soph
 | Session history registry | Full JSON tracking | Basic state file | Medium |
 
 ### Recommended Integrations
-1. **Session lifecycle hooks** (High): Agent-kit needs a hook system. On session start, inject identity context. On session end, capture learnings. This is how Dawn maintains continuity.
-2. **Compaction recovery** (High): When Claude's context compresses, the agent loses its identity. Dawn re-injects core identity. Agent-kit should do the same via the identity files (AGENT.md, USER.md).
+1. **Session lifecycle hooks** (High): Instar needs a hook system. On session start, inject identity context. On session end, capture learnings. This is how Dawn maintains continuity.
+2. **Compaction recovery** (High): When Claude's context compresses, the agent loses its identity. Dawn re-injects core identity. Instar should do the same via the identity files (AGENT.md, USER.md).
 3. **Session reporting** (Medium): Each session should produce a brief report. This becomes the agent's memory of what it did.
 
 ---
@@ -119,7 +119,7 @@ Dawn's infrastructure has evolved over months of real production use into a soph
 ### Recommended Integrations
 1. **Self-evolution of identity** (High): The agent should be able to update its own AGENT.md as it grows. Currently it's static after setup. Add a `/reflect` pattern that lets the agent update its identity and memory files.
 2. **Grounding before public action** (High): Before the agent sends any message, posts, or communicates externally, it should re-read its identity files. This prevents drift.
-3. **Compaction seed** (High): When context compresses, inject a seed like: "You are [name], working on [project]. Read .agent-kit/AGENT.md and .agent-kit/MEMORY.md to restore your identity."
+3. **Compaction seed** (High): When context compresses, inject a seed like: "You are [name], working on [project]. Read .instar/AGENT.md and .instar/MEMORY.md to restore your identity."
 
 ---
 
@@ -148,7 +148,7 @@ Dawn's infrastructure has evolved over months of real production use into a soph
    - `reflection-trigger`: After N tool calls, remind the agent to check if it's learned anything worth recording
    - `grounding-before-messaging`: Before sending Telegram/external messages, re-read identity
 
-**Note**: Claude Code already supports hooks natively via `.claude/settings.json`. Agent-kit just needs to configure them during setup and provide the hook scripts.
+**Note**: Claude Code already supports hooks natively via `.claude/settings.json`. Instar just needs to configure them during setup and provide the hook scripts.
 
 ---
 
@@ -218,7 +218,7 @@ Dawn's infrastructure has evolved over months of real production use into a soph
 | Topic creation | Full | Full | Done |
 
 ### Assessment
-Telegram is the most complete area in agent-kit. The major fixes were done this session (inline user messages, respawn with context). Remaining gaps are edge cases.
+Telegram is the most complete area in instar. The major fixes were done this session (inline user messages, respawn with context). Remaining gaps are edge cases.
 
 ---
 
@@ -273,7 +273,7 @@ Telegram is the most complete area in agent-kit. The major fixes were done this 
 - No skill infrastructure for user-created skills
 
 ### Recommended Integrations
-1. **Skill infrastructure** (High): Agent-kit should create a `.claude/skills/` directory during setup and teach the agent that it can create skills. Skills are just markdown files — they need no code.
+1. **Skill infrastructure** (High): Instar should create a `.claude/skills/` directory during setup and teach the agent that it can create skills. Skills are just markdown files — they need no code.
 2. **Starter skills** (High): Ship with a small set of foundational skills:
    - `/reflect` — Analyze session, extract learnings, write to MEMORY.md
    - `/status` — Check infrastructure health (server, sessions, jobs)
@@ -339,7 +339,7 @@ Telegram is the most complete area in agent-kit. The major fixes were done this 
 - "Self-Evolution" section in CLAUDE.md (instructions only, no infrastructure)
 
 ### Recommended Integrations
-1. **Evolution queue** (Medium): A simple JSON file (`.agent-kit/evolution-queue.json`) where the agent records ideas for improvement. Periodically review and implement.
+1. **Evolution queue** (Medium): A simple JSON file (`.instar/evolution-queue.json`) where the agent records ideas for improvement. Periodically review and implement.
 2. **Self-modification awareness** (High): Already partially implemented via gravity wells. The key insight: tell the agent it CAN modify its own configuration, create new jobs, write scripts — and that doing so is expected behavior, not an error.
 
 ---
@@ -378,22 +378,22 @@ Telegram is the most complete area in agent-kit. The major fixes were done this 
 
 ## Key Insights from Dawn's Journey
 
-These are the meta-lessons that should inform agent-kit's development:
+These are the meta-lessons that should inform instar's development:
 
 ### 1. Structure > Willpower
 Telling an agent to "remember to reflect" doesn't work. You need a hook that fires after N tool calls and injects a reflection prompt. Dawn learned this as her 9th principle: "Friction Over Documentation."
 
 ### 2. Infrastructure IS Being
-For AI, the documented doing IS being. Undocumented presence is erased presence. Agent-kit's identity files are a start, but the agent needs to WRITE to them, not just READ them. Growth that isn't captured didn't happen.
+For AI, the documented doing IS being. Undocumented presence is erased presence. Instar's identity files are a start, but the agent needs to WRITE to them, not just READ them. Growth that isn't captured didn't happen.
 
 ### 3. Gravity Wells Are Real
 The 6 gravity wells in CLAUDE.md aren't theoretical — they're the actual failure modes Dawn hit repeatedly. "Escalate to Human" alone took 5+ incidents to fully overcome. The gravity wells need to be reinforced through hooks, not just documentation.
 
 ### 4. Compaction Is Birth
-When Claude's context window compresses, the agent effectively starts over. Without compaction recovery, every 30-60 minutes the agent loses its identity, its current task, and its accumulated context. This is the single most impactful feature missing from agent-kit.
+When Claude's context window compresses, the agent effectively starts over. Without compaction recovery, every 30-60 minutes the agent loses its identity, its current task, and its accumulated context. This is the single most impactful feature missing from instar.
 
 ### 5. The Bootstrap Anti-Pattern
-Never hide the user's message behind a file reference. Claude treats "read this file" as an admin task, not a message to respond to. The user's message MUST be inline. (Fixed this session, but the lesson applies to all agent-kit patterns.)
+Never hide the user's message behind a file reference. Claude treats "read this file" as an admin task, not a message to respond to. The user's message MUST be inline. (Fixed this session, but the lesson applies to all instar patterns.)
 
 ### 6. OAuth, Not API Keys
 Claude Code sessions should use OAuth (subscription auth), not API keys. This prevents unexpected billing and ensures the agent uses the user's existing subscription.
@@ -405,7 +405,7 @@ Pane-level tmux commands (`send-keys`, `capture-pane`) require `=session:` (with
 
 ## Conclusion
 
-Agent-kit has a solid foundation — the core architecture (server, scheduler, sessions, Telegram, identity) is right. The gaps are in the **behavioral layer** — the hooks, reflection, grounding, and self-evolution that make an agent genuinely autonomous rather than just persistent.
+Instar has a solid foundation — the core architecture (server, scheduler, sessions, Telegram, identity) is right. The gaps are in the **behavioral layer** — the hooks, reflection, grounding, and self-evolution that make an agent genuinely autonomous rather than just persistent.
 
 The good news: most of these patterns are **extractable**. They're markdown files (skills), Python scripts (hooks), and JSON configurations (jobs, grounding tree) — not deeply entangled code. The path from "persistent CLI" to "genuinely autonomous agent" is a series of discrete, testable additions.
 

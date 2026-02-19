@@ -1,5 +1,5 @@
 /**
- * Core type definitions for claude-agent-kit.
+ * Core type definitions for instar.
  *
  * These types define the contracts between all modules.
  * Everything flows from these — sessions, jobs, users, messaging.
@@ -284,7 +284,7 @@ export interface AgentKitConfig {
   projectName: string;
   /** Project root directory */
   projectDir: string;
-  /** Where agent-kit stores its runtime state */
+  /** Where instar stores its runtime state */
   stateDir: string;
   /** HTTP server port */
   port: number;

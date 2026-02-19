@@ -1,5 +1,5 @@
 /**
- * Shared test utilities for claude-agent-kit tests.
+ * Shared test utilities for instar tests.
  *
  * Provides temp project creation, mock session managers,
  * mock claude scripts, and async polling helpers.
@@ -22,10 +22,10 @@ export interface TempProject {
 }
 
 export function createTempProject(): TempProject {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-test-'));
-  const stateDir = path.join(dir, '.agent-kit');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-test-'));
+  const stateDir = path.join(dir, '.instar');
 
-  // Create agent-kit directory structure
+  // Create instar directory structure
   fs.mkdirSync(path.join(stateDir, 'state', 'sessions'), { recursive: true });
   fs.mkdirSync(path.join(stateDir, 'state', 'jobs'), { recursive: true });
   fs.mkdirSync(path.join(stateDir, 'logs'), { recursive: true });

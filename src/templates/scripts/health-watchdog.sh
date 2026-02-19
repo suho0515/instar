@@ -1,16 +1,16 @@
 #!/bin/bash
-# health-watchdog.sh — Monitor agent-kit server and auto-recover.
+# health-watchdog.sh — Monitor instar server and auto-recover.
 #
 # Install as a cron job:
-#   */5 * * * * /path/to/health-watchdog.sh >> /path/to/.agent-kit/logs/watchdog.log 2>&1
+#   */5 * * * * /path/to/health-watchdog.sh >> /path/to/.instar/logs/watchdog.log 2>&1
 #
 # Or run via launchd on macOS.
 
 # Configuration — set these for your project
-PROJECT_DIR="${AGENT_KIT_PROJECT_DIR:-$(dirname "$(dirname "$(realpath "$0")")")}"
-PORT="${AGENT_KIT_PORT:-4040}"
-SERVER_SESSION="${AGENT_KIT_SERVER_SESSION:-agent-server}"
-TMUX_PATH="${AGENT_KIT_TMUX:-/opt/homebrew/bin/tmux}"
+PROJECT_DIR="${INSTAR_PROJECT_DIR:-$(dirname "$(dirname "$(realpath "$0")")")}"
+PORT="${INSTAR_PORT:-4040}"
+SERVER_SESSION="${INSTAR_SERVER_SESSION:-agent-server}"
+TMUX_PATH="${INSTAR_TMUX:-/opt/homebrew/bin/tmux}"
 
 # Find tmux if not at default path
 if [ ! -f "$TMUX_PATH" ]; then
@@ -40,13 +40,13 @@ if $TMUX_PATH has-session -t "=${SERVER_SESSION}" 2>/dev/null; then
 fi
 
 # Restart the server
-CLI_PATH="${PROJECT_DIR}/node_modules/.bin/agent-kit"
+CLI_PATH="${PROJECT_DIR}/node_modules/.bin/instar"
 if [ ! -f "$CLI_PATH" ]; then
-  CLI_PATH=$(which agent-kit 2>/dev/null)
+  CLI_PATH=$(which instar 2>/dev/null)
 fi
 
 if [ -z "$CLI_PATH" ] || [ ! -f "$CLI_PATH" ]; then
-  echo "[$(date -Iseconds)] ERROR: agent-kit CLI not found"
+  echo "[$(date -Iseconds)] ERROR: instar CLI not found"
   exit 1
 fi
 

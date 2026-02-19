@@ -102,9 +102,9 @@ describe('generateClaudeMd', () => {
 
   it('includes identity file references', () => {
     const result = generateClaudeMd('my-project', 'Atlas', 4040, false);
-    expect(result).toContain('.agent-kit/AGENT.md');
-    expect(result).toContain('.agent-kit/USER.md');
-    expect(result).toContain('.agent-kit/MEMORY.md');
+    expect(result).toContain('.instar/AGENT.md');
+    expect(result).toContain('.instar/USER.md');
+    expect(result).toContain('.instar/MEMORY.md');
   });
 
   it('includes initiative hierarchy', () => {

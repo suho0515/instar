@@ -10,7 +10,7 @@ describe('StateManager', () => {
   let state: StateManager;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-test-'));
     // Create required subdirectories
     fs.mkdirSync(path.join(tmpDir, 'state', 'sessions'), { recursive: true });
     fs.mkdirSync(path.join(tmpDir, 'state', 'jobs'), { recursive: true });

@@ -319,7 +319,7 @@ export class SessionManager extends EventEmitter {
     }
 
     // Write full message to temp file
-    const tmpDir = path.join('/tmp', 'agent-kit-telegram');
+    const tmpDir = path.join('/tmp', 'instar-telegram');
     fs.mkdirSync(tmpDir, { recursive: true });
     const filename = `msg-${topicId}-${Date.now()}.txt`;
     const filepath = path.join(tmpDir, filename);

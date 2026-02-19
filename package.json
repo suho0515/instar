@@ -1,11 +1,11 @@
 {
-  "name": "claude-agent-kit",
+  "name": "instar",
   "version": "0.1.0",
-  "description": "Give any Claude Code agent a persistent body",
+  "description": "Persistent autonomy infrastructure for AI agents",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
-    "agent-kit": "dist/cli.js"
+    "instar": "dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
@@ -20,8 +20,12 @@
     "prepublishOnly": "npm run build"
   },
   "keywords": [
-    "claude",
+    "instar",
+    "autonomous",
     "agent",
+    "molt",
+    "lobster",
+    "claude",
     "cli",
     "automation",
     "claude-code"

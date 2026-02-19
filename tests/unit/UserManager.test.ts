@@ -40,7 +40,7 @@ describe('UserManager', () => {
   };
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-user-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-user-test-'));
     manager = new UserManager(tmpDir, [justin, adriana]);
   });
 

@@ -61,7 +61,7 @@ export class AgentServer {
   async start(): Promise<void> {
     return new Promise((resolve) => {
       this.server = this.app.listen(this.config.port, () => {
-        console.log(`[agent-kit] Server listening on port ${this.config.port}`);
+        console.log(`[instar] Server listening on port ${this.config.port}`);
         resolve();
       });
     });

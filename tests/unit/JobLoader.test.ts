@@ -8,7 +8,7 @@ describe('JobLoader', () => {
   let tmpDir: string;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-loader-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-loader-'));
   });
 
   afterEach(() => {

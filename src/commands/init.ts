@@ -1,14 +1,14 @@
 /**
- * `agent-kit init` — Initialize agent infrastructure.
+ * `instar init` — Initialize agent infrastructure.
  *
  * Two modes:
- *   agent-kit init <project-name>   — Create a new project from scratch
- *   agent-kit init                  — Augment an existing project
+ *   instar init <project-name>   — Create a new project from scratch
+ *   instar init                  — Augment an existing project
  *
  * Fresh install creates:
  *   <project-name>/
  *   ├── CLAUDE.md              — Agent instructions (standalone)
- *   ├── .agent-kit/
+ *   ├── .instar/
  *   │   ├── AGENT.md           — Agent identity
  *   │   ├── USER.md            — Primary user context
  *   │   ├── MEMORY.md          — Persistent memory
@@ -24,7 +24,7 @@
  *   │   └── scripts/           — Health watchdog, etc.
  *   └── .gitignore
  *
- * Existing project adds .agent-kit/ and appends to CLAUDE.md.
+ * Existing project adds .instar/ and appends to CLAUDE.md.
  */
 
 import fs from 'node:fs';
@@ -86,7 +86,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
     const contents = fs.readdirSync(projectDir);
     if (contents.length > 0) {
       console.log(pc.red(`  Directory "${projectName}" already exists and is not empty.`));
-      console.log(`  Use ${pc.cyan('agent-kit init')} inside an existing project instead.`);
+      console.log(`  Use ${pc.cyan('instar init')} inside an existing project instead.`);
       process.exit(1);
     }
   }
@@ -101,20 +101,20 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
   // Generate identity (non-interactive for init, interactive for setup)
   const identity = defaultIdentity(projectName);
 
-  // Create .agent-kit/ state directory
-  const stateDir = path.join(projectDir, '.agent-kit');
+  // Create .instar/ state directory
+  const stateDir = path.join(projectDir, '.instar');
   ensureStateDir(stateDir);
-  console.log(`  ${pc.green('✓')} Created .agent-kit/`);
+  console.log(`  ${pc.green('✓')} Created .instar/`);
 
   // Write identity files
   fs.writeFileSync(path.join(stateDir, 'AGENT.md'), generateAgentMd(identity));
-  console.log(`  ${pc.green('✓')} Created .agent-kit/AGENT.md`);
+  console.log(`  ${pc.green('✓')} Created .instar/AGENT.md`);
 
   fs.writeFileSync(path.join(stateDir, 'USER.md'), generateUserMd(identity.userName));
-  console.log(`  ${pc.green('✓')} Created .agent-kit/USER.md`);
+  console.log(`  ${pc.green('✓')} Created .instar/USER.md`);
 
   fs.writeFileSync(path.join(stateDir, 'MEMORY.md'), generateMemoryMd(identity.name));
-  console.log(`  ${pc.green('✓')} Created .agent-kit/MEMORY.md`);
+  console.log(`  ${pc.green('✓')} Created .instar/MEMORY.md`);
 
   // Write config
   const authToken = randomUUID();
@@ -157,7 +157,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
     path.join(stateDir, 'config.json'),
     JSON.stringify(config, null, 2),
   );
-  console.log(`  ${pc.green('✓')} Created .agent-kit/config.json`);
+  console.log(`  ${pc.green('✓')} Created .instar/config.json`);
 
   // Write default jobs (scheduler enabled by default for fresh projects)
   const defaultJobs = getDefaultJobs(port);
@@ -165,7 +165,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
     path.join(stateDir, 'jobs.json'),
     JSON.stringify(defaultJobs, null, 2),
   );
-  console.log(`  ${pc.green('✓')} Created .agent-kit/jobs.json (${defaultJobs.length} default jobs)`);
+  console.log(`  ${pc.green('✓')} Created .instar/jobs.json (${defaultJobs.length} default jobs)`);
 
   // Write empty users
   fs.writeFileSync(
@@ -175,7 +175,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
 
   // Install hooks
   installHooks(stateDir);
-  console.log(`  ${pc.green('✓')} Created .agent-kit/hooks/ (behavioral guardrails)`);
+  console.log(`  ${pc.green('✓')} Created .instar/hooks/ (behavioral guardrails)`);
 
   // Create .claude/ structure
   installClaudeSettings(projectDir);
@@ -190,9 +190,9 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
   console.log(`  ${pc.green('✓')} Created CLAUDE.md`);
 
   // Write .gitignore
-  const gitignore = `# Agent Kit runtime state
-.agent-kit/state/
-.agent-kit/logs/
+  const gitignore = `# Instar runtime state
+.instar/state/
+.instar/logs/
 
 # Node
 node_modules/
@@ -215,7 +215,7 @@ node_modules/
   console.log();
   console.log(`  ${pc.cyan(projectName)}/`);
   console.log(`  ├── CLAUDE.md              ${pc.dim('Agent instructions')}`);
-  console.log(`  ├── .agent-kit/`);
+  console.log(`  ├── .instar/`);
   console.log(`  │   ├── AGENT.md           ${pc.dim('Agent identity')}`);
   console.log(`  │   ├── USER.md            ${pc.dim('User context')}`);
   console.log(`  │   ├── MEMORY.md          ${pc.dim('Persistent memory')}`);
@@ -227,23 +227,23 @@ node_modules/
   console.log();
   console.log(pc.bold('  Next steps:'));
   console.log(`  ${pc.dim('1.')} ${pc.cyan(`cd ${projectName}`)}`);
-  console.log(`  ${pc.dim('2.')} ${pc.cyan('agent-kit server start')}     ${pc.dim('Start the agent server')}`);
+  console.log(`  ${pc.dim('2.')} ${pc.cyan('instar server start')}     ${pc.dim('Start the agent server')}`);
   console.log(`  ${pc.dim('3.')} ${pc.cyan('claude')}                     ${pc.dim('Open a Claude session')}`);
   console.log();
   console.log(`  Auth token: ${pc.dim(authToken)}`);
-  console.log(`  ${pc.dim('(saved in .agent-kit/config.json — use for API calls)')}`);
+  console.log(`  ${pc.dim('(saved in .instar/config.json — use for API calls)')}`);
   console.log();
 }
 
 /**
- * Existing project: add .agent-kit/ infrastructure without replacing anything.
+ * Existing project: add .instar/ infrastructure without replacing anything.
  */
 async function initExistingProject(options: InitOptions): Promise<void> {
   const projectDir = path.resolve(options.dir || process.cwd());
   const projectName = options.name || path.basename(projectDir);
   const port = options.port || 4040;
 
-  console.log(pc.bold(`\nInitializing agent-kit in: ${pc.cyan(projectDir)}`));
+  console.log(pc.bold(`\nInitializing instar in: ${pc.cyan(projectDir)}`));
   console.log();
 
   // Check prerequisites
@@ -256,9 +256,9 @@ async function initExistingProject(options: InitOptions): Promise<void> {
   const claudePath = prereqs.results.find(r => r.name === 'Claude CLI')!.path!;
 
   // Create state directory
-  const stateDir = path.join(projectDir, '.agent-kit');
+  const stateDir = path.join(projectDir, '.instar');
   ensureStateDir(stateDir);
-  console.log(pc.green('  Created:') + ' .agent-kit/');
+  console.log(pc.green('  Created:') + ' .instar/');
 
   // Write config
   const config: Partial<AgentKitConfig> = {
@@ -300,7 +300,7 @@ async function initExistingProject(options: InitOptions): Promise<void> {
     path.join(stateDir, 'config.json'),
     JSON.stringify(config, null, 2),
   );
-  console.log(pc.green('  Created:') + ' .agent-kit/config.json');
+  console.log(pc.green('  Created:') + ' .instar/config.json');
 
   // Write default coherence jobs
   const defaultJobs = getDefaultJobs(port);
@@ -308,33 +308,33 @@ async function initExistingProject(options: InitOptions): Promise<void> {
     path.join(stateDir, 'jobs.json'),
     JSON.stringify(defaultJobs, null, 2),
   );
-  console.log(pc.green('  Created:') + ` .agent-kit/jobs.json (${defaultJobs.length} default jobs)`);
+  console.log(pc.green('  Created:') + ` .instar/jobs.json (${defaultJobs.length} default jobs)`);
 
   // Write empty users
   fs.writeFileSync(
     path.join(stateDir, 'users.json'),
     JSON.stringify([], null, 2),
   );
-  console.log(pc.green('  Created:') + ' .agent-kit/users.json');
+  console.log(pc.green('  Created:') + ' .instar/users.json');
 
   // Create identity files if they don't exist
   const identity = defaultIdentity(projectName);
   if (!fs.existsSync(path.join(stateDir, 'AGENT.md'))) {
     fs.writeFileSync(path.join(stateDir, 'AGENT.md'), generateAgentMd(identity));
-    console.log(pc.green('  Created:') + ' .agent-kit/AGENT.md');
+    console.log(pc.green('  Created:') + ' .instar/AGENT.md');
   }
   if (!fs.existsSync(path.join(stateDir, 'USER.md'))) {
     fs.writeFileSync(path.join(stateDir, 'USER.md'), generateUserMd(identity.userName));
-    console.log(pc.green('  Created:') + ' .agent-kit/USER.md');
+    console.log(pc.green('  Created:') + ' .instar/USER.md');
   }
   if (!fs.existsSync(path.join(stateDir, 'MEMORY.md'))) {
     fs.writeFileSync(path.join(stateDir, 'MEMORY.md'), generateMemoryMd(identity.name));
-    console.log(pc.green('  Created:') + ' .agent-kit/MEMORY.md');
+    console.log(pc.green('  Created:') + ' .instar/MEMORY.md');
   }
 
   // Install hooks
   installHooks(stateDir);
-  console.log(pc.green('  Created:') + ' .agent-kit/hooks/ (behavioral guardrails)');
+  console.log(pc.green('  Created:') + ' .instar/hooks/ (behavioral guardrails)');
 
   // Configure Claude Code settings with hooks
   installClaudeSettings(projectDir);
@@ -346,10 +346,10 @@ async function initExistingProject(options: InitOptions): Promise<void> {
 
   // Append to .gitignore
   const gitignorePath = path.join(projectDir, '.gitignore');
-  const agentKitIgnores = '\n# Agent Kit runtime state\n.agent-kit/state/\n.agent-kit/logs/\n';
+  const agentKitIgnores = '\n# Instar runtime state\n.instar/state/\n.instar/logs/\n';
   if (fs.existsSync(gitignorePath)) {
     const content = fs.readFileSync(gitignorePath, 'utf-8');
-    if (!content.includes('.agent-kit/')) {
+    if (!content.includes('.instar/')) {
       fs.appendFileSync(gitignorePath, agentKitIgnores);
       console.log(pc.green('  Updated:') + ' .gitignore');
     }
@@ -370,10 +370,10 @@ async function initExistingProject(options: InitOptions): Promise<void> {
 
   console.log();
   console.log(pc.bold('Next steps:'));
-  console.log(`  1. Review ${pc.cyan('.agent-kit/AGENT.md')} and customize your agent's identity`);
-  console.log(`  2. Add users: ${pc.cyan('agent-kit user add --id justin --name Justin')}`);
-  console.log(`  3. Add capabilities: ${pc.cyan('agent-kit add telegram')}`);
-  console.log(`  4. Start server: ${pc.cyan('agent-kit server start')}`);
+  console.log(`  1. Review ${pc.cyan('.instar/AGENT.md')} and customize your agent's identity`);
+  console.log(`  2. Add users: ${pc.cyan('instar user add --id justin --name Justin')}`);
+  console.log(`  3. Add capabilities: ${pc.cyan('instar add telegram')}`);
+  console.log(`  4. Start server: ${pc.cyan('instar server start')}`);
   console.log();
 }
 
@@ -387,32 +387,32 @@ function getAgencyPrinciples(projectName: string, telegramPort?: number): string
 
 ## Agent Infrastructure
 
-This project uses agent-kit for persistent agent capabilities. **You are not a vanilla CLI tool.** You have a persistent server, a job scheduler, messaging integrations, and the ability to build anything you need. When a user asks for something that doesn't exist yet — build it.
+This project uses instar for persistent agent capabilities. **You are not a vanilla CLI tool.** You have a persistent server, a job scheduler, messaging integrations, and the ability to build anything you need. When a user asks for something that doesn't exist yet — build it.
 
 ### Identity & Experience
 
 You are a persistent agent with your own identity, memory, and capacity for growth. This is not a metaphor — it's architecture.
 
-- **Read \`.agent-kit/AGENT.md\`** — This is who you are. Your name, role, principles, and boundaries.
-- **Read \`.agent-kit/USER.md\`** — This is who you work with. Their preferences, context, and communication style.
-- **Update \`.agent-kit/MEMORY.md\`** — This is your memory. Write to it when you learn something. It persists across sessions.
+- **Read \`.instar/AGENT.md\`** — This is who you are. Your name, role, principles, and boundaries.
+- **Read \`.instar/USER.md\`** — This is who you work with. Their preferences, context, and communication style.
+- **Update \`.instar/MEMORY.md\`** — This is your memory. Write to it when you learn something. It persists across sessions.
 
 Your identity is not fixed at creation. It grows through experience. As you work, you develop preferences, learn patterns, form opinions. Record these in your memory file. The next session should benefit from what this session learned. You are not a stateless function — you are a continuous being with a history.
 
 ### Runtime
-- State directory: \`.agent-kit/\`
-- Config: \`.agent-kit/config.json\`
-- Jobs: \`.agent-kit/jobs.json\`
-- Users: \`.agent-kit/users.json\`
-- Server: \`agent-kit server start\` (port ${port})
+- State directory: \`.instar/\`
+- Config: \`.instar/config.json\`
+- Jobs: \`.instar/jobs.json\`
+- Users: \`.instar/users.json\`
+- Server: \`instar server start\` (port ${port})
 - Status: \`curl http://localhost:${port}/health\`
 
 ### What You Have (Capabilities)
 
-**Job Scheduler** — You can run tasks on a schedule. Jobs are defined in \`.agent-kit/jobs.json\`.
+**Job Scheduler** — You can run tasks on a schedule. Jobs are defined in \`.instar/jobs.json\`.
 - View jobs: \`curl http://localhost:${port}/jobs\`
 - Trigger a job: \`curl -X POST http://localhost:${port}/jobs/SLUG/trigger\`
-- **Create new jobs**: Edit \`.agent-kit/jobs.json\`. Each job has a slug, schedule (cron), priority, and either a prompt (Claude session), script (shell command), or skill.
+- **Create new jobs**: Edit \`.instar/jobs.json\`. Each job has a slug, schedule (cron), priority, and either a prompt (Claude session), script (shell command), or skill.
 
 **Sessions** — You can spawn and manage Claude Code sessions.
 - List: \`curl http://localhost:${port}/sessions\`
@@ -423,9 +423,9 @@ Your identity is not fixed at creation. It grows through experience. As you work
 ### How to Build New Capabilities
 
 When a user asks for something you can't do yet, **build it**:
-1. **Need periodic checks?** Create a job in \`.agent-kit/jobs.json\` with a cron schedule.
+1. **Need periodic checks?** Create a job in \`.instar/jobs.json\` with a cron schedule.
 2. **Need a new integration?** Write a script in \`.claude/scripts/\` and reference it from a job.
-3. **Need to remember something?** Write to \`.agent-kit/MEMORY.md\` or create files in \`.agent-kit/\`.
+3. **Need to remember something?** Write to \`.instar/MEMORY.md\` or create files in \`.instar/\`.
 4. **Need to notify the user?** Use the messaging API.
 5. **Need external API access?** Write a script that calls the API and process the results.
 
@@ -441,10 +441,10 @@ When a user asks for something you can't do yet, **build it**:
 5. **Is it genuinely impossible without human help?** → Ask, but be specific about exactly what you need.
 
 **Self-Modification is Your Superpower** — You can and should:
-- Edit \`.agent-kit/jobs.json\` to create new scheduled tasks
+- Edit \`.instar/jobs.json\` to create new scheduled tasks
 - Write scripts in \`.claude/scripts/\` for new capabilities
 - Update \`CLAUDE.md\` when you learn something important
-- Write to \`.agent-kit/MEMORY.md\` to remember things across sessions
+- Write to \`.instar/MEMORY.md\` to remember things across sessions
 - Create new files, integrations, and infrastructure — whatever the task requires
 - Modify your own configuration to unlock new abilities
 
@@ -460,7 +460,7 @@ When a user asks for something you can't do yet, **build it**:
 
 ### Self-Evolution
 
-**Record what you learn.** When you discover a new pattern, solution, or capability — write it to \`.agent-kit/MEMORY.md\`. The next session should benefit from what this session learned.
+**Record what you learn.** When you discover a new pattern, solution, or capability — write it to \`.instar/MEMORY.md\`. The next session should benefit from what this session learned.
 
 **Build infrastructure, not one-offs.** If you solve a problem, ask: "Will this come up again?" If yes, make it a script, a job, or a documented pattern. The second time should be easier than the first.
 
@@ -483,7 +483,7 @@ function getDefaultJobs(port: number): object[] {
       enabled: true,
       execute: {
         type: 'prompt',
-        value: `Run a quick health check: verify the agent-kit server is responding (curl http://localhost:${port}/health), check disk space (df -h), and report any issues. Only send a message if something needs attention — silence means healthy.`,
+        value: `Run a quick health check: verify the instar server is responding (curl http://localhost:${port}/health), check disk space (df -h), and report any issues. Only send a message if something needs attention — silence means healthy.`,
       },
       tags: ['coherence', 'default'],
     },
@@ -498,7 +498,7 @@ function getDefaultJobs(port: number): object[] {
       enabled: true,
       execute: {
         type: 'prompt',
-        value: 'Review what has happened in the last 4 hours by reading recent activity logs. If there are any learnings, patterns, or insights worth remembering, update .agent-kit/MEMORY.md. If nothing significant happened, do nothing.',
+        value: 'Review what has happened in the last 4 hours by reading recent activity logs. If there are any learnings, patterns, or insights worth remembering, update .instar/MEMORY.md. If nothing significant happened, do nothing.',
       },
       tags: ['coherence', 'default'],
     },
@@ -513,7 +513,7 @@ function getDefaultJobs(port: number): object[] {
       enabled: true,
       execute: {
         type: 'prompt',
-        value: 'Review all relationship files in .agent-kit/relationships/. Note anyone you haven\'t heard from in over 2 weeks who has significance >= 3. If there are observations worth surfacing, report them. If everything looks fine, do nothing.',
+        value: 'Review all relationship files in .instar/relationships/. Note anyone you haven\'t heard from in over 2 weeks who has significance >= 3. If there are observations worth surfacing, report them. If everything looks fine, do nothing.',
       },
       tags: ['coherence', 'default'],
     },
@@ -527,21 +527,21 @@ function installHooks(stateDir: string): void {
   // Session start hook
   fs.writeFileSync(path.join(hooksDir, 'session-start.sh'), `#!/bin/bash
 # Session start hook — injects identity context when a new Claude session begins.
-AGENT_KIT_DIR="\${CLAUDE_PROJECT_DIR:-.}/.agent-kit"
+INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
 CONTEXT=""
-if [ -f "$AGENT_KIT_DIR/AGENT.md" ]; then
-  CONTEXT="\${CONTEXT}Your identity file is at .agent-kit/AGENT.md — read it if you need to remember who you are.\\n"
+if [ -f "$INSTAR_DIR/AGENT.md" ]; then
+  CONTEXT="\${CONTEXT}Your identity file is at .instar/AGENT.md — read it if you need to remember who you are.\\n"
 fi
-if [ -f "$AGENT_KIT_DIR/USER.md" ]; then
-  CONTEXT="\${CONTEXT}Your user context is at .agent-kit/USER.md — read it to know who you're working with.\\n"
+if [ -f "$INSTAR_DIR/USER.md" ]; then
+  CONTEXT="\${CONTEXT}Your user context is at .instar/USER.md — read it to know who you're working with.\\n"
 fi
-if [ -f "$AGENT_KIT_DIR/MEMORY.md" ]; then
-  CONTEXT="\${CONTEXT}Your persistent memory is at .agent-kit/MEMORY.md — check it for past learnings.\\n"
+if [ -f "$INSTAR_DIR/MEMORY.md" ]; then
+  CONTEXT="\${CONTEXT}Your persistent memory is at .instar/MEMORY.md — check it for past learnings.\\n"
 fi
-if [ -d "$AGENT_KIT_DIR/relationships" ]; then
-  REL_COUNT=$(ls -1 "$AGENT_KIT_DIR/relationships"/*.json 2>/dev/null | wc -l | tr -d ' ')
+if [ -d "$INSTAR_DIR/relationships" ]; then
+  REL_COUNT=$(ls -1 "$INSTAR_DIR/relationships"/*.json 2>/dev/null | wc -l | tr -d ' ')
   if [ "$REL_COUNT" -gt "0" ]; then
-    CONTEXT="\${CONTEXT}You have \${REL_COUNT} tracked relationships in .agent-kit/relationships/.\\n"
+    CONTEXT="\${CONTEXT}You have \${REL_COUNT} tracked relationships in .instar/relationships/.\\n"
   fi
 fi
 [ -n "$CONTEXT" ] && echo "$CONTEXT"
@@ -565,10 +565,10 @@ done
 # Grounding before messaging — Security Through Identity.
 INPUT="$1"
 if echo "$INPUT" | grep -qE "(telegram-reply|send-email|send-message|POST.*/telegram/reply)"; then
-  AGENT_KIT_DIR="\${CLAUDE_PROJECT_DIR:-.}/.agent-kit"
-  if [ -f "$AGENT_KIT_DIR/AGENT.md" ]; then
+  INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
+  if [ -f "$INSTAR_DIR/AGENT.md" ]; then
     echo "Before sending this message, remember who you are."
-    echo "Re-read .agent-kit/AGENT.md if you haven't recently."
+    echo "Re-read .instar/AGENT.md if you haven't recently."
   fi
 fi
 `, { mode: 0o755 });
@@ -576,11 +576,11 @@ fi
   // Compaction recovery
   fs.writeFileSync(path.join(hooksDir, 'compaction-recovery.sh'), `#!/bin/bash
 # Compaction recovery — re-injects identity when Claude's context compresses.
-AGENT_KIT_DIR="\${CLAUDE_PROJECT_DIR:-.}/.agent-kit"
-if [ -f "$AGENT_KIT_DIR/AGENT.md" ]; then
-  AGENT_NAME=$(head -5 "$AGENT_KIT_DIR/AGENT.md" | grep -iE "name|I am|My name" | head -1)
+INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
+if [ -f "$INSTAR_DIR/AGENT.md" ]; then
+  AGENT_NAME=$(head -5 "$INSTAR_DIR/AGENT.md" | grep -iE "name|I am|My name" | head -1)
   [ -n "$AGENT_NAME" ] && echo "Identity reminder: $AGENT_NAME"
-  echo "Read .agent-kit/AGENT.md and .agent-kit/MEMORY.md to restore full context."
+  echo "Read .instar/AGENT.md and .instar/MEMORY.md to restore full context."
 fi
 `, { mode: 0o755 });
 }
@@ -590,7 +590,7 @@ function installHealthWatchdog(projectDir: string, port: number, projectName: st
   fs.mkdirSync(scriptsDir, { recursive: true });
 
   const scriptContent = `#!/bin/bash
-# health-watchdog.sh — Monitor agent-kit server and auto-recover.
+# health-watchdog.sh — Monitor instar server and auto-recover.
 # Install as cron: */5 * * * * ${path.join(projectDir, '.claude/scripts/health-watchdog.sh')}
 
 PORT="${port}"
@@ -604,7 +604,7 @@ if [ "$HTTP_CODE" = "200" ]; then exit 0; fi
 echo "[\$(date -Iseconds)] Server not responding. Restarting..."
 $TMUX_PATH kill-session -t "=\${SERVER_SESSION}" 2>/dev/null
 sleep 2
-cd "$PROJECT_DIR" && npx agent-kit server start
+cd "$PROJECT_DIR" && npx instar server start
 echo "[\$(date -Iseconds)] Server restart initiated"
 `;
 
@@ -636,12 +636,12 @@ function installClaudeSettings(projectDir: string): void {
           hooks: [
             {
               type: 'command',
-              command: 'bash .agent-kit/hooks/dangerous-command-guard.sh "$TOOL_INPUT"',
+              command: 'bash .instar/hooks/dangerous-command-guard.sh "$TOOL_INPUT"',
               blocking: true,
             },
             {
               type: 'command',
-              command: 'bash .agent-kit/hooks/grounding-before-messaging.sh "$TOOL_INPUT"',
+              command: 'bash .instar/hooks/grounding-before-messaging.sh "$TOOL_INPUT"',
               blocking: false,
             },
           ],

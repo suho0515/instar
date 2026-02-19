@@ -1,8 +1,8 @@
 #!/bin/bash
 # Dangerous command guard — blocks destructive operations.
-# Part of agent-kit's "Security Through Identity" model.
+# Part of instar's "Security Through Identity" model.
 #
-# Installed by agent-kit during setup. Runs as a Claude Code PreToolUse hook on Bash.
+# Installed by instar during setup. Runs as a Claude Code PreToolUse hook on Bash.
 
 # The command being executed is passed via TOOL_INPUT
 INPUT="$1"

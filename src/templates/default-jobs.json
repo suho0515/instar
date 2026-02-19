@@ -10,7 +10,7 @@
     "enabled": true,
     "execute": {
       "type": "prompt",
-      "value": "Run a quick health check: verify the agent-kit server is responding (curl http://localhost:PORT/health), check disk space (df -h), and report any issues to the Agent Attention topic via telegram-reply.sh. Only send a message if something needs attention — silence means healthy."
+      "value": "Run a quick health check: verify the instar server is responding (curl http://localhost:PORT/health), check disk space (df -h), and report any issues to the Agent Attention topic via telegram-reply.sh. Only send a message if something needs attention — silence means healthy."
     },
     "tags": ["coherence", "default"]
   },
@@ -25,7 +25,7 @@
     "enabled": true,
     "execute": {
       "type": "prompt",
-      "value": "Review what has happened in the last 4 hours by reading recent activity logs and session reports. If there are any learnings, patterns, or insights worth remembering, update .agent-kit/MEMORY.md. If nothing significant happened, do nothing. This is about capturing growth — not generating busy work."
+      "value": "Review what has happened in the last 4 hours by reading recent activity logs and session reports. If there are any learnings, patterns, or insights worth remembering, update .instar/MEMORY.md. If nothing significant happened, do nothing. This is about capturing growth — not generating busy work."
     },
     "tags": ["coherence", "default"]
   },
@@ -40,7 +40,7 @@
     "enabled": true,
     "execute": {
       "type": "prompt",
-      "value": "Review all relationship files in .agent-kit/relationships/. Note anyone you haven't heard from in over 2 weeks who has significance >= 3. If there are observations worth surfacing (stale important relationships, patterns across conversations, things people mentioned that might need follow-up), send a brief summary to the Agent Attention topic. If everything looks fine, do nothing."
+      "value": "Review all relationship files in .instar/relationships/. Note anyone you haven't heard from in over 2 weeks who has significance >= 3. If there are observations worth surfacing (stale important relationships, patterns across conversations, things people mentioned that might need follow-up), send a brief summary to the Agent Attention topic. If everything looks fine, do nothing."
     },
     "tags": ["coherence", "default"]
   }

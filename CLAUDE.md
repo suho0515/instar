@@ -1,8 +1,10 @@
-# CLAUDE.md — claude-agent-kit
+# CLAUDE.md — instar
 
 ## What This Project Is
 
-A toolkit that bootstraps persistent agent infrastructure into any Claude Code project. Transforms Claude Code from a reactive CLI tool into a proactive, persistent agent with scheduled jobs, multi-user messaging, and system monitoring.
+Persistent autonomy infrastructure for AI agents. Every molt, more autonomous.
+
+Transforms Claude Code from a reactive CLI tool into a proactive, persistent agent with scheduled jobs, multi-user messaging, and system monitoring.
 
 Born from the Dawn/Portal project — extracting battle-tested infrastructure patterns into a reusable, project-agnostic toolkit.
 
@@ -27,7 +29,7 @@ src/
   users/          # Multi-user identity resolution and permissions
   server/         # HTTP server for health, status, and messaging APIs
   commands/       # CLI command implementations
-  templates/      # Templates for `agent-kit init`
+  templates/      # Templates for `instar init`
 tests/
   unit/           # Pure logic tests (no tmux/sessions)
   integration/    # Full system tests (may spawn real sessions)
@@ -45,15 +47,15 @@ This toolkit is meant to be tested against real Claude Code projects. The flow:
 3. Test against a target repo:
    ```bash
    # From target repo
-   node /path/to/claude-agent-kit/dist/cli.js init
-   node /path/to/claude-agent-kit/dist/cli.js status
+   node /path/to/claude-instar/dist/cli.js init
+   node /path/to/claude-instar/dist/cli.js status
    ```
 4. Or link globally during development:
    ```bash
    # From this repo
    pnpm link --global
    # From target repo
-   agent-kit init
+   instar init
    ```
 
 ### Test Targets

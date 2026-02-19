@@ -11,7 +11,7 @@ describe('RelationshipManager', () => {
   let manager: RelationshipManager;
 
   beforeEach(() => {
-    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-rel-test-'));
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-rel-test-'));
     config = {
       relationshipsDir: path.join(tmpDir, 'relationships'),
       maxRecentInteractions: 20,

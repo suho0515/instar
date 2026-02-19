@@ -1,3 +1,3 @@
 # Test Project
 
-A test project for agent-kit development.
+A test project for instar development.

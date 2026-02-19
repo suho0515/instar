@@ -1,5 +1,5 @@
 /**
- * Integration test — fresh project creation via `agent-kit init <name>`.
+ * Integration test — fresh project creation via `instar init <name>`.
  *
  * Tests the complete fresh install journey:
  *   init with project name → directory created → all files scaffolded →
@@ -12,8 +12,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { initProject } from '../../src/commands/init.js';
 
-describe('Fresh install: agent-kit init <project-name>', () => {
-  const testBase = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-fresh-'));
+describe('Fresh install: instar init <project-name>', () => {
+  const testBase = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-fresh-'));
   const projectName = 'test-agent';
   const projectDir = path.join(testBase, projectName);
 
@@ -46,8 +46,8 @@ describe('Fresh install: agent-kit init <project-name>', () => {
     expect(content).toContain('Initiative Hierarchy');
   });
 
-  it('creates .agent-kit directory structure', () => {
-    const stateDir = path.join(projectDir, '.agent-kit');
+  it('creates .instar directory structure', () => {
+    const stateDir = path.join(projectDir, '.instar');
     expect(fs.existsSync(stateDir)).toBe(true);
     expect(fs.existsSync(path.join(stateDir, 'state'))).toBe(true);
     expect(fs.existsSync(path.join(stateDir, 'state', 'sessions'))).toBe(true);
@@ -57,7 +57,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('creates AGENT.md with identity', () => {
-    const agentMd = path.join(projectDir, '.agent-kit', 'AGENT.md');
+    const agentMd = path.join(projectDir, '.instar', 'AGENT.md');
     expect(fs.existsSync(agentMd)).toBe(true);
 
     const content = fs.readFileSync(agentMd, 'utf-8');
@@ -67,7 +67,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('creates USER.md', () => {
-    const userMd = path.join(projectDir, '.agent-kit', 'USER.md');
+    const userMd = path.join(projectDir, '.instar', 'USER.md');
     expect(fs.existsSync(userMd)).toBe(true);
 
     const content = fs.readFileSync(userMd, 'utf-8');
@@ -75,7 +75,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('creates MEMORY.md', () => {
-    const memoryMd = path.join(projectDir, '.agent-kit', 'MEMORY.md');
+    const memoryMd = path.join(projectDir, '.instar', 'MEMORY.md');
     expect(fs.existsSync(memoryMd)).toBe(true);
 
     const content = fs.readFileSync(memoryMd, 'utf-8');
@@ -84,7 +84,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('creates valid config.json', () => {
-    const configPath = path.join(projectDir, '.agent-kit', 'config.json');
+    const configPath = path.join(projectDir, '.instar', 'config.json');
     expect(fs.existsSync(configPath)).toBe(true);
 
     const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
@@ -97,7 +97,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('creates jobs.json with default coherence jobs', () => {
-    const jobsPath = path.join(projectDir, '.agent-kit', 'jobs.json');
+    const jobsPath = path.join(projectDir, '.instar', 'jobs.json');
     expect(fs.existsSync(jobsPath)).toBe(true);
 
     const jobs = JSON.parse(fs.readFileSync(jobsPath, 'utf-8'));
@@ -110,7 +110,7 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 
   it('installs behavioral hooks', () => {
-    const hooksDir = path.join(projectDir, '.agent-kit', 'hooks');
+    const hooksDir = path.join(projectDir, '.instar', 'hooks');
     expect(fs.existsSync(hooksDir)).toBe(true);
 
     const hooks = fs.readdirSync(hooksDir);
@@ -148,8 +148,8 @@ describe('Fresh install: agent-kit init <project-name>', () => {
     expect(fs.existsSync(gitignorePath)).toBe(true);
 
     const content = fs.readFileSync(gitignorePath, 'utf-8');
-    expect(content).toContain('.agent-kit/state/');
-    expect(content).toContain('.agent-kit/logs/');
+    expect(content).toContain('.instar/state/');
+    expect(content).toContain('.instar/logs/');
   });
 
   it('initializes a git repository', () => {
@@ -158,36 +158,36 @@ describe('Fresh install: agent-kit init <project-name>', () => {
   });
 });
 
-describe('Existing project: agent-kit init (no project name)', () => {
-  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-existing-'));
+describe('Existing project: instar init (no project name)', () => {
+  const testDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-existing-'));
 
   afterAll(() => {
     fs.rmSync(testDir, { recursive: true, force: true });
   });
 
-  it('adds .agent-kit/ to an existing directory without CLAUDE.md', async () => {
+  it('adds .instar/ to an existing directory without CLAUDE.md', async () => {
     // Create a minimal existing project
     fs.writeFileSync(path.join(testDir, 'index.ts'), '// existing code');
 
     await initProject({ dir: testDir, port: 5555 });
 
-    // Verify .agent-kit was created
-    expect(fs.existsSync(path.join(testDir, '.agent-kit', 'config.json'))).toBe(true);
-    expect(fs.existsSync(path.join(testDir, '.agent-kit', 'AGENT.md'))).toBe(true);
-    expect(fs.existsSync(path.join(testDir, '.agent-kit', 'USER.md'))).toBe(true);
-    expect(fs.existsSync(path.join(testDir, '.agent-kit', 'MEMORY.md'))).toBe(true);
+    // Verify .instar was created
+    expect(fs.existsSync(path.join(testDir, '.instar', 'config.json'))).toBe(true);
+    expect(fs.existsSync(path.join(testDir, '.instar', 'AGENT.md'))).toBe(true);
+    expect(fs.existsSync(path.join(testDir, '.instar', 'USER.md'))).toBe(true);
+    expect(fs.existsSync(path.join(testDir, '.instar', 'MEMORY.md'))).toBe(true);
 
     // Verify existing file wasn't touched
     const existingContent = fs.readFileSync(path.join(testDir, 'index.ts'), 'utf-8');
     expect(existingContent).toBe('// existing code');
 
     // Verify scheduler is disabled for existing projects (conservative default)
-    const config = JSON.parse(fs.readFileSync(path.join(testDir, '.agent-kit', 'config.json'), 'utf-8'));
+    const config = JSON.parse(fs.readFileSync(path.join(testDir, '.instar', 'config.json'), 'utf-8'));
     expect(config.scheduler.enabled).toBe(false);
   });
 
   it('appends to existing CLAUDE.md without overwriting', async () => {
-    const anotherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-existing2-'));
+    const anotherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-existing2-'));
     const existingContent = '# My Project\n\nThis is my project.\n';
     fs.writeFileSync(path.join(anotherDir, 'CLAUDE.md'), existingContent);
 
@@ -202,7 +202,7 @@ describe('Existing project: agent-kit init (no project name)', () => {
   });
 
   it('does not re-append if already initialized', async () => {
-    const anotherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-existing3-'));
+    const anotherDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-existing3-'));
     const existingContent = '# My Project\n\n## Agent Infrastructure\n\nAlready here.\n';
     fs.writeFileSync(path.join(anotherDir, 'CLAUDE.md'), existingContent);
 

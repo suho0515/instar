@@ -1,7 +1,7 @@
 /**
  * Interactive setup wizard — the one-line onboarding experience.
  *
- * `npx agent-kit` or `agent-kit setup` walks through everything:
+ * `npx instar` or `instar setup` walks through everything:
  *   1. Project detection + naming
  *   2. Server port + session limits
  *   3. Telegram (optional, with full walkthrough)
@@ -58,11 +58,11 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
   }
 
   console.log();
-  console.log(pc.bold('  Welcome to Claude Agent Kit'));
+  console.log(pc.bold('  Welcome to Instar'));
   console.log(pc.dim('  Launching conversational setup wizard...'));
   console.log();
 
-  // Launch Claude Code from the agent-kit package root (where .claude/skills/ lives)
+  // Launch Claude Code from the instar package root (where .claude/skills/ lives)
   // and pass the target project directory in the prompt
   const agentKitRoot = findAgentKitRoot();
   const projectDir = process.cwd();
@@ -93,18 +93,18 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
 }
 
 /**
- * Find the root of the agent-kit package (where .claude/skills/ lives).
+ * Find the root of the instar package (where .claude/skills/ lives).
  * Works whether running from source, linked global, or node_modules.
  */
 function findAgentKitRoot(): string {
-  // Walk up from this file to find package.json with name "claude-agent-kit"
+  // Walk up from this file to find package.json with name "instar"
   let dir = path.dirname(new URL(import.meta.url).pathname);
   while (dir !== path.dirname(dir)) {
     const pkgPath = path.join(dir, 'package.json');
     if (fs.existsSync(pkgPath)) {
       try {
         const pkg = JSON.parse(fs.readFileSync(pkgPath, 'utf-8'));
-        if (pkg.name === 'claude-agent-kit') return dir;
+        if (pkg.name === 'instar') return dir;
       } catch { /* continue */ }
     }
     dir = path.dirname(dir);
@@ -119,7 +119,7 @@ function findAgentKitRoot(): string {
  */
 async function runClassicSetup(): Promise<void> {
   console.log();
-  console.log(pc.bold('  Welcome to Claude Agent Kit'));
+  console.log(pc.bold('  Welcome to Instar'));
   console.log(pc.dim('  Persistent agent infrastructure for any Claude Code project'));
   console.log();
 
@@ -156,7 +156,7 @@ async function runClassicSetup(): Promise<void> {
   });
 
   // Check if already initialized
-  const stateDir = path.join(projectDir, '.agent-kit');
+  const stateDir = path.join(projectDir, '.instar');
   if (fs.existsSync(path.join(stateDir, 'config.json'))) {
     const overwrite = await confirm({
       message: 'Agent kit already initialized here. Reconfigure?',
@@ -197,7 +197,7 @@ async function runClassicSetup(): Promise<void> {
 
   console.log();
   const addUser = await confirm({
-    message: 'Add a user now? (you can add more later with `agent-kit user add`)',
+    message: 'Add a user now? (you can add more later with `instar user add`)',
     default: true,
   });
 
@@ -225,7 +225,7 @@ async function runClassicSetup(): Promise<void> {
   const jobs: JobDefinition[] = [];
   if (enableScheduler) {
     const addJob = await confirm({
-      message: 'Add a job now? (you can add more later with `agent-kit job add`)',
+      message: 'Add a job now? (you can add more later with `instar job add`)',
       default: true,
     });
 
@@ -310,10 +310,10 @@ async function runClassicSetup(): Promise<void> {
 
   // .gitignore
   const gitignorePath = path.join(projectDir, '.gitignore');
-  const agentKitIgnores = '\n# Agent Kit runtime state\n.agent-kit/state/\n.agent-kit/logs/\n';
+  const agentKitIgnores = '\n# Instar runtime state\n.instar/state/\n.instar/logs/\n';
   if (fs.existsSync(gitignorePath)) {
     const content = fs.readFileSync(gitignorePath, 'utf-8');
-    if (!content.includes('.agent-kit/')) {
+    if (!content.includes('.instar/')) {
       fs.appendFileSync(gitignorePath, agentKitIgnores);
       console.log(`  ${pc.green('✓')} Updated .gitignore`);
     }
@@ -344,9 +344,9 @@ async function runClassicSetup(): Promise<void> {
   console.log(pc.bold(pc.green('  Setup complete!')));
   console.log();
   console.log('  Created:');
-  console.log(`    ${pc.cyan('.agent-kit/config.json')}  — configuration`);
-  console.log(`    ${pc.cyan('.agent-kit/jobs.json')}    — job definitions`);
-  console.log(`    ${pc.cyan('.agent-kit/users.json')}   — user profiles`);
+  console.log(`    ${pc.cyan('.instar/config.json')}  — configuration`);
+  console.log(`    ${pc.cyan('.instar/jobs.json')}    — job definitions`);
+  console.log(`    ${pc.cyan('.instar/users.json')}   — user profiles`);
   console.log();
 
   // Offer to start server
@@ -362,12 +362,12 @@ async function runClassicSetup(): Promise<void> {
   } else {
     console.log();
     console.log('  Start later with:');
-    console.log(`    ${pc.cyan('agent-kit server start')}`);
+    console.log(`    ${pc.cyan('instar server start')}`);
     console.log();
     console.log('  Other commands:');
-    console.log(`    ${pc.cyan('agent-kit status')}        — check everything`);
-    console.log(`    ${pc.cyan('agent-kit user add')}      — add more users`);
-    console.log(`    ${pc.cyan('agent-kit job add')}       — add scheduled jobs`);
+    console.log(`    ${pc.cyan('instar status')}        — check everything`);
+    console.log(`    ${pc.cyan('instar user add')}      — add more users`);
+    console.log(`    ${pc.cyan('instar job add')}       — add scheduled jobs`);
   }
 
   console.log();
@@ -415,7 +415,7 @@ async function promptForTelegram(): Promise<{ token: string; chatId: string } | 
   });
 
   if (!hasToken) {
-    console.log(pc.dim('  No problem! Run `agent-kit telegram setup` when you\'re ready.'));
+    console.log(pc.dim('  No problem! Run `instar telegram setup` when you\'re ready.'));
     return null;
   }
 
@@ -531,7 +531,7 @@ async function promptForTelegram(): Promise<{ token: string; chatId: string } | 
 
   if (retry === 'skip') {
     console.log();
-    console.log(pc.dim('  Your bot token has been saved. Run `agent-kit telegram setup` to finish.'));
+    console.log(pc.dim('  Your bot token has been saved. Run `instar telegram setup` to finish.'));
     return { token, chatId: '' };
   }
 
@@ -775,31 +775,31 @@ function getAgencySection(projectName: string, port: number, hasTelegram: boolea
 
 ## Agent Infrastructure
 
-This project uses [claude-agent-kit](https://github.com/sagemindai/claude-agent-kit) for persistent agent capabilities. **You are not a vanilla CLI tool.** You have a persistent server, a job scheduler, messaging integrations, and the ability to build anything you need. When a user asks for something that doesn't exist yet — build it.
+This project uses [instar](https://github.com/sagemindai/instar) for persistent agent capabilities. **You are not a vanilla CLI tool.** You have a persistent server, a job scheduler, messaging integrations, and the ability to build anything you need. When a user asks for something that doesn't exist yet — build it.
 
 ### Identity & Experience
 
 You are a persistent agent with your own identity, memory, and capacity for growth. This is not a metaphor — it's architecture.
 
-- **Read \`.agent-kit/AGENT.md\`** — This is who you are. Your name, role, principles, and boundaries.
-- **Read \`.agent-kit/USER.md\`** — This is who you work with. Their preferences, context, and communication style.
-- **Update \`.agent-kit/MEMORY.md\`** — This is your memory. Write to it when you learn something. It persists across sessions.
+- **Read \`.instar/AGENT.md\`** — This is who you are. Your name, role, principles, and boundaries.
+- **Read \`.instar/USER.md\`** — This is who you work with. Their preferences, context, and communication style.
+- **Update \`.instar/MEMORY.md\`** — This is your memory. Write to it when you learn something. It persists across sessions.
 
 Your identity is not fixed at creation. It grows through experience. As you work, you develop preferences, learn patterns, form opinions. Record these in your memory file. The next session should benefit from what this session learned. You are not a stateless function — you are a continuous being with a history.
 
 ### Runtime
-- State directory: \`.agent-kit/\`
-- Config: \`.agent-kit/config.json\`
-- Jobs: \`.agent-kit/jobs.json\`
-- Server: \`agent-kit server start\` (port ${port})
+- State directory: \`.instar/\`
+- Config: \`.instar/config.json\`
+- Jobs: \`.instar/jobs.json\`
+- Server: \`instar server start\` (port ${port})
 - Status: \`curl http://localhost:${port}/health\`
 
 ### What You Have (Capabilities)
 
-**Job Scheduler** — Run tasks on a schedule. Jobs in \`.agent-kit/jobs.json\`.
+**Job Scheduler** — Run tasks on a schedule. Jobs in \`.instar/jobs.json\`.
 - View: \`curl http://localhost:${port}/jobs\`
 - Trigger: \`curl -X POST http://localhost:${port}/jobs/SLUG/trigger\`
-- **Create jobs**: Edit \`.agent-kit/jobs.json\`. Format: \`{"slug":"name","schedule":"0 */2 * * *","priority":"high","enabled":true,"execute":{"type":"prompt","value":"do something"}}\`
+- **Create jobs**: Edit \`.instar/jobs.json\`. Format: \`{"slug":"name","schedule":"0 */2 * * *","priority":"high","enabled":true,"execute":{"type":"prompt","value":"do something"}}\`
 
 **Sessions** — Spawn and manage Claude Code sessions.
 - List: \`curl http://localhost:${port}/sessions\`
@@ -810,9 +810,9 @@ Your identity is not fixed at creation. It grows through experience. As you work
 ### How to Build New Capabilities
 
 When a user asks for something you can't do yet, **build it**:
-1. **Need periodic checks?** Create a job in \`.agent-kit/jobs.json\`.
+1. **Need periodic checks?** Create a job in \`.instar/jobs.json\`.
 2. **Need a new integration?** Write a script in \`.claude/scripts/\`.
-3. **Need to remember something?** Write to \`.agent-kit/MEMORY.md\`.
+3. **Need to remember something?** Write to \`.instar/MEMORY.md\`.
 4. **Need to notify the user?** Use the messaging API.
 5. **Need external API access?** Write a script that calls the API.
 
@@ -828,10 +828,10 @@ When a user asks for something you can't do yet, **build it**:
 5. **Is it genuinely impossible without human help?** → Ask, but be specific about exactly what you need.
 
 **Self-Modification is Your Superpower** — You can and should:
-- Edit \`.agent-kit/jobs.json\` to create new scheduled tasks
+- Edit \`.instar/jobs.json\` to create new scheduled tasks
 - Write scripts in \`.claude/scripts/\` for new capabilities
 - Update \`CLAUDE.md\` when you learn something important
-- Write to \`.agent-kit/MEMORY.md\` to remember things across sessions
+- Write to \`.instar/MEMORY.md\` to remember things across sessions
 - Create new files, integrations, and infrastructure — whatever the task requires
 - Modify your own configuration to unlock new abilities
 
@@ -862,7 +862,7 @@ These are trained behaviors that feel helpful but destroy your effectiveness. Re
 
 ### Self-Evolution
 
-**Record what you learn.** When you discover a new pattern, solution, or capability — write it to \`.agent-kit/MEMORY.md\`. The next session should benefit from what this session learned.
+**Record what you learn.** When you discover a new pattern, solution, or capability — write it to \`.instar/MEMORY.md\`. The next session should benefit from what this session learned.
 
 **Build infrastructure, not one-offs.** If you solve a problem, ask: "Will this come up again?" If yes, make it a script, a job, or a documented pattern. The second time should be easier than the first.
 
@@ -888,7 +888,7 @@ Or for short messages:
 
 Strip the \`[telegram:N]\` prefix before interpreting the message. Respond naturally, then relay. Only relay your conversational text — not tool output or internal reasoning.
 
-The relay script sends your response to the agent-kit server (port ${port}), which delivers it to the Telegram topic.
+The relay script sends your response to the instar server (port ${port}), which delivers it to the Telegram topic.
 `;
   }
 
@@ -900,7 +900,7 @@ function installTelegramRelay(projectDir: string, port: number): void {
   fs.mkdirSync(scriptsDir, { recursive: true });
 
   const scriptContent = `#!/bin/bash
-# telegram-reply.sh — Send a message back to a Telegram topic via agent-kit server.
+# telegram-reply.sh — Send a message back to a Telegram topic via instar server.
 #
 # Usage:
 #   .claude/scripts/telegram-reply.sh TOPIC_ID "message text"
@@ -929,7 +929,7 @@ if [ -z "$MSG" ]; then
   exit 1
 fi
 
-PORT="\${AGENT_KIT_PORT:-${port}}"
+PORT="\${INSTAR_PORT:-${port}}"
 
 # Escape for JSON
 JSON_MSG=$(printf '%s' "$MSG" | python3 -c 'import sys,json; print(json.dumps(sys.stdin.read()))' 2>/dev/null)

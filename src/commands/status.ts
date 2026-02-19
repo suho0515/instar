@@ -1,5 +1,5 @@
 /**
- * `agent-kit status` — Show agent infrastructure status.
+ * `instar status` — Show agent infrastructure status.
  *
  * Checks for: config, tmux, server, sessions, scheduler.
  */
@@ -19,11 +19,11 @@ export async function showStatus(options: StatusOptions): Promise<void> {
     config = loadConfig(options.dir);
   } catch (err: any) {
     console.log(pc.red(`Not initialized: ${err.message}`));
-    console.log(`Run ${pc.cyan('agent-kit init')} first.`);
+    console.log(`Run ${pc.cyan('instar init')} first.`);
     return;
   }
 
-  console.log(pc.bold(`\nAgent Kit Status: ${pc.cyan(config.projectName)}`));
+  console.log(pc.bold(`\nInstar Status: ${pc.cyan(config.projectName)}`));
   console.log(`  Project: ${config.projectDir}`);
   console.log(`  State:   ${config.stateDir}`);
   console.log();

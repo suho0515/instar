@@ -6,7 +6,7 @@
  * relationship record that grows over time.
  *
  * Architecture:
- * - One JSON file per person in .agent-kit/relationships/
+ * - One JSON file per person in .instar/relationships/
  * - Cross-platform identity resolution via channel index
  * - Auto-enrichment from every interaction
  * - Context injection before any interaction with a known person

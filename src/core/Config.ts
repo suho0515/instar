@@ -74,8 +74,8 @@ export function detectProjectDir(startDir?: string): string {
 
 export function loadConfig(projectDir?: string): AgentKitConfig {
   const resolvedProjectDir = projectDir || detectProjectDir();
-  const configPath = path.join(resolvedProjectDir, '.agent-kit', 'config.json');
-  const stateDir = path.join(resolvedProjectDir, '.agent-kit');
+  const configPath = path.join(resolvedProjectDir, '.instar', 'config.json');
+  const stateDir = path.join(resolvedProjectDir, '.instar');
 
   // Load config file if it exists
   let fileConfig: Partial<AgentKitConfig> = {};

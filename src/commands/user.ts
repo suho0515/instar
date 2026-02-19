@@ -1,5 +1,5 @@
 /**
- * `agent-kit user add|list` — Manage user profiles.
+ * `instar user add|list` — Manage user profiles.
  */
 
 import pc from 'picocolors';
@@ -56,7 +56,7 @@ export async function listUsers(_options: { dir?: string }): Promise<void> {
 
   if (users.length === 0) {
     console.log(pc.dim('No users configured.'));
-    console.log(`Add one: ${pc.cyan('agent-kit user add --id justin --name Justin')}`);
+    console.log(`Add one: ${pc.cyan('instar user add --id justin --name Justin')}`);
     return;
   }
 

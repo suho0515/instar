@@ -1,4 +1,4 @@
-# Agent-Kit vs OpenClaw: Why This Exists
+# Instar vs OpenClaw: Why This Exists
 
 > Foundational positioning document. Articulates what this tool IS, who it's for, and how it stands apart from OpenClaw — the most comparable project in the space.
 > Created: 2026-02-18
@@ -9,7 +9,7 @@
 
 **OpenClaw** is a multi-channel AI assistant framework. You deploy it, connect messaging platforms, and interact with an AI agent through conversations.
 
-**Agent-Kit** is the fastest way to give a Claude Code agent a persistent body. Install it fresh on a bare machine, or add it to a project you've already been building. Either way, you get autonomy in minutes.
+**Instar** is the fastest way to give a Claude Code agent a persistent body. Install it fresh on a bare machine, or add it to a project you've already been building. Either way, you get autonomy in minutes.
 
 ---
 
@@ -30,13 +30,13 @@ OpenClaw is a WebSocket gateway that connects an embedded AI agent (Pi SDK) to 2
 
 **The mental model:** OpenClaw IS the product. You deploy it, and it becomes your AI assistant.
 
-### Agent-Kit: A Persistent Body for Any Claude Code Agent
+### Instar: A Persistent Body for Any Claude Code Agent
 
-Agent-Kit gives Claude Code agents the infrastructure to run autonomously. Two paths to the same outcome:
+Instar gives Claude Code agents the infrastructure to run autonomously. Two paths to the same outcome:
 
-**Fresh install** — `npx agent-kit init my-agent` creates a complete project from scratch: identity files, configuration, hooks, jobs, and a persistent server. Your agent is running in under a minute.
+**Fresh install** — `npx instar init my-agent` creates a complete project from scratch: identity files, configuration, hooks, jobs, and a persistent server. Your agent is running in under a minute.
 
-**Existing project** — `cd my-project && npx agent-kit init` adds autonomy infrastructure to what you've already built, without touching your existing code.
+**Existing project** — `cd my-project && npx instar init` adds autonomy infrastructure to what you've already built, without touching your existing code.
 
 **Key capabilities:**
 - Persistent server managing Claude Code sessions via tmux
@@ -49,7 +49,7 @@ Agent-Kit gives Claude Code agents the infrastructure to run autonomously. Two p
 - Health watchdog with auto-recovery
 - Default coherence jobs that ship out of the box
 
-**The mental model:** Agent-Kit gives any Claude Code project a body — whether that project existed before or starts right now.
+**The mental model:** Instar gives any Claude Code project a body — whether that project existed before or starts right now.
 
 ---
 
@@ -59,7 +59,7 @@ Agent-Kit gives Claude Code agents the infrastructure to run autonomously. Two p
 
 **OpenClaw** wraps the Claude API (via Pi SDK) to create an agent that responds to messages. The agent has tools (bash, read, write, edit), but it's fundamentally a **message-response loop** — users send messages, the agent processes them, the agent responds.
 
-**Agent-Kit** runs on Claude Code — Anthropic's full agentic development environment. Each session is a complete Claude Code instance with:
+**Instar** runs on Claude Code — Anthropic's full agentic development environment. Each session is a complete Claude Code instance with:
 - Extended thinking
 - Native tool ecosystem (Read, Write, Edit, Bash, Glob, Grep, WebSearch, WebFetch)
 - Sub-agent spawning via Task tool (with model-tier selection: Opus/Sonnet/Haiku)
@@ -68,21 +68,21 @@ Agent-Kit gives Claude Code agents the infrastructure to run autonomously. Two p
 - Context management with automatic compaction
 - MCP server integration (Playwright, Chrome extension, etc.)
 
-The difference: OpenClaw's agent executes tools through an API. Agent-Kit's agent IS a development environment.
+The difference: OpenClaw's agent executes tools through an API. Instar's agent IS a development environment.
 
 ### Session Model: Single Gateway vs. Multi-Session Orchestration
 
 **OpenClaw** runs a single gateway process. All conversations route through one WebSocket server with one embedded agent. The agent handles multiple users and channels through message routing and session management.
 
-**Agent-Kit** manages multiple independent Claude Code sessions, each running in its own tmux process. The server orchestrates which sessions run, monitors their health, respawns them when they die, and coordinates through Telegram topics and event logs. Each session has its own context, tools, and state.
+**Instar** manages multiple independent Claude Code sessions, each running in its own tmux process. The server orchestrates which sessions run, monitors their health, respawns them when they die, and coordinates through Telegram topics and event logs. Each session has its own context, tools, and state.
 
-This means Agent-Kit can run 5 jobs simultaneously — one doing a health check, one processing emails, one engaging on social media, one running reflection, one responding to a Telegram message — each as an independent Claude Code instance with full capabilities.
+This means Instar can run 5 jobs simultaneously — one doing a health check, one processing emails, one engaging on social media, one running reflection, one responding to a Telegram message — each as an independent Claude Code instance with full capabilities.
 
 ### Identity: Co-Created Persona vs. Earned Infrastructure
 
 **OpenClaw's SOUL.md** is elegant. On first run, the agent and user have a bootstrap conversation: "Who am I? Who are you?" The result is a self-authored identity file the agent can modify over time. It's personal and charming.
 
-**Agent-Kit's identity system** goes deeper:
+**Instar's identity system** goes deeper:
 - **AGENT.md**: Core identity (like SOUL.md)
 - **USER.md**: Understanding of the primary user
 - **MEMORY.md**: Accumulated learnings and context
@@ -100,10 +100,10 @@ The difference isn't the identity file — it's the infrastructure that keeps id
 
 OpenClaw's ideal user wants to talk to an AI across all their messaging platforms. They want smart home control, note-taking, dev tools, media management — all through natural conversation. The value is **ubiquity** (AI everywhere you already communicate) and **personality** (an assistant that feels like yours).
 
-### Agent-Kit: Anyone Who Wants a Claude Code Agent That Runs Autonomously
+### Instar: Anyone Who Wants a Claude Code Agent That Runs Autonomously
 
-Agent-Kit's ideal user wants a Claude Code agent with a persistent body. They might be:
-- **Starting fresh** — They want an autonomous agent and don't have a project yet. `agent-kit init my-agent` creates everything.
+Instar's ideal user wants a Claude Code agent with a persistent body. They might be:
+- **Starting fresh** — They want an autonomous agent and don't have a project yet. `instar init my-agent` creates everything.
 - **Augmenting existing work** — They already have a Claude Code project and want it to keep running when they close their laptop.
 
 Either way, they want:
@@ -118,27 +118,27 @@ The value is **autonomy** (your agent works while you sleep) and **persistence**
 
 ---
 
-## What Agent-Kit Does That OpenClaw Doesn't
+## What Instar Does That OpenClaw Doesn't
 
 ### 1. Works Both Ways: Fresh Install or Augment Existing (vs. Being the Product)
 
 OpenClaw IS the AI assistant. You deploy OpenClaw, and that's your product.
 
-Agent-Kit works two ways:
-- **Fresh:** `npx agent-kit init my-agent` creates a complete project — identity files, configuration, hooks, jobs, server. Your agent is autonomous in under a minute.
-- **Existing:** `cd my-project && npx agent-kit init` adds autonomy infrastructure without touching your existing code. Your CLAUDE.md, skills, hooks, and tools all keep working.
+Instar works two ways:
+- **Fresh:** `npx instar init my-agent` creates a complete project — identity files, configuration, hooks, jobs, server. Your agent is autonomous in under a minute.
+- **Existing:** `cd my-project && npx instar init` adds autonomy infrastructure without touching your existing code. Your CLAUDE.md, skills, hooks, and tools all keep working.
 
-Agent-Kit isn't the product. It gives your agent a body — whether you're starting from scratch or building on what exists.
+Instar isn't the product. It gives your agent a body — whether you're starting from scratch or building on what exists.
 
 ### 2. Job-Topic Coupling (Every Job Has a Home)
 
-When agent-kit's scheduler creates a job, it automatically creates a Telegram topic for that job. The topic becomes the user's window into the job — status updates, completion reports, and errors all flow there. If a topic is accidentally deleted, it's auto-recreated on next run.
+When instar's scheduler creates a job, it automatically creates a Telegram topic for that job. The topic becomes the user's window into the job — status updates, completion reports, and errors all flow there. If a topic is accidentally deleted, it's auto-recreated on next run.
 
 This means your Telegram group becomes a living dashboard of agent activity, organized by job.
 
 ### 3. Relationship Tracking as a Core System
 
-Agent-Kit treats relationships as fundamental infrastructure — not a plugin, not an afterthought. Every person the agent interacts with, across any channel or platform, gets a relationship record that grows over time:
+Instar treats relationships as fundamental infrastructure — not a plugin, not an afterthought. Every person the agent interacts with, across any channel or platform, gets a relationship record that grows over time:
 - Cross-platform identity resolution (same person on Telegram and email? Merged automatically)
 - Interaction history with topic extraction
 - Auto-derived significance scoring (frequency + recency + depth)
@@ -147,7 +147,7 @@ Agent-Kit treats relationships as fundamental infrastructure — not a plugin, n
 
 ### 4. Behavioral Hooks That Enforce Patterns
 
-Agent-Kit ships with hooks that fire automatically:
+Instar ships with hooks that fire automatically:
 - **Session start**: Identity context injected before the agent does anything
 - **Dangerous command guard**: Blocks `rm -rf`, `git push --force`, database drops
 - **Grounding before messaging**: Before sending any external message, the agent re-reads its identity
@@ -157,7 +157,7 @@ These aren't suggestions — they're structural guardrails. "Structure over Will
 
 ### 5. Multi-Session Orchestration
 
-Agent-Kit's server manages multiple Claude Code sessions running in parallel. Each session is a full Claude Code instance with its own context window, tools, and state. The server:
+Instar's server manages multiple Claude Code sessions running in parallel. Each session is a full Claude Code instance with its own context window, tools, and state. The server:
 - Enforces session limits (don't exhaust the machine)
 - Monitors session health (detect zombies, reap completed)
 - Queues jobs when at capacity, drains when slots open
@@ -165,7 +165,7 @@ Agent-Kit's server manages multiple Claude Code sessions running in parallel. Ea
 
 ### 6. Default Coherence Jobs
 
-Agent-Kit ships with jobs that run out of the box:
+Instar ships with jobs that run out of the box:
 - **health-check** (every 5 min, haiku): Verify infrastructure is healthy
 - **reflection-trigger** (every 4h, sonnet): Prompt the agent to reflect on recent work
 - **relationship-maintenance** (daily, sonnet): Review stale relationships, update notes
@@ -174,25 +174,25 @@ These give the agent a circadian rhythm — regular self-maintenance without use
 
 ---
 
-## What OpenClaw Does That Agent-Kit Doesn't
+## What OpenClaw Does That Instar Doesn't
 
 ### 1. 20+ Messaging Channels
-OpenClaw connects to WhatsApp, iMessage, Signal, Discord, Slack, Matrix, and more. Agent-Kit currently supports Telegram only. (Discord and Slack are planned.)
+OpenClaw connects to WhatsApp, iMessage, Signal, Discord, Slack, Matrix, and more. Instar currently supports Telegram only. (Discord and Slack are planned.)
 
 ### 2. Native Device Apps
-OpenClaw has companion apps for macOS, iOS, and Android with voice wake, camera access, location, notifications, and local command execution. Agent-Kit has no device apps.
+OpenClaw has companion apps for macOS, iOS, and Android with voice wake, camera access, location, notifications, and local command execution. Instar has no device apps.
 
 ### 3. Voice Interface
-OpenClaw supports always-listening wake words and continuous voice conversation with ElevenLabs TTS. Agent-Kit is text-only.
+OpenClaw supports always-listening wake words and continuous voice conversation with ElevenLabs TTS. Instar is text-only.
 
 ### 4. Docker Sandboxing
-OpenClaw has a sophisticated sandbox system (3 modes x 3 scopes x access levels) for running untrusted code. Agent-Kit runs with the user's permissions (appropriate for single-user, trusted environments).
+OpenClaw has a sophisticated sandbox system (3 modes x 3 scopes x access levels) for running untrusted code. Instar runs with the user's permissions (appropriate for single-user, trusted environments).
 
 ### 5. Skill Marketplace
-OpenClaw has ClawHub — a public skill registry with search, versioning, publishing, and moderation. Agent-Kit has no marketplace (skills are project-local).
+OpenClaw has ClawHub — a public skill registry with search, versioning, publishing, and moderation. Instar has no marketplace (skills are project-local).
 
 ### 6. Multi-User Support
-OpenClaw handles multiple users across channels with per-user sessions, sender allowlists, and group chat management. Agent-Kit is designed for a single user/developer and their agent.
+OpenClaw handles multiple users across channels with per-user sessions, sender allowlists, and group chat management. Instar is designed for a single user/developer and their agent.
 
 ---
 
@@ -200,17 +200,17 @@ OpenClaw handles multiple users across channels with per-user sessions, sender a
 
 **OpenClaw asks:** "How can I be your AI assistant everywhere?"
 
-**Agent-Kit asks:** "How can your Claude Code agent get a persistent body?"
+**Instar asks:** "How can your Claude Code agent get a persistent body?"
 
 OpenClaw creates a new thing — an AI assistant — and connects it to your world.
 
-Agent-Kit gives any Claude Code agent the infrastructure to live on its own — whether you're starting fresh or building on existing work.
+Instar gives any Claude Code agent the infrastructure to live on its own — whether you're starting fresh or building on existing work.
 
 ---
 
 ## Comparison Table
 
-| Dimension | OpenClaw | Agent-Kit |
+| Dimension | OpenClaw | Instar |
 |---|---|---|
 | **What it is** | AI assistant framework | Autonomy infrastructure (fresh or existing projects) |
 | **Runtime** | Pi SDK (API wrapper) | Claude Code (full dev environment) |
@@ -237,10 +237,10 @@ Agent-Kit gives any Claude Code agent the infrastructure to live on its own — 
 These projects aren't competitors. They serve different needs:
 
 - If you want an **AI assistant** that works across all your messaging platforms, with voice, device apps, and a skill marketplace: **OpenClaw**.
-- If you want a **Claude Code agent with a persistent body** — fresh install or existing project — with scheduled jobs, relationship tracking, Telegram control, and self-evolution: **Agent-Kit**.
+- If you want a **Claude Code agent with a persistent body** — fresh install or existing project — with scheduled jobs, relationship tracking, Telegram control, and self-evolution: **Instar**.
 
 The overlap is small. The gap between "deploy an AI assistant" and "give an agent a body" is fundamental — not a feature delta, but a category difference.
 
 ---
 
-*This document compares Agent-Kit (v0.1.0) against OpenClaw as studied from the open-source repository in February 2026. Both projects are actively evolving.*
+*This document compares Instar (v0.1.0) against OpenClaw as studied from the open-source repository in February 2026. Both projects are actively evolving.*

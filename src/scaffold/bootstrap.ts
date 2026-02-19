@@ -20,7 +20,7 @@ export async function bootstrapIdentity(projectName: string): Promise<AgentIdent
   console.log();
   console.log(pc.bold('  Identity Bootstrap'));
   console.log(pc.dim('  Let\'s define who your agent is. This takes about 30 seconds.'));
-  console.log(pc.dim('  You can always change these later by editing .agent-kit/AGENT.md'));
+  console.log(pc.dim('  You can always change these later by editing .instar/AGENT.md'));
   console.log();
 
   // Agent name

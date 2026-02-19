@@ -18,7 +18,7 @@ describe('Relationship API routes', () => {
   const fakeConfig: AgentKitConfig = {
     projectName: 'test-project',
     projectDir: '/tmp/test',
-    stateDir: '/tmp/test/.agent-kit',
+    stateDir: '/tmp/test/.instar',
     port: 0,
     sessions: {
       tmuxPath: '/usr/bin/tmux',

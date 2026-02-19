@@ -1,8 +1,8 @@
 /**
- * E2E test — full agent-kit lifecycle from init to running server.
+ * E2E test — full instar lifecycle from init to running server.
  *
  * Tests the complete user journey:
- *   agent-kit init → configure → server start → health check →
+ *   instar init → configure → server start → health check →
  *   trigger job → relationship tracking → auth enforcement → shutdown
  *
  * Uses real filesystem, real HTTP server (ephemeral port), real scheduler.
@@ -26,7 +26,7 @@ import type { AgentKitConfig, JobDefinition } from '../../src/core/types.js';
 const tmuxPath = detectTmuxPath();
 const describeMaybe = tmuxPath ? describe : describe.skip;
 
-describeMaybe('E2E: Agent-kit lifecycle', () => {
+describeMaybe('E2E: Instar lifecycle', () => {
   let projectDir: string;
   let stateDir: string;
   let mockClaudePath: string;
@@ -39,9 +39,9 @@ describeMaybe('E2E: Agent-kit lifecycle', () => {
   const AUTH_TOKEN = 'e2e-test-token';
 
   beforeAll(async () => {
-    // ── Phase 1: Simulate `agent-kit init` ─────────────────
-    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'agent-kit-e2e-'));
-    stateDir = path.join(projectDir, '.agent-kit');
+    // ── Phase 1: Simulate `instar init` ─────────────────
+    projectDir = fs.mkdtempSync(path.join(os.tmpdir(), 'instar-e2e-'));
+    stateDir = path.join(projectDir, '.instar');
 
     // Create directory structure (what init creates)
     const dirs = [
@@ -97,7 +97,7 @@ describeMaybe('E2E: Agent-kit lifecycle', () => {
     // Create mock claude
     mockClaudePath = createMockClaude(projectDir);
 
-    // ── Phase 2: Simulate `agent-kit server start` ─────────
+    // ── Phase 2: Simulate `instar server start` ─────────
     state = new StateManager(stateDir);
 
     sessionManager = new SessionManager(
