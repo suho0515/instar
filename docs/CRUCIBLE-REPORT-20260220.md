@@ -6,7 +6,7 @@
 **Ending Version**: 0.1.11
 **Commits**: 47
 **Files Changed**: 102 (8,574 lines added, 544 removed)
-**Tests**: 350 -> 656 (unit) + 38 (integration) + 9 (e2e) = 703 total
+**Tests**: 350 -> 699 (unit) + 38 (integration) + 9 (e2e) = 746 total
 **TypeScript**: Compiles cleanly with `--strict`
 **Package Size**: 98.2 kB (60 files)
 
@@ -78,7 +78,7 @@ Comprehensive production-readiness review of Instar v0.1.10 across 53 iterations
 ### 4. Test Coverage (HIGH)
 
 **Before**: 350 tests across ~40 test files
-**After**: 647 tests across 76 test files + 37 integration + 9 e2e
+**After**: 699 tests across 76 test files + 38 integration + 9 e2e
 
 New test areas added:
 - Route validation edge cases (26 tests)
@@ -98,7 +98,11 @@ New test areas added:
 - CORS middleware (4 tests)
 - ESM compliance (2 tests)
 - CLI add commands (16 tests)
-- Plus integration tests for fresh-install (16), server-full (14), scheduler (1), session-lifecycle (6), and e2e lifecycle (9)
+- User manager edge cases: collision prevention, validation, backup (15 tests)
+- Telegram API edge cases: token redaction, retry cap, timeouts (16 tests)
+- State manager edge cases: atomic cleanup, validation, overwrite (12 tests)
+- Config error handling: corrupted/truncated JSON, permissions (3 tests)
+- Plus integration tests for fresh-install (17), server-full (14), scheduler (1), session-lifecycle (6), and e2e lifecycle (9)
 
 ### 5. Error Handling
 
@@ -292,11 +296,11 @@ The `instar feedback` CLI command used `fetch()` without a timeout. If the serve
 
 | Suite | Count | Status |
 |-------|-------|--------|
-| Unit | 656 | All passing |
+| Unit | 699 | All passing |
 | Integration | 38 | All passing |
 | E2E | 9 | All passing |
-| **Total** | **703** | **All passing** |
+| **Total** | **746** | **All passing** |
 
 ---
 
-*Report generated during AUT-1655-wo crucible session. 55+ commits, 102+ files changed. Every source file individually reviewed. All 703 tests passing.*
+*Report generated during AUT-1655-wo crucible session. 58+ commits, 105+ files changed. Every source file individually reviewed. All 746 tests passing.*
