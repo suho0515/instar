@@ -63,19 +63,12 @@ describe('Session reaping and detection', () => {
   });
 
   describe('listRunningSessions', () => {
-    it('auto-marks dead sessions as completed during listing', () => {
+    it('filters sessions by alive status without side effects', () => {
       source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      // listRunningSessions should check alive status and mark dead ones
+      // listRunningSessions should be a pure filter — no state mutation
+      // The monitor tick handles lifecycle transitions
       expect(source).toContain('isSessionAlive');
-      expect(source).toContain("s.status = 'completed'");
-      expect(source).toContain('this.state.saveSession(s)');
-    });
-
-    it('only returns sessions that are actually alive', () => {
-      source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      // Should filter by alive status
       expect(source).toContain('sessions.filter');
-      expect(source).toContain('return alive');
     });
   });
 
@@ -96,9 +89,11 @@ describe('Session reaping and detection', () => {
       expect(source).toContain("this.emit('sessionComplete', session)");
     });
 
-    it('session timeout uses 20% buffer', () => {
+    it('session timeout uses capped 20% buffer', () => {
       source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      expect(source).toContain('maxDurationMinutes * 1.2');
+      // Buffer is 20% of duration but capped at 60 minutes
+      expect(source).toContain('maxDurationMinutes * 0.2');
+      expect(source).toContain('Math.min');
     });
 
     it('does not kill protected sessions on timeout', () => {
@@ -124,18 +119,19 @@ describe('Session reaping and detection', () => {
       expect(source).toContain('already exists');
     });
 
-    it('escapes single quotes in claude path for shell safety', () => {
+    it('passes prompt directly as CLI argument without shell intermediary', () => {
       source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      expect(source).toContain("replace(/'/g, \"'\\\\''\")");
-    });
-
-    it('writes prompt to temp file to prevent shell injection', () => {
-      source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      // The prompt should be written to a file, not passed directly as a shell argument
-      expect(source).toContain('instar-prompts');
-      expect(source).toContain('fs.writeFileSync(promptFile, options.prompt)');
-      // The shell command should read from the file, not interpolate the prompt
-      expect(source).toContain('cat ${quotedPromptFile}');
+      // spawnSession should NOT use bash -c (shell injection risk)
+      // Instead, it passes claude args directly to tmux new-session
+      const spawnSection = source.match(/async spawnSession[\s\S]*?this\.state\.saveSession\(session\)/);
+      expect(spawnSection).toBeTruthy();
+      const body = spawnSection![0];
+      // Should NOT pass 'bash' as an argument to execFileSync
+      expect(body).not.toMatch(/execFileSync\([^)]*'bash'/);
+      // Should pass prompt as -p argument
+      expect(body).toContain("'-p'");
+      // Should use this.config.claudePath directly
+      expect(body).toContain('this.config.claudePath');
     });
   });
 
@@ -153,12 +149,17 @@ describe('Session reaping and detection', () => {
       expect(source).toContain('waitForClaudeReady');
     });
 
-    it('waitForClaudeReady checks for prompt characters', () => {
+    it('waitForClaudeReady checks for Claude-specific prompt character only', () => {
       source = fs.readFileSync(SOURCE_PATH, 'utf-8');
-      // Should check for common prompt characters
+      // Should ONLY check for Claude Code's specific prompt character (❯)
+      // NOT generic shell prompts (> or $) which cause false positives
       expect(source).toContain("'❯'");
-      expect(source).toContain("'>'");
-      expect(source).toContain("'$'");
+      // Verify it does NOT match generic shell prompts
+      const readySection = source.match(/waitForClaudeReady[\s\S]*?return false;\s*\}/);
+      expect(readySection).toBeTruthy();
+      const body = readySection![0];
+      expect(body).not.toContain("'>'");
+      expect(body).not.toContain("'$'");
     });
   });
 });

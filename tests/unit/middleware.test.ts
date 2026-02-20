@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import express from 'express';
 import request from 'supertest';
-import { authMiddleware, corsMiddleware, errorHandler } from '../../src/server/middleware.js';
+import { authMiddleware, corsMiddleware, errorHandler, rateLimiter } from '../../src/server/middleware.js';
 
 function createApp(authToken?: string) {
   const app = express();
@@ -106,10 +106,12 @@ describe('corsMiddleware', () => {
 describe('errorHandler', () => {
   const app = createApp();
 
-  it('returns 500 with error message', async () => {
+  it('returns 500 with generic error message (no internal details leaked)', async () => {
     const res = await request(app).get('/error');
     expect(res.status).toBe(500);
-    expect(res.body.error).toBe('test error');
+    // Should NOT leak internal error details to client
+    expect(res.body.error).toBe('Internal server error');
+    expect(res.body.error).not.toContain('test error');
     expect(res.body).toHaveProperty('timestamp');
   });
 
@@ -123,5 +125,39 @@ describe('errorHandler', () => {
     expect(source).not.toContain('err: any');
     // Should use instanceof Error check
     expect(source).toContain('err instanceof Error');
+  });
+});
+
+describe('rateLimiter', () => {
+  it('rate limiter is per-IP (not global)', () => {
+    const source = require('fs').readFileSync(
+      require('path').join(process.cwd(), 'src/server/middleware.ts'),
+      'utf-8'
+    );
+    // Should use a Map keyed by IP, not a single array
+    expect(source).toContain('new Map');
+    expect(source).toContain('req.ip');
+  });
+
+  it('allows requests within limit', async () => {
+    const app = express();
+    app.use(rateLimiter(60_000, 3));
+    app.get('/test', (_req, res) => res.json({ ok: true }));
+
+    const res = await request(app).get('/test');
+    expect(res.status).toBe(200);
+  });
+
+  it('returns 429 when limit exceeded', async () => {
+    const app = express();
+    app.use(rateLimiter(60_000, 2));
+    app.get('/test', (_req, res) => res.json({ ok: true }));
+
+    await request(app).get('/test');
+    await request(app).get('/test');
+    const res = await request(app).get('/test');
+    expect(res.status).toBe(429);
+    expect(res.body.error).toContain('Rate limit exceeded');
+    expect(res.body).toHaveProperty('retryAfterMs');
   });
 });

@@ -18,7 +18,7 @@ import type { FeedbackManager } from '../core/FeedbackManager.js';
 import type { UpdateChecker } from '../core/UpdateChecker.js';
 import type { QuotaTracker } from '../monitoring/QuotaTracker.js';
 
-interface RouteContext {
+export interface RouteContext {
   config: AgentKitConfig;
   sessionManager: SessionManager;
   state: StateManager;
@@ -103,7 +103,8 @@ export function createRoutes(ctx: RouteContext): Router {
   });
 
   router.get('/sessions/:name/output', (req, res) => {
-    const lines = parseInt(req.query.lines as string, 10) || 100;
+    const rawLines = parseInt(req.query.lines as string, 10) || 100;
+    const lines = Math.min(Math.max(rawLines, 1), 10_000);
     const output = ctx.sessionManager.captureOutput(req.params.name, lines);
 
     if (output === null) {
@@ -174,7 +175,7 @@ export function createRoutes(ctx: RouteContext): Router {
       }
       res.json({ ok: true, killed: req.params.id });
     } catch (err) {
-      res.status(400).json({ error: err instanceof Error ? err.message : String(err) });
+      res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
   });
 
@@ -200,7 +201,8 @@ export function createRoutes(ctx: RouteContext): Router {
       return;
     }
 
-    const reason = (req.body?.reason as string) || 'manual';
+    const rawReason = (req.body?.reason as string) || 'manual';
+    const reason = typeof rawReason === 'string' ? rawReason.slice(0, 500) : 'manual';
 
     try {
       const result = ctx.scheduler.triggerJob(req.params.slug, reason);

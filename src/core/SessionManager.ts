@@ -20,7 +20,8 @@ import { StateManager } from './StateManager.js';
 
 /** Sanitize a string for use as part of a tmux session name. */
 function sanitizeSessionName(name: string): string {
-  return name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  const sanitized = name.replace(/[^a-zA-Z0-9_-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+  return sanitized || 'session';
 }
 
 export interface SessionManagerEvents {
@@ -75,7 +76,8 @@ export class SessionManager extends EventEmitter {
         // Enforce session timeout (prevents zombie sessions)
         if (session.maxDurationMinutes && session.startedAt) {
           const elapsed = (Date.now() - new Date(session.startedAt).getTime()) / 60000;
-          const limit = session.maxDurationMinutes * 1.2; // 20% buffer
+          const buffer = Math.min(session.maxDurationMinutes * 0.2, 60); // 20% buffer, max 60 min
+          const limit = session.maxDurationMinutes + buffer;
           if (elapsed > limit && !this.config.protectedSessions.includes(session.tmuxSession)) {
             console.warn(`[SessionManager] Session "${session.name}" exceeded timeout (${Math.round(elapsed)}m > ${session.maxDurationMinutes}m). Killing.`);
             try {
@@ -131,34 +133,23 @@ export class SessionManager extends EventEmitter {
       throw new Error(`tmux session "${tmuxSession}" already exists`);
     }
 
-    // Write prompt to temp file to avoid shell injection via bash -c string interpolation.
-    // The prompt is user-controlled (arrives via HTTP API), so we must never pass it
-    // through a shell interpreter. Writing to a file and reading it back is safe.
-    const promptDir = path.join(os.tmpdir(), 'instar-prompts');
-    fs.mkdirSync(promptDir, { recursive: true });
-    const promptFile = path.join(promptDir, `${sessionId}.txt`);
-    fs.writeFileSync(promptFile, options.prompt);
-
-    // Build a shell command that reads the prompt from the temp file
+    // Build Claude CLI arguments — no shell intermediary.
+    // tmux new-session executes the command directly (no bash -c needed)
+    // when given as separate arguments after the session options.
     const claudeArgs = ['--dangerously-skip-permissions'];
     if (options.model) {
       claudeArgs.push('--model', options.model);
     }
-    // Use execFileSync with argument arrays for the tmux call.
-    // The inner command reads the prompt from a file, avoiding shell interpretation of user input.
-    const quotedClaudePath = `'${this.config.claudePath.replace(/'/g, "'\\''")}'`;
-    const quotedPromptFile = `'${promptFile.replace(/'/g, "'\\''")}'`;
-    const claudeCmd = `${quotedClaudePath} ${claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')} -p "$(cat ${quotedPromptFile})" ; rm -f ${quotedPromptFile}`;
+    claudeArgs.push('-p', options.prompt);
+
     try {
       execFileSync(this.config.tmuxPath, [
         'new-session', '-d',
         '-s', tmuxSession,
         '-c', this.config.projectDir,
-        'bash', '-c', claudeCmd,
+        this.config.claudePath, ...claudeArgs,
       ], { encoding: 'utf-8' });
     } catch (err) {
-      // Clean up prompt file on failure
-      try { fs.unlinkSync(promptFile); } catch { /* ignore */ }
       throw new Error(`Failed to create tmux session: ${err}`);
     }
 
@@ -268,21 +259,11 @@ export class SessionManager extends EventEmitter {
 
   /**
    * List all sessions that are currently running.
+   * Pure filter — does not mutate state. The monitor tick handles lifecycle transitions.
    */
   listRunningSessions(): Session[] {
     const sessions = this.state.listSessions({ status: 'running' });
-
-    // Verify each is actually still alive in tmux
-    return sessions.filter(s => {
-      const alive = this.isSessionAlive(s.tmuxSession);
-      if (!alive) {
-        // Mark as completed if tmux session is gone
-        s.status = 'completed';
-        s.endedAt = new Date().toISOString();
-        this.state.saveSession(s);
-      }
-      return alive;
-    });
+    return sessions.filter(s => this.isSessionAlive(s.tmuxSession));
   }
 
   /**
@@ -356,16 +337,15 @@ export class SessionManager extends EventEmitter {
       );
     }
 
-    // Respect the user's configured auth method (API key or OAuth subscription)
-    // Use execFileSync with argument arrays to prevent command injection
-    const quotedPath = `'${this.config.claudePath.replace(/'/g, "'\\''")}'`;
-    const claudeCmd = `cd '${this.config.projectDir.replace(/'/g, "'\\''")}' && ${quotedPath} --dangerously-skip-permissions`;
+    // Spawn Claude directly — no bash -c shell intermediary.
+    // tmux -c sets the working directory; the command is passed as arguments.
     try {
       execFileSync(this.config.tmuxPath, [
         'new-session', '-d',
         '-s', tmuxSession,
+        '-c', this.config.projectDir,
         '-x', '200', '-y', '50',
-        'bash', '-c', claudeCmd,
+        this.config.claudePath, '--dangerously-skip-permissions',
       ], { encoding: 'utf-8' });
     } catch (err) {
       throw new Error(`Failed to create interactive tmux session: ${err}`);
@@ -414,7 +394,7 @@ export class SessionManager extends EventEmitter {
     // Write full message to temp file
     const tmpDir = path.join('/tmp', 'instar-telegram');
     fs.mkdirSync(tmpDir, { recursive: true });
-    const filename = `msg-${topicId}-${Date.now()}.txt`;
+    const filename = `msg-${topicId}-${Date.now()}-${randomUUID().slice(0, 8)}.txt`;
     const filepath = path.join(tmpDir, filename);
     fs.writeFileSync(filepath, taggedText);
 
@@ -447,9 +427,13 @@ export class SessionManager extends EventEmitter {
    */
   private async waitForClaudeReady(tmuxSession: string, timeoutMs: number = 15000): Promise<boolean> {
     const start = Date.now();
+    // Wait a minimum startup delay before checking (Claude needs time to load)
+    await new Promise(r => setTimeout(r, 2000));
     while (Date.now() - start < timeoutMs) {
       const output = this.captureOutput(tmuxSession, 10);
-      if (output && (output.includes('❯') || output.includes('>') || output.includes('$'))) {
+      // Check for Claude Code's specific prompt character (❯)
+      // Avoid matching generic shell prompts (> and $) which cause false positives
+      if (output && output.includes('❯')) {
         return true;
       }
       await new Promise(r => setTimeout(r, 500));

@@ -10,7 +10,7 @@ export { StateManager } from './core/StateManager.js';
 export { RelationshipManager } from './core/RelationshipManager.js';
 export { FeedbackManager } from './core/FeedbackManager.js';
 export { UpdateChecker } from './core/UpdateChecker.js';
-export { loadConfig, detectTmuxPath, detectClaudePath, ensureStateDir } from './core/Config.js';
+export { loadConfig, detectTmuxPath, detectClaudePath, detectProjectDir, ensureStateDir } from './core/Config.js';
 
 // Users
 export { UserManager } from './users/UserManager.js';
@@ -22,6 +22,7 @@ export { loadJobs, validateJob } from './scheduler/JobLoader.js';
 // Server
 export { AgentServer } from './server/AgentServer.js';
 export { createRoutes, formatUptime } from './server/routes.js';
+export type { RouteContext } from './server/routes.js';
 export { corsMiddleware, authMiddleware, rateLimiter, requestTimeout, errorHandler } from './server/middleware.js';
 
 // Monitoring
@@ -31,6 +32,7 @@ export { SleepWakeDetector } from './core/SleepWakeDetector.js';
 
 // Messaging
 export { TelegramAdapter } from './messaging/TelegramAdapter.js';
+export type { TelegramConfig } from './messaging/TelegramAdapter.js';
 
 // Types
 export type {

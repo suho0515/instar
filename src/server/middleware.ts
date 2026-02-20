@@ -62,24 +62,32 @@ export function authMiddleware(authToken?: string) {
  * No external dependencies. Suitable for a local management API.
  */
 export function rateLimiter(windowMs: number = 60_000, maxRequests: number = 10) {
-  const requests: number[] = [];
+  const requests = new Map<string, number[]>();
 
-  return (_req: Request, res: Response, next: NextFunction): void => {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const key = req.ip || req.socket.remoteAddress || 'unknown';
     const now = Date.now();
-    // Remove expired entries
-    while (requests.length > 0 && requests[0] <= now - windowMs) {
-      requests.shift();
+
+    let bucket = requests.get(key);
+    if (!bucket) {
+      bucket = [];
+      requests.set(key, bucket);
     }
 
-    if (requests.length >= maxRequests) {
+    // Remove expired entries
+    while (bucket.length > 0 && bucket[0] <= now - windowMs) {
+      bucket.shift();
+    }
+
+    if (bucket.length >= maxRequests) {
       res.status(429).json({
         error: `Rate limit exceeded. Max ${maxRequests} requests per ${windowMs / 1000}s.`,
-        retryAfterMs: requests[0] + windowMs - now,
+        retryAfterMs: bucket[0] + windowMs - now,
       });
       return;
     }
 
-    requests.push(now);
+    bucket.push(now);
     next();
   };
 }
@@ -109,8 +117,9 @@ export function requestTimeout(timeoutMs: number = 30_000) {
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   const message = err instanceof Error ? err.message : String(err);
   console.error(`[server] Error: ${message}`);
+  // Never leak internal error details to clients
   res.status(500).json({
-    error: message,
+    error: 'Internal server error',
     timestamp: new Date().toISOString(),
   });
 }

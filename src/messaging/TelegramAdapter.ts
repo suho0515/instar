@@ -12,7 +12,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { MessagingAdapter, Message, OutgoingMessage, UserChannel } from '../core/types.js';
 
-interface TelegramConfig {
+export interface TelegramConfig {
   /** Bot token from @BotFather */
   token: string;
   /** Forum chat ID (the supergroup where topics live) */
