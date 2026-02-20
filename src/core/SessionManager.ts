@@ -121,7 +121,8 @@ export class SessionManager extends EventEmitter {
     // Create tmux session and run claude
     // Respect the user's configured auth method (API key or OAuth subscription)
     // Use execFileSync with argument arrays to prevent command injection
-    const claudeCmd = `${this.config.claudePath} ${claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`;
+    const quotedClaudePath = `'${this.config.claudePath.replace(/'/g, "'\\''")}'`;
+    const claudeCmd = `${quotedClaudePath} ${claudeArgs.map(a => `'${a.replace(/'/g, "'\\''")}'`).join(' ')}`;
     try {
       execFileSync(this.config.tmuxPath, [
         'new-session', '-d',
@@ -305,7 +306,8 @@ export class SessionManager extends EventEmitter {
 
     // Respect the user's configured auth method (API key or OAuth subscription)
     // Use execFileSync with argument arrays to prevent command injection
-    const claudeCmd = `cd '${this.config.projectDir.replace(/'/g, "'\\''")}' && ${this.config.claudePath} --dangerously-skip-permissions`;
+    const quotedPath = `'${this.config.claudePath.replace(/'/g, "'\\''")}'`;
+    const claudeCmd = `cd '${this.config.projectDir.replace(/'/g, "'\\''")}' && ${quotedPath} --dangerously-skip-permissions`;
     try {
       execFileSync(this.config.tmuxPath, [
         'new-session', '-d',

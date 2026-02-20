@@ -166,6 +166,26 @@ describe('UserManager', () => {
     });
   });
 
+  describe('corrupted state', () => {
+    it('handles corrupted users file gracefully', () => {
+      const usersFile = path.join(tmpDir, 'users.json');
+      fs.writeFileSync(usersFile, 'not valid json!!!');
+
+      // Should not throw
+      const mgr = new UserManager(tmpDir);
+      expect(mgr.listUsers()).toHaveLength(0);
+    });
+
+    it('loads initial users even when file is corrupted', () => {
+      const usersFile = path.join(tmpDir, 'users.json');
+      fs.writeFileSync(usersFile, 'corrupted');
+
+      const mgr = new UserManager(tmpDir, [alice]);
+      expect(mgr.listUsers()).toHaveLength(1);
+      expect(mgr.getUser('alice')!.name).toBe('Alice');
+    });
+  });
+
   describe('persistence across restarts', () => {
     it('loads saved users on construction', () => {
       const mgr1 = new UserManager(tmpDir, [alice, bob]);

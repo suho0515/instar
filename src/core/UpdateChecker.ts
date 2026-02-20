@@ -7,7 +7,7 @@
  * Uses `npm view instar version` to check the registry.
  */
 
-import { execSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
 import type { UpdateInfo } from './types.js';
@@ -29,9 +29,10 @@ export class UpdateChecker {
     let latestVersion: string;
 
     try {
-      latestVersion = execSync('npm view instar version 2>/dev/null', {
+      latestVersion = execFileSync('npm', ['view', 'instar', 'version'], {
         encoding: 'utf-8',
         timeout: 15000,
+        stdio: ['pipe', 'pipe', 'pipe'],
       }).trim();
     } catch {
       // Offline or registry error — return last known state
@@ -90,9 +91,10 @@ export class UpdateChecker {
 
     // Fallback: try npm list
     try {
-      const output = execSync('npm list -g instar --json 2>/dev/null', {
+      const output = execFileSync('npm', ['list', '-g', 'instar', '--json'], {
         encoding: 'utf-8',
         timeout: 10000,
+        stdio: ['pipe', 'pipe', 'pipe'],
       });
       const data = JSON.parse(output);
       return data.dependencies?.instar?.version || '0.0.0';

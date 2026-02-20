@@ -5,7 +5,7 @@
  * and offers to install missing dependencies automatically.
  */
 
-import { execSync } from 'node:child_process';
+import { execSync, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import pc from 'picocolors';
 import { confirm } from '@inquirer/prompts';
@@ -59,7 +59,7 @@ function hasHomebrew(): boolean {
  */
 function getTmuxVersion(tmuxPath: string): string | undefined {
   try {
-    const output = execSync(`${tmuxPath} -V`, { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    const output = execFileSync(tmuxPath, ['-V'], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'] }).trim();
     return output.replace('tmux ', '');
   } catch {
     return undefined;
@@ -71,9 +71,9 @@ function getTmuxVersion(tmuxPath: string): string | undefined {
  */
 function getClaudeVersion(claudePath: string): string | undefined {
   try {
-    const output = execSync(`${claudePath} --version 2>/dev/null || echo unknown`, {
+    const output = execFileSync(claudePath, ['--version'], {
       encoding: 'utf-8',
-      stdio: 'pipe',
+      stdio: ['pipe', 'pipe', 'pipe'],
       timeout: 5000,
     }).trim();
     return output || undefined;

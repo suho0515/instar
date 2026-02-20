@@ -99,12 +99,16 @@ export class UserManager {
   private loadUsers(initialUsers?: UserProfile[]): void {
     // Load from file if exists
     if (fs.existsSync(this.usersFile)) {
-      const data: UserProfile[] = JSON.parse(fs.readFileSync(this.usersFile, 'utf-8'));
-      for (const user of data) {
-        this.users.set(user.id, user);
-        for (const channel of user.channels) {
-          this.channelIndex.set(`${channel.type}:${channel.identifier}`, user.id);
+      try {
+        const data: UserProfile[] = JSON.parse(fs.readFileSync(this.usersFile, 'utf-8'));
+        for (const user of data) {
+          this.users.set(user.id, user);
+          for (const channel of user.channels) {
+            this.channelIndex.set(`${channel.type}:${channel.identifier}`, user.id);
+          }
         }
+      } catch {
+        console.warn(`[UserManager] Corrupted users file: ${this.usersFile}`);
       }
     }
 
