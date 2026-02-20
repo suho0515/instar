@@ -14,7 +14,7 @@ const DEFAULT_PORT = 4040;
 const DEFAULT_MAX_SESSIONS = 3;
 const DEFAULT_MAX_PARALLEL_JOBS = 2;
 
-function getInstarVersion(): string {
+export function getInstarVersion(): string {
   try {
     // Walk up from this file to find package.json
     let dir = path.dirname(new URL(import.meta.url).pathname);

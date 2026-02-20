@@ -16,18 +16,16 @@ describe('Config version detection', () => {
     expect(routesSource).toContain('ctx.config.version');
   });
 
-  it('package.json version matches CLI version', () => {
-    const pkg = JSON.parse(fs.readFileSync(
-      path.join(process.cwd(), 'package.json'),
-      'utf-8'
-    ));
+  it('CLI version is dynamic, not hardcoded', () => {
     const cliSource = fs.readFileSync(
       path.join(process.cwd(), 'src/cli.ts'),
       'utf-8'
     );
-    // Extract version from .version() call in cli.ts
-    const match = cliSource.match(/\.version\('([^']+)'\)/);
-    expect(match).toBeTruthy();
-    expect(match![1]).toBe(pkg.version);
+    // Should NOT have a hardcoded version string
+    const hardcoded = cliSource.match(/\.version\('[0-9]+\.[0-9]+\.[0-9]+'\)/);
+    expect(hardcoded).toBeNull();
+    // Should use getInstarVersion()
+    expect(cliSource).toContain('.version(getInstarVersion())');
+    expect(cliSource).toContain("import { getInstarVersion }");
   });
 });

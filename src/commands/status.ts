@@ -20,7 +20,7 @@ export async function showStatus(options: StatusOptions): Promise<void> {
   } catch (err) {
     console.log(pc.red(`Not initialized: ${err instanceof Error ? err.message : String(err)}`));
     console.log(`Run ${pc.cyan('instar init')} first.`);
-    return;
+    process.exit(1);
   }
 
   console.log(pc.bold(`\nInstar Status: ${pc.cyan(config.projectName)}`));
@@ -113,6 +113,11 @@ export async function showStatus(options: StatusOptions): Promise<void> {
   }
 
   console.log();
+
+  // Exit with non-zero if server is not running
+  if (!serverRunning) {
+    process.exit(1);
+  }
 }
 
 function timeSince(date: Date): string {

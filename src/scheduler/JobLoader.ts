@@ -7,9 +7,10 @@
 
 import fs from 'node:fs';
 import { Cron } from 'croner';
-import type { JobDefinition, JobPriority } from '../core/types.js';
+import type { JobDefinition, JobPriority, ModelTier } from '../core/types.js';
 
 const VALID_PRIORITIES: JobPriority[] = ['critical', 'high', 'medium', 'low'];
+const VALID_MODELS: ModelTier[] = ['opus', 'sonnet', 'haiku'];
 
 /**
  * Load and validate job definitions from a JSON file.
@@ -56,6 +57,13 @@ export function validateJob(job: unknown, index?: number): void {
   if (!VALID_PRIORITIES.includes(j.priority as JobPriority)) {
     throw new Error(
       `${prefix}: "priority" must be one of ${VALID_PRIORITIES.join(', ')}, got "${j.priority}"`
+    );
+  }
+
+  // Model tier (optional — defaults to the agent's preferred model)
+  if (j.model !== undefined && !VALID_MODELS.includes(j.model as ModelTier)) {
+    throw new Error(
+      `${prefix}: "model" must be one of ${VALID_MODELS.join(', ')}, got "${j.model}"`
     );
   }
 

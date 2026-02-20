@@ -26,6 +26,7 @@ import { showStatus } from './commands/status.js';
 import { addUser, listUsers } from './commands/user.js';
 import { addJob, listJobs } from './commands/job.js';
 import pc from 'picocolors';
+import { getInstarVersion } from './core/Config.js';
 
 /**
  * Add or update Telegram configuration in the project config.
@@ -214,7 +215,7 @@ const program = new Command();
 program
   .name('instar')
   .description('Persistent autonomy infrastructure for AI agents')
-  .version('0.1.10')
+  .version(getInstarVersion())
   .option('--classic', 'Use the classic inquirer-based setup wizard instead of Claude')
   .action((opts) => runSetup(opts)); // Default: run interactive setup when no subcommand given
 
@@ -236,7 +237,7 @@ program
   .action((projectName, opts) => {
     // If a project name is given, it's a fresh install
     // Otherwise, augment the current directory
-    initProject({ ...opts, name: projectName });
+    return initProject({ ...opts, name: projectName });
   });
 
 // ── Add ───────────────────────────────────────────────────────────
@@ -311,10 +312,12 @@ program
       } else {
         console.error(`Failed to submit feedback: ${response.statusText}`);
         console.error('Is the instar server running? Try: instar server start');
+        process.exit(1);
       }
     } catch {
       console.error('Could not connect to instar server. Is it running?');
       console.error('Start it with: instar server start');
+      process.exit(1);
     }
   });
 
