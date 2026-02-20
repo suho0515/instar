@@ -101,10 +101,15 @@ export class TelegramAdapter implements MessagingAdapter {
 
     try {
       await this.apiCall('sendMessage', params);
-    } catch {
-      // Fallback to plain text on parse errors
-      delete params.parse_mode;
-      await this.apiCall('sendMessage', params);
+    } catch (err) {
+      // Only retry without parse_mode on 400 errors (likely Markdown parse failures)
+      const errMsg = err instanceof Error ? err.message : String(err);
+      if (errMsg.includes('(400)') && params.parse_mode) {
+        delete params.parse_mode;
+        await this.apiCall('sendMessage', params);
+      } else {
+        throw err;
+      }
     }
   }
 
@@ -351,7 +356,11 @@ export class TelegramAdapter implements MessagingAdapter {
 
           // Fire topic message callback (always fires — General topic falls back to ID 1)
           if (this.onTopicMessage) {
-            this.onTopicMessage(message);
+            try {
+              this.onTopicMessage(message);
+            } catch (err) {
+              console.error(`[telegram] Topic message handler error: ${err}`);
+            }
           }
 
           // Fire general handler
@@ -387,6 +396,7 @@ export class TelegramAdapter implements MessagingAdapter {
 
   private async apiCall(method: string, params: Record<string, unknown>): Promise<unknown> {
     const url = `https://api.telegram.org/bot${this.config.token}/${method}`;
+    const safeUrl = `https://api.telegram.org/bot[REDACTED]/${method}`;
 
     // Long polling uses 30s timeout in params — give extra headroom
     const timeoutMs = method === 'getUpdates' ? 60_000 : 15_000;
@@ -407,7 +417,7 @@ export class TelegramAdapter implements MessagingAdapter {
 
     if (!response.ok) {
       const text = await response.text();
-      throw new Error(`Telegram API error (${response.status}): ${text}`);
+      throw new Error(`Telegram API error ${safeUrl} (${response.status}): ${text}`);
     }
 
     const data = await response.json() as { ok: boolean; result: unknown };

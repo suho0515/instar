@@ -80,7 +80,26 @@ describe('TelegramAdapter', () => {
     await expect(adapter.send({
       userId: 'test-user',
       content: 'fail',
-    })).rejects.toThrow('Telegram API error (401)');
+    })).rejects.toThrow(/Telegram API error.*\(401\)/);
+
+    vi.unstubAllGlobals();
+  });
+
+  it('does not expose bot token in error messages', async () => {
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      text: async () => 'Unauthorized',
+    });
+    vi.stubGlobal('fetch', mockFetch);
+
+    try {
+      await adapter.send({ userId: 'test-user', content: 'fail' });
+    } catch (err) {
+      const msg = (err as Error).message;
+      expect(msg).toContain('[REDACTED]');
+      expect(msg).not.toContain('test-token-123');
+    }
 
     vi.unstubAllGlobals();
   });

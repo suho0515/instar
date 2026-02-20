@@ -164,8 +164,14 @@ export class StateManager {
   private atomicWrite(filePath: string, data: string): void {
     const dir = path.dirname(filePath);
     fs.mkdirSync(dir, { recursive: true });
-    const tmpPath = filePath + '.tmp';
-    fs.writeFileSync(tmpPath, data);
-    fs.renameSync(tmpPath, filePath);
+    const tmpPath = filePath + `.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
+    try {
+      fs.writeFileSync(tmpPath, data);
+      fs.renameSync(tmpPath, filePath);
+    } catch (err) {
+      // Clean up temp file on failure
+      try { fs.unlinkSync(tmpPath); } catch { /* ignore */ }
+      throw err;
+    }
   }
 }

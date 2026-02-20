@@ -59,19 +59,26 @@ describe('SleepWakeDetector', () => {
     expect(wakeSpy).not.toHaveBeenCalled();
   });
 
-  it('stop prevents further events', () => {
-    detector = new SleepWakeDetector();
+  it('stop prevents further events', async () => {
+    const wakeSpy = vi.fn();
+    detector = new SleepWakeDetector({
+      checkIntervalMs: 50,
+      driftThresholdMs: 100,
+    });
+    detector.on('wake', wakeSpy);
     detector.start();
     detector.stop();
-    // No assertion needed — just verify it doesn't throw
-    expect(true).toBe(true);
+    await new Promise(r => setTimeout(r, 200));
+    expect(wakeSpy).not.toHaveBeenCalled();
   });
 
   it('start is idempotent', () => {
     detector = new SleepWakeDetector();
-    detector.start();
-    detector.start(); // second call should be no-op
+    // Calling start() twice should not throw
+    expect(() => {
+      detector.start();
+      detector.start();
+    }).not.toThrow();
     detector.stop();
-    expect(true).toBe(true);
   });
 });

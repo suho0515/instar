@@ -153,10 +153,8 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
     },
   };
 
-  fs.writeFileSync(
-    path.join(stateDir, 'config.json'),
-    JSON.stringify(config, null, 2),
-  );
+  const configFilePath = path.join(stateDir, 'config.json');
+  fs.writeFileSync(configFilePath, JSON.stringify(config, null, 2), { mode: 0o600 });
   console.log(`  ${pc.green('✓')} Created .instar/config.json`);
 
   // Write default jobs (scheduler enabled by default for fresh projects)
@@ -298,26 +296,32 @@ async function initExistingProject(options: InitOptions): Promise<void> {
     },
   };
 
-  fs.writeFileSync(
-    path.join(stateDir, 'config.json'),
-    JSON.stringify(config, null, 2),
-  );
-  console.log(pc.green('  Created:') + ' .instar/config.json');
+  const configPath = path.join(stateDir, 'config.json');
+  if (!fs.existsSync(configPath)) {
+    fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+    console.log(pc.green('  Created:') + ' .instar/config.json');
+  } else {
+    console.log(pc.dim('  Exists:') + ' .instar/config.json (preserved)');
+  }
 
-  // Write default coherence jobs
-  const defaultJobs = getDefaultJobs(port);
-  fs.writeFileSync(
-    path.join(stateDir, 'jobs.json'),
-    JSON.stringify(defaultJobs, null, 2),
-  );
-  console.log(pc.green('  Created:') + ` .instar/jobs.json (${defaultJobs.length} default jobs)`);
+  // Write default coherence jobs (only if not existing)
+  const jobsPath = path.join(stateDir, 'jobs.json');
+  if (!fs.existsSync(jobsPath)) {
+    const defaultJobs = getDefaultJobs(port);
+    fs.writeFileSync(jobsPath, JSON.stringify(defaultJobs, null, 2));
+    console.log(pc.green('  Created:') + ` .instar/jobs.json (${defaultJobs.length} default jobs)`);
+  } else {
+    console.log(pc.dim('  Exists:') + ' .instar/jobs.json (preserved)');
+  }
 
-  // Write empty users
-  fs.writeFileSync(
-    path.join(stateDir, 'users.json'),
-    JSON.stringify([], null, 2),
-  );
-  console.log(pc.green('  Created:') + ' .instar/users.json');
+  // Write empty users (only if not existing)
+  const usersPath = path.join(stateDir, 'users.json');
+  if (!fs.existsSync(usersPath)) {
+    fs.writeFileSync(usersPath, JSON.stringify([], null, 2));
+    console.log(pc.green('  Created:') + ' .instar/users.json');
+  } else {
+    console.log(pc.dim('  Exists:') + ' .instar/users.json (preserved)');
+  }
 
   // Create identity files if they don't exist
   const identity = defaultIdentity(projectName);
@@ -674,27 +678,63 @@ function installClaudeSettings(projectDir: string): void {
     }
   }
 
-  // Add hook configurations
+  // Add hook configurations — all three sections for full agent support
   if (!settings.hooks) {
-    settings.hooks = {
-      PreToolUse: [
-        {
-          matcher: 'Bash',
-          hooks: [
-            {
-              type: 'command',
-              command: 'bash .instar/hooks/dangerous-command-guard.sh "$TOOL_INPUT"',
-              blocking: true,
-            },
-            {
-              type: 'command',
-              command: 'bash .instar/hooks/grounding-before-messaging.sh "$TOOL_INPUT"',
-              blocking: false,
-            },
-          ],
-        },
-      ],
-    };
+    settings.hooks = {};
+  }
+  const hooks = settings.hooks as Record<string, unknown[]>;
+
+  // PreToolUse: dangerous command guard + grounding before messaging
+  if (!hooks.PreToolUse) {
+    hooks.PreToolUse = [
+      {
+        matcher: 'Bash',
+        hooks: [
+          {
+            type: 'command',
+            command: 'bash .instar/hooks/dangerous-command-guard.sh "$TOOL_INPUT"',
+            blocking: true,
+          },
+          {
+            type: 'command',
+            command: 'bash .instar/hooks/grounding-before-messaging.sh "$TOOL_INPUT"',
+            blocking: false,
+          },
+        ],
+      },
+    ];
+  }
+
+  // PostToolUse: session start identity injection
+  if (!hooks.PostToolUse) {
+    hooks.PostToolUse = [
+      {
+        matcher: '',
+        hooks: [
+          {
+            type: 'command',
+            command: 'bash .instar/hooks/session-start.sh',
+            blocking: false,
+          },
+        ],
+      },
+    ];
+  }
+
+  // Notification: compaction recovery
+  if (!hooks.Notification) {
+    hooks.Notification = [
+      {
+        matcher: 'compact',
+        hooks: [
+          {
+            type: 'command',
+            command: 'bash .instar/hooks/compaction-recovery.sh',
+            blocking: false,
+          },
+        ],
+      },
+    ];
   }
 
   fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2));
