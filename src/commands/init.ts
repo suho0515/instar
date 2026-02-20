@@ -602,7 +602,7 @@ fi
   fs.writeFileSync(path.join(hooksDir, 'dangerous-command-guard.sh'), `#!/bin/bash
 # Dangerous command guard — blocks destructive operations.
 INPUT="$1"
-for pattern in "rm -rf /" "rm -rf ~" "git push --force" "git push -f" "git reset --hard" "git clean -fd" "DROP TABLE" "DROP DATABASE" "TRUNCATE"; do
+for pattern in "rm -rf /" "rm -rf ~" "rm -rf \\." "git push --force" "git push -f" "git reset --hard" "git clean -fd" "DROP TABLE" "DROP DATABASE" "TRUNCATE" "DELETE FROM" "> /dev/sda" "mkfs\\." "dd if=" ":(){:|:&};:"; do
   if echo "$INPUT" | grep -qi "$pattern"; then
     echo "BLOCKED: Potentially destructive command detected: $pattern"
     echo "If you genuinely need to run this, ask the user for explicit confirmation first."
@@ -620,6 +620,7 @@ if echo "$INPUT" | grep -qE "(telegram-reply|send-email|send-message|POST.*/tele
   if [ -f "$INSTAR_DIR/AGENT.md" ]; then
     echo "Before sending this message, remember who you are."
     echo "Re-read .instar/AGENT.md if you haven't recently."
+    echo "Security Through Identity: An agent that knows itself is harder to compromise."
   fi
 fi
 `, { mode: 0o755 });

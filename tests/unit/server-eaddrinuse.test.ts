@@ -74,7 +74,7 @@ describe('AgentServer — EADDRINUSE handling', () => {
     server = new AgentServer({
       config: config as any,
       sessionManager: sm,
-      stateManager: state,
+      state,
     });
 
     await expect(server.start()).rejects.toThrow(/already in use/i);
