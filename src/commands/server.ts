@@ -352,7 +352,11 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Get the path to the CLI entry point
     const cliPath = new URL('../cli.js', import.meta.url).pathname;
 
-    const nodeCmd = `node '${cliPath}' server start --foreground`;
+    // Use shell-safe command construction: pass node + args as separate tokens
+    // tmux new-session runs the remainder as a shell command, so we quote each arg
+    const nodeCmd = ['node', cliPath, 'server', 'start', '--foreground']
+      .map(arg => `'${arg.replace(/'/g, "'\\''")}'`)
+      .join(' ');
 
     try {
       execFileSync(tmuxPath, ['new-session', '-d', '-s', serverSessionName, '-c', config.projectDir, nodeCmd], { stdio: 'ignore' });

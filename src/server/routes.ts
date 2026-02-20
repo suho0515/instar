@@ -175,8 +175,8 @@ export function createRoutes(ctx: RouteContext): Router {
       res.status(400).json({ error: '"name" and "prompt" are required' });
       return;
     }
-    if (typeof name !== 'string' || name.length > 200) {
-      res.status(400).json({ error: '"name" must be a string under 200 characters' });
+    if (typeof name !== 'string' || !SESSION_NAME_RE.test(name)) {
+      res.status(400).json({ error: '"name" must contain only letters, numbers, hyphens, underscores (max 200)' });
       return;
     }
     if (typeof prompt !== 'string' || prompt.length > 500_000) {
@@ -201,6 +201,10 @@ export function createRoutes(ctx: RouteContext): Router {
   });
 
   router.delete('/sessions/:id', (req, res) => {
+    if (!SESSION_NAME_RE.test(req.params.id)) {
+      res.status(400).json({ error: 'Invalid session ID format' });
+      return;
+    }
     try {
       const killed = ctx.sessionManager.killSession(req.params.id);
       if (!killed) {

@@ -217,8 +217,9 @@ export class RelationshipManager {
     const merge = this.relationships.get(mergeId);
     if (!keep || !merge) return;
 
-    // Merge channels
+    // Merge channels (respect MAX_CHANNELS cap)
     for (const channel of merge.channels) {
+      if (keep.channels.length >= MAX_CHANNELS) break;
       if (!keep.channels.some((c) => c.type === channel.type && c.identifier === channel.identifier)) {
         keep.channels.push(channel);
       }
@@ -230,8 +231,9 @@ export class RelationshipManager {
       .sort((a, b) => a.timestamp.localeCompare(b.timestamp))
       .slice(-this.config.maxRecentInteractions);
 
-    // Merge themes
+    // Merge themes (cap at 20 to match recordInteraction behavior)
     for (const theme of merge.themes) {
+      if (keep.themes.length >= 20) break;
       if (!keep.themes.includes(theme)) keep.themes.push(theme);
     }
 

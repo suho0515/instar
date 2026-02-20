@@ -51,7 +51,7 @@ describe('Route completeness and safety', () => {
   });
 
   it('session spawn validates name, prompt, and model', () => {
-    expect(routesSource).toContain('"name" must be a string under 200 characters');
+    expect(routesSource).toContain('"name" must contain only letters, numbers, hyphens, underscores');
     expect(routesSource).toContain('"prompt" must be a string under 500KB');
     expect(routesSource).toContain('"model" must be one of');
   });
@@ -85,6 +85,15 @@ describe('Route completeness and safety', () => {
     const topicsIdx = routesSource.indexOf("'/telegram/topics'");
     const topicMsgIdx = routesSource.indexOf("'/telegram/topics/:topicId/messages'");
     expect(topicsIdx).toBeLessThan(topicMsgIdx);
+  });
+
+  it('DELETE /sessions/:id validates session ID format', () => {
+    const deleteSection = routesSource.slice(
+      routesSource.indexOf("router.delete('/sessions/:id'"),
+      routesSource.indexOf('// ── Jobs')
+    );
+    expect(deleteSection).toContain('SESSION_NAME_RE');
+    expect(deleteSection).toContain('Invalid session ID format');
   });
 
   it('all error responses include instanceof Error check', () => {
