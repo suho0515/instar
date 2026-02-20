@@ -8,7 +8,7 @@
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import type { AgentKitConfig, SessionManagerConfig, JobSchedulerConfig, FeedbackConfig } from './types.js';
+import type { InstarConfig, SessionManagerConfig, JobSchedulerConfig, FeedbackConfig } from './types.js';
 
 const DEFAULT_PORT = 4040;
 const DEFAULT_MAX_SESSIONS = 3;
@@ -102,13 +102,13 @@ export function detectProjectDir(startDir?: string): string {
   return process.cwd();
 }
 
-export function loadConfig(projectDir?: string): AgentKitConfig {
+export function loadConfig(projectDir?: string): InstarConfig {
   const resolvedProjectDir = projectDir || detectProjectDir();
   const configPath = path.join(resolvedProjectDir, '.instar', 'config.json');
   const stateDir = path.join(resolvedProjectDir, '.instar');
 
   // Load config file if it exists
-  let fileConfig: Partial<AgentKitConfig> = {};
+  let fileConfig: Partial<InstarConfig> = {};
   if (fs.existsSync(configPath)) {
     fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
   }

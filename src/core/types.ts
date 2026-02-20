@@ -330,7 +330,7 @@ export interface UpdateInfo {
 
 // ── Server Configuration ────────────────────────────────────────────
 
-export interface AgentKitConfig {
+export interface InstarConfig {
   /** Project name (used in logging, tmux session names, etc.) */
   projectName: string;
   /** Project root directory */
@@ -377,3 +377,6 @@ export interface MonitoringConfig {
   /** Health check interval in ms */
   healthCheckIntervalMs: number;
 }
+
+/** @deprecated Use InstarConfig instead */
+export type AgentKitConfig = InstarConfig;

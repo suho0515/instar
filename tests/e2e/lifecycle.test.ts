@@ -21,7 +21,7 @@ import { RelationshipManager } from '../../src/core/RelationshipManager.js';
 import { JobScheduler } from '../../src/scheduler/JobScheduler.js';
 import { loadConfig, ensureStateDir, detectTmuxPath } from '../../src/core/Config.js';
 import { createMockClaude, createSampleJobsFile, waitFor } from '../helpers/setup.js';
-import type { AgentKitConfig, JobDefinition } from '../../src/core/types.js';
+import type { InstarConfig, JobDefinition } from '../../src/core/types.js';
 
 const tmuxPath = detectTmuxPath();
 const describeMaybe = tmuxPath ? describe : describe.skip;
@@ -134,7 +134,7 @@ describeMaybe('E2E: Instar lifecycle', () => {
       scheduler.processQueue();
     });
 
-    const config: AgentKitConfig = {
+    const config: InstarConfig = {
       projectName: 'e2e-test-project',
       projectDir,
       stateDir,

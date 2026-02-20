@@ -7,7 +7,7 @@ import { AgentServer } from '../../src/server/AgentServer.js';
 import { RelationshipManager } from '../../src/core/RelationshipManager.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('Relationship API routes', () => {
   let project: TempProject;
@@ -15,7 +15,7 @@ describe('Relationship API routes', () => {
   let server: AgentServer;
   let app: ReturnType<AgentServer['getApp']>;
 
-  const fakeConfig: AgentKitConfig = {
+  const fakeConfig: InstarConfig = {
     projectName: 'test-project',
     projectDir: '/tmp/test',
     stateDir: '/tmp/test/.instar',

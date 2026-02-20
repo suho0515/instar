@@ -8,14 +8,14 @@ import request from 'supertest';
 import { AgentServer } from '../../src/server/AgentServer.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject, MockSessionManager } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('Route validation edge cases', () => {
   let project: TempProject;
   let mockSM: MockSessionManager;
   let app: ReturnType<AgentServer['getApp']>;
 
-  const fakeConfig: AgentKitConfig = {
+  const fakeConfig: InstarConfig = {
     projectName: 'test-validation',
     projectDir: '/tmp/test',
     stateDir: '/tmp/test/.instar',

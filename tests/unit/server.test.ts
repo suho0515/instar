@@ -3,7 +3,7 @@ import request from 'supertest';
 import { AgentServer } from '../../src/server/AgentServer.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject, MockSessionManager } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('AgentServer', () => {
   let project: TempProject;
@@ -11,7 +11,7 @@ describe('AgentServer', () => {
   let server: AgentServer;
   let app: ReturnType<AgentServer['getApp']>;
 
-  const fakeConfig: AgentKitConfig = {
+  const fakeConfig: InstarConfig = {
     projectName: 'test-project',
     projectDir: '/tmp/test',
     stateDir: '/tmp/test/.instar',

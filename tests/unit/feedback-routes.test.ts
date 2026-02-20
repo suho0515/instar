@@ -7,7 +7,7 @@ import { FeedbackManager } from '../../src/core/FeedbackManager.js';
 import { UpdateChecker } from '../../src/core/UpdateChecker.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject, MockSessionManager } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('Feedback Routes', () => {
   let project: TempProject;
@@ -17,7 +17,7 @@ describe('Feedback Routes', () => {
   let server: AgentServer;
   let app: ReturnType<AgentServer['getApp']>;
 
-  const fakeConfig: AgentKitConfig = {
+  const fakeConfig: InstarConfig = {
     projectName: 'test-project',
     projectDir: '/tmp/test',
     stateDir: '/tmp/test/.instar',

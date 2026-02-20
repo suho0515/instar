@@ -25,7 +25,7 @@ import { detectTmuxPath, detectClaudePath, ensureStateDir } from '../core/Config
 import { ensurePrerequisites } from '../core/Prerequisites.js';
 import { UserManager } from '../users/UserManager.js';
 import { validateJob } from '../scheduler/JobLoader.js';
-import type { AgentKitConfig, JobDefinition, JobPriority, ModelTier, UserProfile, UserChannel } from '../core/types.js';
+import type { InstarConfig, JobDefinition, JobPriority, ModelTier, UserProfile, UserChannel } from '../core/types.js';
 
 /**
  * Launch the conversational setup wizard via Claude Code.
@@ -59,7 +59,7 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
   }
 
   // Check that the setup-wizard skill exists
-  const skillPath = path.join(findAgentKitRoot(), '.claude', 'skills', 'setup-wizard', 'skill.md');
+  const skillPath = path.join(findInstarRoot(), '.claude', 'skills', 'setup-wizard', 'skill.md');
   if (!fs.existsSync(skillPath)) {
     console.log();
     console.log(pc.yellow('  Setup wizard skill not found — falling back to classic setup.'));
@@ -77,17 +77,17 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
   // and pass the target project directory in the prompt.
   //
   // --dangerously-skip-permissions is required here because the setup wizard
-  // runs in instar's OWN package directory (agentKitRoot), not the user's
+  // runs in instar's OWN package directory (instarRoot), not the user's
   // project. Without it, Claude would prompt for permissions to modify the
   // user's project directory, which breaks the interactive flow. The wizard
   // only writes to well-defined locations (.instar/, .claude/, CLAUDE.md).
-  const agentKitRoot = findAgentKitRoot();
+  const instarRoot = findInstarRoot();
   const projectDir = process.cwd();
   const child = spawn(claudePath, [
     '--dangerously-skip-permissions',
     `/setup-wizard The project to set up is at: ${projectDir}`,
   ], {
-    cwd: agentKitRoot,
+    cwd: instarRoot,
     stdio: 'inherit',
   });
 
@@ -113,7 +113,7 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
  * Find the root of the instar package (where .claude/skills/ lives).
  * Works whether running from source, linked global, or node_modules.
  */
-function findAgentKitRoot(): string {
+function findInstarRoot(): string {
   // Walk up from this file to find package.json with name "instar"
   let dir = path.dirname(new URL(import.meta.url).pathname);
   while (dir !== path.dirname(dir)) {
@@ -258,7 +258,7 @@ async function runClassicSetup(): Promise<void> {
   ensureStateDir(stateDir);
 
   // Config
-  const config: Partial<AgentKitConfig> = {
+  const config: Partial<InstarConfig> = {
     projectName,
     port,
     sessions: {

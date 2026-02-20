@@ -10,7 +10,7 @@ import { execFileSync } from 'node:child_process';
 import type { SessionManager } from '../core/SessionManager.js';
 import type { StateManager } from '../core/StateManager.js';
 import type { JobScheduler } from '../scheduler/JobScheduler.js';
-import type { AgentKitConfig } from '../core/types.js';
+import type { InstarConfig } from '../core/types.js';
 import { rateLimiter } from './middleware.js';
 import type { TelegramAdapter } from '../messaging/TelegramAdapter.js';
 import type { RelationshipManager } from '../core/RelationshipManager.js';
@@ -19,7 +19,7 @@ import type { UpdateChecker } from '../core/UpdateChecker.js';
 import type { QuotaTracker } from '../monitoring/QuotaTracker.js';
 
 export interface RouteContext {
-  config: AgentKitConfig;
+  config: InstarConfig;
   sessionManager: SessionManager;
   state: StateManager;
   scheduler: JobScheduler | null;

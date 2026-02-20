@@ -2,14 +2,14 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { HealthChecker } from '../../src/monitoring/HealthChecker.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject, MockSessionManager } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('HealthChecker', () => {
   let project: TempProject;
   let mockSM: MockSessionManager;
   let checker: HealthChecker;
 
-  const makeConfig = (overrides?: Partial<AgentKitConfig>): AgentKitConfig => ({
+  const makeConfig = (overrides?: Partial<InstarConfig>): InstarConfig => ({
     projectName: 'test-project',
     projectDir: '/tmp/test',
     stateDir: '', // set in beforeEach

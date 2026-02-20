@@ -10,17 +10,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { SessionManager } from '../core/SessionManager.js';
 import type { JobScheduler } from '../scheduler/JobScheduler.js';
-import type { HealthStatus, ComponentHealth, AgentKitConfig } from '../core/types.js';
+import type { HealthStatus, ComponentHealth, InstarConfig } from '../core/types.js';
 
 export class HealthChecker {
-  private config: AgentKitConfig;
+  private config: InstarConfig;
   private sessionManager: SessionManager;
   private scheduler: JobScheduler | null;
   private checkInterval: ReturnType<typeof setInterval> | null = null;
   private lastStatus: HealthStatus | null = null;
 
   constructor(
-    config: AgentKitConfig,
+    config: InstarConfig,
     sessionManager: SessionManager,
     scheduler: JobScheduler | null = null,
   ) {

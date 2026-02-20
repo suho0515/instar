@@ -18,7 +18,7 @@ import {
   createSampleJobsFile,
 } from '../helpers/setup.js';
 import type { TempProject, MockSessionManager } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
 describe('Full server integration', () => {
   let project: TempProject;
@@ -81,7 +81,7 @@ describe('Full server integration', () => {
     );
     scheduler.start();
 
-    const config: AgentKitConfig = {
+    const config: InstarConfig = {
       projectName: 'integration-test',
       projectDir: project.dir,
       stateDir: project.stateDir,

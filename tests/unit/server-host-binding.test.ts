@@ -10,9 +10,9 @@ import supertest from 'supertest';
 import { AgentServer } from '../../src/server/AgentServer.js';
 import { createTempProject, createMockSessionManager } from '../helpers/setup.js';
 import type { TempProject } from '../helpers/setup.js';
-import type { AgentKitConfig } from '../../src/core/types.js';
+import type { InstarConfig } from '../../src/core/types.js';
 
-function makeFakeConfig(overrides?: Partial<AgentKitConfig>): AgentKitConfig {
+function makeFakeConfig(overrides?: Partial<InstarConfig>): InstarConfig {
   return {
     projectName: 'test-project',
     projectDir: '/tmp/test',

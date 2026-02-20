@@ -40,7 +40,7 @@ import {
   generateMemoryMd,
   generateClaudeMd,
 } from '../scaffold/templates.js';
-import type { AgentKitConfig } from '../core/types.js';
+import type { InstarConfig } from '../core/types.js';
 
 interface InitOptions {
   dir?: string;
@@ -118,7 +118,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
 
   // Write config
   const authToken = randomUUID();
-  const config: Partial<AgentKitConfig> = {
+  const config: Partial<InstarConfig> = {
     projectName,
     port,
     sessions: {
@@ -261,7 +261,7 @@ async function initExistingProject(options: InitOptions): Promise<void> {
   console.log(pc.green('  Created:') + ' .instar/');
 
   // Write config
-  const config: Partial<AgentKitConfig> = {
+  const config: Partial<InstarConfig> = {
     projectName,
     port,
     sessions: {

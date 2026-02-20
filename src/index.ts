@@ -57,7 +57,7 @@ export type {
   HealthStatus,
   ComponentHealth,
   ActivityEvent,
-  AgentKitConfig,
+  InstarConfig,
   MonitoringConfig,
   RelationshipRecord,
   RelationshipManagerConfig,
