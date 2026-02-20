@@ -69,8 +69,9 @@ export class AgentServer {
    */
   async start(): Promise<void> {
     return new Promise((resolve) => {
-      this.server = this.app.listen(this.config.port, () => {
-        console.log(`[instar] Server listening on port ${this.config.port}`);
+      const host = this.config.host || '127.0.0.1';
+      this.server = this.app.listen(this.config.port, host, () => {
+        console.log(`[instar] Server listening on ${host}:${this.config.port}`);
         resolve();
       });
     });

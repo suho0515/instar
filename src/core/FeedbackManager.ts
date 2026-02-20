@@ -11,6 +11,7 @@
 
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import type { FeedbackItem, FeedbackConfig } from './types.js';
 
 export class FeedbackManager {
@@ -28,7 +29,7 @@ export class FeedbackManager {
   async submit(item: Omit<FeedbackItem, 'id' | 'submittedAt' | 'forwarded'>): Promise<FeedbackItem> {
     const feedback: FeedbackItem = {
       ...item,
-      id: `fb-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      id: `fb-${randomUUID().slice(0, 12)}`,
       submittedAt: new Date().toISOString(),
       forwarded: false,
     };

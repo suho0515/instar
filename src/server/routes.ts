@@ -64,6 +64,26 @@ export function createRoutes(ctx: RouteContext): Router {
 
   // ── Sessions ────────────────────────────────────────────────────
 
+  // Literal routes BEFORE parameterized routes to avoid capture
+  router.get('/sessions/tmux', (_req, res) => {
+    try {
+      const tmuxPath = ctx.config.sessions.tmuxPath;
+      const output = execFileSync(tmuxPath, ['list-sessions', '-F', '#{session_name}'], {
+        encoding: 'utf-8',
+        timeout: 5000,
+        stdio: ['pipe', 'pipe', 'pipe'],
+      }).trim();
+
+      const sessions = output
+        ? output.split('\n').filter(Boolean).map((name: string) => ({ name }))
+        : [];
+
+      res.json({ sessions });
+    } catch {
+      res.json({ sessions: [] });
+    }
+  });
+
   router.get('/sessions', (req, res) => {
     const status = req.query.status as string | undefined;
     const validStatuses = ['starting', 'running', 'completed', 'failed', 'killed'];
@@ -75,7 +95,7 @@ export function createRoutes(ctx: RouteContext): Router {
   });
 
   router.get('/sessions/:name/output', (req, res) => {
-    const lines = parseInt(req.query.lines as string) || 100;
+    const lines = parseInt(req.query.lines as string, 10) || 100;
     const output = ctx.sessionManager.captureOutput(req.params.name, lines);
 
     if (output === null) {
@@ -187,7 +207,7 @@ export function createRoutes(ctx: RouteContext): Router {
       return;
     }
 
-    const topicId = parseInt(req.params.topicId);
+    const topicId = parseInt(req.params.topicId, 10);
     if (isNaN(topicId)) {
       res.status(400).json({ error: 'topicId must be a number' });
       return;
@@ -203,27 +223,6 @@ export function createRoutes(ctx: RouteContext): Router {
       res.json({ ok: true, topicId });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ── tmux Sessions (raw) ─────────────────────────────────────────
-
-  router.get('/sessions/tmux', (_req, res) => {
-    try {
-      const tmuxPath = ctx.config.sessions.tmuxPath;
-      const output = execFileSync(tmuxPath, ['list-sessions', '-F', '#{session_name}'], {
-        encoding: 'utf-8',
-        timeout: 5000,
-        stdio: ['pipe', 'pipe', 'pipe'],
-      }).trim();
-
-      const sessions = output
-        ? output.split('\n').filter(Boolean).map((name: string) => ({ name }))
-        : [];
-
-      res.json({ sessions });
-    } catch {
-      res.json({ sessions: [] });
     }
   });
 
@@ -244,7 +243,7 @@ export function createRoutes(ctx: RouteContext): Router {
       res.json({ stale: [] });
       return;
     }
-    const days = parseInt(req.query.days as string) || 14;
+    const days = parseInt(req.query.days as string, 10) || 14;
     res.json({ stale: ctx.relationships.getStaleRelationships(days) });
   });
 
@@ -386,9 +385,9 @@ export function createRoutes(ctx: RouteContext): Router {
   // ── Events ──────────────────────────────────────────────────────
 
   router.get('/events', (req, res) => {
-    const limit = parseInt(req.query.limit as string) || 50;
+    const limit = parseInt(req.query.limit as string, 10) || 50;
     const type = req.query.type as string | undefined;
-    const sinceHours = parseInt(req.query.since as string) || 24;
+    const sinceHours = parseInt(req.query.since as string, 10) || 24;
 
     const since = new Date(Date.now() - sinceHours * 60 * 60 * 1000);
     const events = ctx.state.queryEvents({ since, type, limit });

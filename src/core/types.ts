@@ -339,6 +339,8 @@ export interface AgentKitConfig {
   stateDir: string;
   /** HTTP server port */
   port: number;
+  /** HTTP server bind address (default: '127.0.0.1' for security) */
+  host: string;
   /** Session manager config */
   sessions: SessionManagerConfig;
   /** Job scheduler config */

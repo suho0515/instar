@@ -155,6 +155,7 @@ export function loadConfig(projectDir?: string): AgentKitConfig {
     projectDir: resolvedProjectDir,
     stateDir,
     port: fileConfig.port || DEFAULT_PORT,
+    host: fileConfig.host || '127.0.0.1',
     version: getInstarVersion(),
     sessions,
     scheduler,
