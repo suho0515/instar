@@ -357,6 +357,8 @@ export interface AgentKitConfig {
   relationships?: RelationshipManagerConfig;
   /** Feedback loop config */
   feedback?: FeedbackConfig;
+  /** Request timeout in milliseconds (default: 30000) */
+  requestTimeoutMs?: number;
   /** Instar version (from package.json) */
   version?: string;
 }

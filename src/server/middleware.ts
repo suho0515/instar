@@ -84,6 +84,28 @@ export function rateLimiter(windowMs: number = 60_000, maxRequests: number = 10)
   };
 }
 
+/**
+ * Request timeout middleware — prevents slow requests from hanging.
+ * Returns 408 if the request takes longer than the timeout.
+ */
+export function requestTimeout(timeoutMs: number = 30_000) {
+  return (req: Request, res: Response, next: NextFunction): void => {
+    const timer = setTimeout(() => {
+      if (!res.headersSent) {
+        res.status(408).json({
+          error: 'Request timeout',
+          timeoutMs,
+        });
+      }
+    }, timeoutMs);
+
+    // Clear timeout when response finishes
+    res.on('finish', () => clearTimeout(timer));
+    res.on('close', () => clearTimeout(timer));
+    next();
+  };
+}
+
 export function errorHandler(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   const message = err instanceof Error ? err.message : String(err);
   console.error(`[server] Error: ${message}`);

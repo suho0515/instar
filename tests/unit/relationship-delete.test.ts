@@ -102,6 +102,53 @@ describe('RelationshipManager delete operations', () => {
     expect(manager2.resolveByChannel(ch2)!.id).toBe(r1.id);
   });
 
+  it('delete removes relationship and its disk file', () => {
+    const ch: UserChannel = { type: 'email', identifier: 'del@test.com' };
+    const record = manager.findOrCreate('ToDelete', ch);
+    const filePath = path.join(config.relationshipsDir, `${record.id}.json`);
+
+    expect(fs.existsSync(filePath)).toBe(true);
+    expect(manager.get(record.id)).not.toBeNull();
+
+    const result = manager.delete(record.id);
+    expect(result).toBe(true);
+    expect(manager.get(record.id)).toBeNull();
+    expect(fs.existsSync(filePath)).toBe(false);
+  });
+
+  it('delete cleans up channel index entries', () => {
+    const ch1: UserChannel = { type: 'telegram', identifier: '555' };
+    const ch2: UserChannel = { type: 'email', identifier: 'multi@test.com' };
+    const record = manager.findOrCreate('MultiChannel', ch1);
+    manager.linkChannel(record.id, ch2);
+
+    // Both channels should resolve before delete
+    expect(manager.resolveByChannel(ch1)).not.toBeNull();
+    expect(manager.resolveByChannel(ch2)).not.toBeNull();
+
+    manager.delete(record.id);
+
+    // Both channels should be gone from index
+    expect(manager.resolveByChannel(ch1)).toBeNull();
+    expect(manager.resolveByChannel(ch2)).toBeNull();
+  });
+
+  it('delete returns false for nonexistent id', () => {
+    expect(manager.delete('nonexistent-id')).toBe(false);
+  });
+
+  it('deleted relationship does not survive reload', () => {
+    const ch: UserChannel = { type: 'telegram', identifier: '777' };
+    const record = manager.findOrCreate('WillBeGone', ch);
+
+    manager.delete(record.id);
+
+    // Reload from disk
+    const manager2 = new RelationshipManager(config);
+    expect(manager2.get(record.id)).toBeNull();
+    expect(manager2.resolveByChannel(ch)).toBeNull();
+  });
+
   it('handles merge with nonexistent source gracefully', () => {
     const ch1: UserChannel = { type: 'telegram', identifier: '111' };
     const r1 = manager.findOrCreate('Dave', ch1);

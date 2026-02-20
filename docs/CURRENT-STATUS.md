@@ -33,10 +33,13 @@ Persistent autonomy infrastructure for AI agents. Gives Claude Code a persistent
 - Auth middleware (Bearer token enforcement on all non-health endpoints)
 - Sleep/wake detection (timer drift-based, for laptop reliability)
 - Security hardened: all tmux/shell calls use execFileSync with argument arrays (command injection prevention), path traversal prevention via key validation, timing-safe auth token comparison
+- Rate limiting on session spawn endpoint (sliding window, no external deps)
+- Async session monitoring (non-blocking event loop, overlap guard)
+- Request timeout middleware (configurable, prevents hanging requests)
 - Quota tracking (file-based state reading, threshold-based load shedding for job scheduler)
 - Input validation on all API endpoints (name/prompt/text length limits, model enum validation)
 - Full project scaffolding (AGENT.md, USER.md, MEMORY.md, CLAUDE.md, hooks, scripts)
-- 478+ tests passing (unit + integration + e2e across 48+ test files)
+- 538+ tests passing (unit + integration + e2e across 59+ test files)
 - `.npmignore` configured to exclude tests, docs, source, dev files
 
 ### Architecture
@@ -119,7 +122,8 @@ src/
 - [x] E2E test for full lifecycle (implemented in tests/e2e/lifecycle.test.ts)
 - [ ] Error handling for edge cases (tmux server death, Claude Code not logged in)
 - [x] `.npmignore` to reduce package size (tests, docs, source excluded)
-- [ ] Implement `instar add telegram/email/sentry/quota` subcommands (currently stubs)
+- [x] Implement `instar add telegram` subcommand (reads/updates config.json)
+- [ ] Implement `instar add email/sentry/quota` subcommands (currently stubs)
 - [x] Quota tracking data source (QuotaTracker reads state file, threshold-based load shedding)
 
 ### Nice to Have

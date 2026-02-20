@@ -242,6 +242,26 @@ export class RelationshipManager {
     this.deleteFile(mergeId);
   }
 
+  /**
+   * Delete a relationship and its disk file.
+   */
+  delete(id: string): boolean {
+    const record = this.relationships.get(id);
+    if (!record) return false;
+
+    // Remove channel index entries
+    for (const channel of record.channels) {
+      const channelKey = `${channel.type}:${channel.identifier}`;
+      if (this.channelIndex.get(channelKey) === id) {
+        this.channelIndex.delete(channelKey);
+      }
+    }
+
+    this.relationships.delete(id);
+    this.deleteFile(id);
+    return true;
+  }
+
   // ── Context Generation ─────────────────────────────────────────────
 
   /**

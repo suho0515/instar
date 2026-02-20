@@ -112,6 +112,26 @@ describe('Relationship API routes', () => {
     });
   });
 
+  describe('DELETE /relationships/:id', () => {
+    it('deletes an existing relationship', async () => {
+      // Create a relationship specifically for deletion
+      const toDelete = relationships.findOrCreate('DeleteMe', { type: 'telegram', identifier: '999' });
+
+      const res = await request(app).delete(`/relationships/${toDelete.id}`);
+      expect(res.status).toBe(200);
+      expect(res.body.ok).toBe(true);
+      expect(res.body.deleted).toBe(toDelete.id);
+
+      // Verify it's actually gone
+      expect(relationships.get(toDelete.id)).toBeNull();
+    });
+
+    it('returns 404 for unknown id', async () => {
+      const res = await request(app).delete('/relationships/nonexistent-id');
+      expect(res.status).toBe(404);
+    });
+  });
+
   describe('GET /relationships/:id/context', () => {
     it('returns relationship context XML', async () => {
       const all = relationships.getAll();

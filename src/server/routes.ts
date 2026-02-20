@@ -264,6 +264,19 @@ export function createRoutes(ctx: RouteContext): Router {
     res.json(record);
   });
 
+  router.delete('/relationships/:id', (req, res) => {
+    if (!ctx.relationships) {
+      res.status(503).json({ error: 'Relationships not configured' });
+      return;
+    }
+    const deleted = ctx.relationships.delete(req.params.id);
+    if (!deleted) {
+      res.status(404).json({ error: 'Relationship not found' });
+      return;
+    }
+    res.json({ ok: true, deleted: req.params.id });
+  });
+
   router.get('/relationships/:id/context', (req, res) => {
     if (!ctx.relationships) {
       res.status(503).json({ error: 'Relationships not configured' });

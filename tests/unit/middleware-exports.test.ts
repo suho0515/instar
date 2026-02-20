@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { corsMiddleware, authMiddleware, rateLimiter, errorHandler } from '../../src/server/middleware.js';
+import { corsMiddleware, authMiddleware, rateLimiter, requestTimeout, errorHandler } from '../../src/server/middleware.js';
 
 describe('middleware exports', () => {
   it('exports corsMiddleware as a function', () => {
@@ -30,5 +30,16 @@ describe('middleware exports', () => {
   it('authMiddleware without token returns pass-through middleware', () => {
     const middleware = authMiddleware(undefined);
     expect(typeof middleware).toBe('function');
+  });
+
+  it('exports requestTimeout as a factory function', () => {
+    expect(typeof requestTimeout).toBe('function');
+    const timeout = requestTimeout(5000);
+    expect(typeof timeout).toBe('function');
+  });
+
+  it('requestTimeout accepts no arguments (uses 30s default)', () => {
+    const timeout = requestTimeout();
+    expect(typeof timeout).toBe('function');
   });
 });

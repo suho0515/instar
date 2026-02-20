@@ -208,6 +208,7 @@ instar status                    # Health check
 | GET | `/relationships` | List relationships (`?sort=significance\|recent\|name`) |
 | GET | `/relationships/stale` | Stale relationships (`?days=14`) |
 | GET | `/relationships/:id` | Get single relationship |
+| DELETE | `/relationships/:id` | Delete a relationship |
 | GET | `/relationships/:id/context` | Get relationship context (XML) |
 | POST | `/feedback` | Submit feedback |
 | GET | `/feedback` | List feedback |

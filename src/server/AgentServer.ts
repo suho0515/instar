@@ -17,7 +17,7 @@ import type { FeedbackManager } from '../core/FeedbackManager.js';
 import type { UpdateChecker } from '../core/UpdateChecker.js';
 import type { QuotaTracker } from '../monitoring/QuotaTracker.js';
 import { createRoutes } from './routes.js';
-import { corsMiddleware, authMiddleware, errorHandler } from './middleware.js';
+import { corsMiddleware, authMiddleware, requestTimeout, errorHandler } from './middleware.js';
 
 export class AgentServer {
   private app: Express;
@@ -44,6 +44,7 @@ export class AgentServer {
     this.app.use(express.json({ limit: '1mb' }));
     this.app.use(corsMiddleware);
     this.app.use(authMiddleware(options.config.authToken));
+    this.app.use(requestTimeout(options.config.requestTimeoutMs));
 
     // Routes
     const routes = createRoutes({
