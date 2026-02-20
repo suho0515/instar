@@ -191,6 +191,21 @@ export class TelegramAdapter implements MessagingAdapter {
     return this.topicToName.get(topicId) ?? null;
   }
 
+  /**
+   * Get all topic-session mappings (for admin/debug UIs).
+   */
+  getAllTopicMappings(): Array<{ topicId: number; sessionName: string; topicName: string | null }> {
+    const result: Array<{ topicId: number; sessionName: string; topicName: string | null }> = [];
+    for (const [topicId, sessionName] of this.topicToSession) {
+      result.push({
+        topicId,
+        sessionName,
+        topicName: this.topicToName.get(topicId) ?? null,
+      });
+    }
+    return result;
+  }
+
   // ── Message Log ────────────────────────────────────────────
 
   /**

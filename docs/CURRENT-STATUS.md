@@ -39,7 +39,7 @@ Persistent autonomy infrastructure for AI agents. Gives Claude Code a persistent
 - Quota tracking (file-based state reading, threshold-based load shedding for job scheduler)
 - Input validation on all API endpoints (name/prompt/text length limits, model enum validation)
 - Full project scaffolding (AGENT.md, USER.md, MEMORY.md, CLAUDE.md, hooks, scripts)
-- 538+ tests passing (unit + integration + e2e across 59+ test files)
+- 546+ tests passing (unit + integration + e2e across 59+ test files)
 - `.npmignore` configured to exclude tests, docs, source, dev files
 
 ### Architecture

@@ -65,6 +65,24 @@ describe('AgentServer', () => {
       expect(res.body).toHaveProperty('uptimeHuman');
       expect(res.body).toHaveProperty('version');
     });
+
+    it('includes memory usage in health response', async () => {
+      const res = await request(app).get('/health');
+      expect(res.status).toBe(200);
+      expect(res.body.memory).toBeDefined();
+      expect(typeof res.body.memory.rss).toBe('number');
+      expect(typeof res.body.memory.heapUsed).toBe('number');
+      expect(typeof res.body.memory.heapTotal).toBe('number');
+      // Memory values should be in MB (positive integers)
+      expect(res.body.memory.rss).toBeGreaterThan(0);
+      expect(res.body.memory.heapUsed).toBeGreaterThan(0);
+    });
+
+    it('includes node version in health response', async () => {
+      const res = await request(app).get('/health');
+      expect(res.status).toBe(200);
+      expect(res.body.node).toBe(process.version);
+    });
   });
 
   describe('GET /status', () => {
@@ -151,6 +169,31 @@ describe('AgentServer', () => {
       const res = await request(app).get('/events');
       expect(res.status).toBe(200);
       expect(res.body.length).toBeGreaterThanOrEqual(1);
+    });
+  });
+
+  describe('GET /telegram/topics', () => {
+    it('returns empty array when telegram not configured', async () => {
+      const res = await request(app).get('/telegram/topics');
+      expect(res.status).toBe(200);
+      expect(res.body.topics).toEqual([]);
+    });
+  });
+
+  describe('GET /telegram/topics/:topicId/messages', () => {
+    it('returns 503 when telegram not configured', async () => {
+      const res = await request(app).get('/telegram/topics/123/messages');
+      expect(res.status).toBe(503);
+      expect(res.body.error).toContain('Telegram');
+    });
+  });
+
+  describe('POST /telegram/reply/:topicId', () => {
+    it('returns 503 when telegram not configured', async () => {
+      const res = await request(app)
+        .post('/telegram/reply/123')
+        .send({ text: 'hello' });
+      expect(res.status).toBe(503);
     });
   });
 

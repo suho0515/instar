@@ -217,7 +217,9 @@ instar status                    # Health check
 | GET | `/updates/last` | Last update check result |
 | GET | `/events` | Query events (`?limit=50&since=24&type=`) |
 | GET | `/quota` | Quota usage + recommendation |
+| GET | `/telegram/topics` | List topic-session mappings |
 | POST | `/telegram/reply/:topicId` | Send message to a topic |
+| GET | `/telegram/topics/:topicId/messages` | Topic message history (`?limit=20`) |
 
 ### Identity That Survives Context Death
 

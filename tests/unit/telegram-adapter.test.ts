@@ -97,6 +97,43 @@ describe('TelegramAdapter', () => {
     });
   });
 
+  describe('getAllTopicMappings', () => {
+    it('returns empty array when no mappings exist', () => {
+      const adapter = createAdapter();
+      expect(adapter.getAllTopicMappings()).toEqual([]);
+    });
+
+    it('returns all topic-session-name mappings', () => {
+      const adapter = createAdapter();
+      adapter.registerTopicSession(10, 'session-a');
+      adapter.registerTopicSession(20, 'session-b');
+
+      const mappings = adapter.getAllTopicMappings();
+      expect(mappings).toHaveLength(2);
+
+      const sorted = mappings.sort((a, b) => a.topicId - b.topicId);
+      expect(sorted[0]).toEqual({ topicId: 10, sessionName: 'session-a', topicName: null });
+      expect(sorted[1]).toEqual({ topicId: 20, sessionName: 'session-b', topicName: null });
+    });
+
+    it('includes topic names when available', () => {
+      const adapter = createAdapter();
+      adapter.registerTopicSession(42, 'named-session');
+
+      // Write a registry file with topic names to simulate topic name capture
+      const registryPath = path.join(project.stateDir, 'topic-session-registry.json');
+      const data = JSON.parse(fs.readFileSync(registryPath, 'utf-8'));
+      data.topicToName = { '42': 'My Topic' };
+      fs.writeFileSync(registryPath, JSON.stringify(data));
+
+      // Reload by creating a new adapter
+      const adapter2 = createAdapter();
+      const mappings = adapter2.getAllTopicMappings();
+      expect(mappings).toHaveLength(1);
+      expect(mappings[0].topicName).toBe('My Topic');
+    });
+  });
+
   describe('Message Logging', () => {
     it('getTopicHistory returns empty for nonexistent log', () => {
       const adapter = createAdapter();

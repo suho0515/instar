@@ -11,7 +11,7 @@ describe('Route completeness and safety', () => {
     'utf-8'
   );
 
-  it('all 23 endpoint routes are defined', () => {
+  it('all 25 endpoint routes are defined', () => {
     const expectedRoutes = [
       "router.get('/health'",
       "router.get('/status'",
@@ -23,7 +23,9 @@ describe('Route completeness and safety', () => {
       "router.delete('/sessions/:id'",
       "router.get('/jobs'",
       "router.post('/jobs/:slug/trigger'",
+      "router.get('/telegram/topics'",
       "router.post('/telegram/reply/:topicId'",
+      "router.get('/telegram/topics/:topicId/messages'",
       "router.get('/relationships'",
       "router.get('/relationships/stale'",
       "router.get('/relationships/:id'",
@@ -78,6 +80,11 @@ describe('Route completeness and safety', () => {
     const staleIdx = routesSource.indexOf("'/relationships/stale'");
     const relIdIdx = routesSource.indexOf("'/relationships/:id'");
     expect(staleIdx).toBeLessThan(relIdIdx);
+
+    // /telegram/topics must come before /telegram/topics/:topicId/messages
+    const topicsIdx = routesSource.indexOf("'/telegram/topics'");
+    const topicMsgIdx = routesSource.indexOf("'/telegram/topics/:topicId/messages'");
+    expect(topicsIdx).toBeLessThan(topicMsgIdx);
   });
 
   it('all error responses include instanceof Error check', () => {

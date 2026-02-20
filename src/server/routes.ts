@@ -38,12 +38,19 @@ export function createRoutes(ctx: RouteContext): Router {
 
   router.get('/health', (_req, res) => {
     const uptimeMs = Date.now() - ctx.startTime.getTime();
+    const mem = process.memoryUsage();
     res.json({
       status: 'ok',
       uptime: uptimeMs,
       uptimeHuman: formatUptime(uptimeMs),
       version: ctx.config.version || '0.0.0',
       project: ctx.config.projectName,
+      node: process.version,
+      memory: {
+        rss: Math.round(mem.rss / 1024 / 1024),
+        heapUsed: Math.round(mem.heapUsed / 1024 / 1024),
+        heapTotal: Math.round(mem.heapTotal / 1024 / 1024),
+      },
     });
   });
 
@@ -205,6 +212,14 @@ export function createRoutes(ctx: RouteContext): Router {
 
   // ── Telegram ────────────────────────────────────────────────────
 
+  router.get('/telegram/topics', (_req, res) => {
+    if (!ctx.telegram) {
+      res.json({ topics: [] });
+      return;
+    }
+    res.json({ topics: ctx.telegram.getAllTopicMappings() });
+  });
+
   router.post('/telegram/reply/:topicId', async (req, res) => {
     if (!ctx.telegram) {
       res.status(503).json({ error: 'Telegram not configured' });
@@ -228,6 +243,23 @@ export function createRoutes(ctx: RouteContext): Router {
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
     }
+  });
+
+  router.get('/telegram/topics/:topicId/messages', (req, res) => {
+    if (!ctx.telegram) {
+      res.status(503).json({ error: 'Telegram not configured' });
+      return;
+    }
+
+    const topicId = parseInt(req.params.topicId, 10);
+    if (isNaN(topicId)) {
+      res.status(400).json({ error: 'topicId must be a number' });
+      return;
+    }
+
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const messages = ctx.telegram.getTopicHistory(topicId, Math.min(limit, 100));
+    res.json({ topicId, messages });
   });
 
   // ── Relationships ─────────────────────────────────────────────────
