@@ -201,7 +201,10 @@ describeMaybe('E2E: Instar lifecycle', () => {
   // ── Phase 3: Verify server health ────────────────────────
 
   it('health endpoint returns project info', async () => {
-    const res = await request(app).get('/health');
+    // project field is only included for authenticated callers
+    const res = await request(app)
+      .get('/health')
+      .set('Authorization', `Bearer ${AUTH_TOKEN}`);
     expect(res.status).toBe(200);
     expect(res.body.status).toBe('ok');
     expect(res.body.project).toBe('e2e-test-project');
