@@ -6,7 +6,7 @@
 **Ending Version**: 0.1.11
 **Commits**: 70+
 **Files Changed**: 115+ (10,200+ lines added, 570+ removed)
-**Tests**: 350 -> 809 (unit) + 38 (integration) + 9 (e2e) = 856 total
+**Tests**: 350 -> 833 (unit) + 38 (integration) + 9 (e2e) = 880 total
 **TypeScript**: Compiles cleanly with `--strict`
 **Package Size**: 98.7 kB (60 files)
 
@@ -329,11 +329,11 @@ The 4 `add*` functions in `cli.ts` (addTelegram, addSentry, addEmail, addQuota) 
 
 | Suite | Count | Status |
 |-------|-------|--------|
-| Unit | 809 | All passing |
+| Unit | 833 | All passing |
 | Integration | 38 | All passing |
 | E2E | 9 | All passing |
-| **Total** | **856** | **All passing** |
+| **Total** | **880** | **All passing** |
 
 ---
 
-*Report generated during AUT-1655-wo crucible session. 70+ commits, 115+ files changed. Every source file individually reviewed. All 856 tests passing.*
+*Report generated during AUT-1655-wo crucible session. 72+ commits, 115+ files changed. Every source file individually reviewed. All 880 tests passing.*
