@@ -140,6 +140,28 @@ function wireTelegramCallbacks(
   telegram.onIsSessionAlive = (sessionName: string): boolean => {
     return sessionManager.isSessionAlive(sessionName);
   };
+
+  // Stall verification — check if session has recent output activity
+  telegram.onIsSessionActive = async (sessionName: string): Promise<boolean> => {
+    const output = sessionManager.captureOutput(sessionName, 20);
+    if (!output) return false;
+
+    const lines = output.trim().split('\n').slice(-15);
+    // Look for signs of Claude Code activity in recent output
+    const activePatterns = [
+      /\bRead\b|\bWrite\b|\bEdit\b|\bBash\b|\bGrep\b|\bGlob\b/,  // Tool names
+      /⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/,  // Spinner characters
+      /\d+\s*tokens?/i,     // Token counts
+      /Sent \d+ chars/,     // Telegram reply confirmation
+    ];
+
+    for (const line of lines) {
+      for (const pattern of activePatterns) {
+        if (pattern.test(line)) return true;
+      }
+    }
+    return false;
+  };
 }
 
 /**

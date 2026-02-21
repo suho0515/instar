@@ -116,6 +116,7 @@ export class TelegramAdapter implements MessagingAdapter {
   public onRestartSession: ((sessionName: string, topicId: number) => Promise<void>) | null = null;
   public onListSessions: (() => Array<{ name: string; tmuxSession: string; status: string; alive: boolean }>) | null = null;
   public onIsSessionAlive: ((tmuxSession: string) => boolean) | null = null;
+  public onIsSessionActive: ((tmuxSession: string) => Promise<boolean>) | null = null;
 
   constructor(config: TelegramConfig, stateDir: string) {
     this.config = config;
@@ -345,7 +346,7 @@ export class TelegramAdapter implements MessagingAdapter {
     }
   }
 
-  private checkForStalls(): void {
+  private async checkForStalls(): Promise<void> {
     const stallMinutes = this.config.stallTimeoutMinutes ?? 5;
     const stallThresholdMs = stallMinutes * 60 * 1000;
     const now = Date.now();
@@ -358,6 +359,21 @@ export class TelegramAdapter implements MessagingAdapter {
       const alive = this.onIsSessionAlive
         ? this.onIsSessionAlive(pending.sessionName)
         : true; // assume alive if no checker
+
+      // If alive, verify the session is truly stalled (not just responding through a different path)
+      if (alive && this.onIsSessionActive) {
+        try {
+          const active = await this.onIsSessionActive(pending.sessionName);
+          if (active) {
+            // Session is producing output — false alarm, clear it
+            console.log(`[telegram] Session "${pending.sessionName}" verified active, clearing stall`);
+            this.pendingMessages.delete(key);
+            continue;
+          }
+        } catch {
+          // Verifier failed — fall through to alert
+        }
+      }
 
       pending.alerted = true;
 
@@ -401,19 +417,36 @@ export class TelegramAdapter implements MessagingAdapter {
    * Download a file from Telegram by file_id.
    */
   private async downloadFile(fileId: string, destPath: string): Promise<void> {
-    const fileInfo = await this.apiCall('getFile', { file_id: fileId }) as { file_path: string };
-    const fileUrl = `https://api.telegram.org/file/bot${this.config.token}/${fileInfo.file_path}`;
+    const maxRetries = 3;
+    let lastError: Error | undefined;
 
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 60_000);
-    try {
-      const response = await fetch(fileUrl, { signal: controller.signal });
-      if (!response.ok) throw new Error(`Download failed: ${response.status}`);
-      const buffer = Buffer.from(await response.arrayBuffer());
-      fs.writeFileSync(destPath, buffer);
-    } finally {
-      clearTimeout(timer);
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        const fileInfo = await this.apiCall('getFile', { file_id: fileId }) as { file_path: string };
+        const fileUrl = `https://api.telegram.org/file/bot${this.config.token}/${fileInfo.file_path}`;
+
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 60_000);
+        try {
+          const response = await fetch(fileUrl, { signal: controller.signal });
+          if (!response.ok) throw new Error(`Download failed: ${response.status}`);
+          const buffer = Buffer.from(await response.arrayBuffer());
+          fs.writeFileSync(destPath, buffer);
+          return; // Success
+        } finally {
+          clearTimeout(timer);
+        }
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        if (attempt < maxRetries) {
+          const delay = attempt * 1000;
+          console.warn(`[telegram] File download attempt ${attempt}/${maxRetries} failed, retrying in ${delay}ms...`);
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
+
+    throw lastError!;
   }
 
   /**
