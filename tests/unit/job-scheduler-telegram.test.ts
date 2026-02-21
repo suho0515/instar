@@ -74,6 +74,7 @@ describe('JobScheduler Telegram notifications', () => {
       { jobsFile, projectDir: tmpDir },
       sessionManager,
       state,
+      stateDir,
     );
   });
 

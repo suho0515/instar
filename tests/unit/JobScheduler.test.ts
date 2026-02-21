@@ -36,6 +36,7 @@ describe('JobScheduler', () => {
       makeConfig(configOverrides),
       mockSM as any,
       project.state,
+      project.stateDir,
     );
     return scheduler;
   }

@@ -126,6 +126,7 @@ describeMaybe('E2E: Instar lifecycle', () => {
       },
       sessionManager,
       state,
+      stateDir,
     );
     scheduler.start();
 

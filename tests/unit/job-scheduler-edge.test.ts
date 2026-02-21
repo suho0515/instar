@@ -46,6 +46,7 @@ describe('JobScheduler edge cases', () => {
       },
       mockSM as any,
       project.state,
+      project.stateDir,
     );
     return scheduler;
   }

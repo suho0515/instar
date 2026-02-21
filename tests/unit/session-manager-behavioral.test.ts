@@ -308,16 +308,32 @@ describe('SessionManager behavioral tests', () => {
       ).rejects.toThrow('Cannot interact with protected session');
     });
 
-    it('enforces max sessions for interactive sessions', async () => {
-      // Fill up all slots
+    it('allows interactive session in reserved slot when job slots are full', async () => {
+      // Fill up all regular slots (maxSessions: 3)
       await manager.spawnSession({ name: 'job-1', prompt: 'p1' });
       await manager.spawnSession({ name: 'job-2', prompt: 'p2' });
       await manager.spawnSession({ name: 'job-3', prompt: 'p3' });
 
-      // Interactive session should also be blocked
+      // Interactive session should succeed — gets reserved slot (maxSessions + 1)
+      // spawnInteractiveSession returns the tmux session name string
+      const tmuxName = await manager.spawnInteractiveSession(undefined, 'chat');
+      expect(tmuxName).toBeDefined();
+      expect(tmuxName).toContain('chat');
+    });
+
+    it('blocks interactive session when reserved slot is also full', async () => {
+      // Fill up all regular slots (maxSessions: 3)
+      await manager.spawnSession({ name: 'job-1', prompt: 'p1' });
+      await manager.spawnSession({ name: 'job-2', prompt: 'p2' });
+      await manager.spawnSession({ name: 'job-3', prompt: 'p3' });
+
+      // First interactive session takes the reserved slot
+      await manager.spawnInteractiveSession(undefined, 'chat-1');
+
+      // Second interactive session should be blocked (4 = maxSessions + 1)
       await expect(
-        manager.spawnInteractiveSession(undefined, 'chat')
-      ).rejects.toThrow('Max sessions (3) reached');
+        manager.spawnInteractiveSession(undefined, 'chat-2')
+      ).rejects.toThrow('Max sessions');
     });
   });
 

@@ -92,7 +92,7 @@ describe('Session reaping and detection', () => {
     it('session timeout uses capped 20% buffer', () => {
       source = fs.readFileSync(SOURCE_PATH, 'utf-8');
       // Buffer is 20% of duration but capped at 60 minutes
-      expect(source).toContain('maxDurationMinutes * 0.2');
+      expect(source).toContain('maxMinutes * 0.2');
       expect(source).toContain('Math.min');
     });
 

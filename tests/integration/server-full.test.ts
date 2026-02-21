@@ -78,6 +78,7 @@ describe('Full server integration', () => {
       },
       mockSM as any,
       project.state,
+      project.stateDir,
     );
     scheduler.start();
 

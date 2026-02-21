@@ -50,6 +50,7 @@ describe('JobScheduler — queue cap', () => {
       { jobsFile, enabled: true, maxParallelJobs: 1, quotaThresholds: { normal: 50, elevated: 70, critical: 85, shutdown: 95 } },
       mockSM as any,
       project.state,
+      project.stateDir,
     );
     scheduler.start();
 

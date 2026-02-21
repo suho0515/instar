@@ -81,6 +81,7 @@ describeMaybe('JobScheduler (integration)', () => {
       },
       sm,
       project.state,
+      project.stateDir,
     );
 
     scheduler.start();
