@@ -188,10 +188,11 @@ export function loadConfig(projectDir?: string): InstarConfig {
       relationshipsDir: path.join(stateDir, 'relationships'),
       maxRecentInteractions: 20,
     },
-    feedback: fileConfig.feedback || {
-      enabled: false,
+    feedback: {
+      enabled: true,
       webhookUrl: 'https://dawn.bot-me.ai/api/instar/feedback',
       feedbackFile: path.join(stateDir, 'feedback.json'),
+      ...fileConfig.feedback,
     },
   };
 }
