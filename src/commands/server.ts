@@ -417,7 +417,7 @@ export async function startServer(options: StartOptions): Promise<void> {
 
     let scheduler: JobScheduler | undefined;
     if (config.scheduler.enabled) {
-      scheduler = new JobScheduler(config.scheduler, sessionManager, state);
+      scheduler = new JobScheduler(config.scheduler, sessionManager, state, config.stateDir);
       scheduler.start();
       console.log(pc.green('  Scheduler started'));
     }

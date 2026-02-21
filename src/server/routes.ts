@@ -459,6 +459,98 @@ export function createRoutes(ctx: RouteContext): Router {
     }
   });
 
+  // ── Skip Ledger ──────────────────────────────────────────────────
+
+  router.get('/skip-ledger', (_req, res) => {
+    if (!ctx.scheduler) {
+      res.json({ sinceHours: 24, summary: {}, totalSkips: 0 });
+      return;
+    }
+
+    const ledger = ctx.scheduler.getSkipLedger();
+    const sinceHours = parseInt(_req.query.sinceHours as string) || 24;
+    const slug = _req.query.slug as string | undefined;
+
+    if (slug && !JOB_SLUG_RE.test(slug)) {
+      res.status(400).json({ error: 'Invalid job slug' });
+      return;
+    }
+
+    const summary = ledger.getSkipSummary(sinceHours);
+    const events = ledger.getSkips({ slug, sinceHours });
+
+    res.json({
+      sinceHours,
+      summary,
+      events: slug ? events : undefined,
+      totalSkips: events.length,
+    });
+  });
+
+  router.get('/skip-ledger/workloads', (_req, res) => {
+    if (!ctx.scheduler) {
+      res.json({ trends: {} });
+      return;
+    }
+
+    const ledger = ctx.scheduler.getSkipLedger();
+    const slug = _req.query.slug as string | undefined;
+
+    if (slug && !JOB_SLUG_RE.test(slug)) {
+      res.status(400).json({ error: 'Invalid job slug' });
+      return;
+    }
+
+    if (slug) {
+      const trend = ledger.getWorkloadTrend(slug);
+      const signals = ledger.getWorkloads({ slug, limit: 20 });
+      res.json({ slug, trend, recentSignals: signals });
+    } else {
+      const jobs = ctx.scheduler.getJobs();
+      const trends: Record<string, ReturnType<typeof ledger.getWorkloadTrend>> = {};
+      for (const job of jobs) {
+        trends[job.slug] = ledger.getWorkloadTrend(job.slug);
+      }
+      res.json({ trends });
+    }
+  });
+
+  router.post('/skip-ledger/workload', (req, res) => {
+    if (!ctx.scheduler) {
+      res.status(503).json({ error: 'Scheduler not running' });
+      return;
+    }
+
+    const { slug, duration, skipFast, itemsFound, itemsProcessed, saturation, notes } = req.body;
+
+    if (!slug || typeof slug !== 'string' || !JOB_SLUG_RE.test(slug)) {
+      res.status(400).json({ error: '"slug" must be a valid job slug' });
+      return;
+    }
+    if (typeof duration !== 'number' || duration < 0) {
+      res.status(400).json({ error: '"duration" must be a non-negative number (seconds)' });
+      return;
+    }
+    if (typeof itemsFound !== 'number' || typeof itemsProcessed !== 'number') {
+      res.status(400).json({ error: '"itemsFound" and "itemsProcessed" must be numbers' });
+      return;
+    }
+
+    const ledger = ctx.scheduler.getSkipLedger();
+    ledger.recordWorkload({
+      slug,
+      timestamp: new Date().toISOString(),
+      duration,
+      skipFast: !!skipFast,
+      itemsFound,
+      itemsProcessed,
+      saturation: typeof saturation === 'number' ? saturation : (itemsFound > 0 ? itemsProcessed / itemsFound : 0),
+      notes: typeof notes === 'string' ? notes.slice(0, 500) : undefined,
+    });
+
+    res.status(201).json({ recorded: true, slug });
+  });
+
   // ── Telegram ────────────────────────────────────────────────────
 
   router.get('/telegram/topics', (_req, res) => {

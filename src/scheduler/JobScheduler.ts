@@ -11,9 +11,10 @@
 import { Cron } from 'croner';
 import { execFileSync } from 'node:child_process';
 import { loadJobs } from './JobLoader.js';
+import { SkipLedger } from './SkipLedger.js';
 import type { SessionManager } from '../core/SessionManager.js';
 import type { StateManager } from '../core/StateManager.js';
-import type { MessagingAdapter } from '../core/types.js';
+import type { MessagingAdapter, SkipReason } from '../core/types.js';
 import type { JobDefinition, JobSchedulerConfig, JobState, JobPriority } from '../core/types.js';
 import type { TelegramAdapter } from '../messaging/TelegramAdapter.js';
 
@@ -43,6 +44,7 @@ export class JobScheduler {
   private config: JobSchedulerConfig;
   private sessionManager: SessionManager;
   private state: StateManager;
+  private skipLedger: SkipLedger;
   private jobs: JobDefinition[] = [];
   private cronTasks: Map<string, Cron> = new Map();
   private queue: QueuedJob[] = [];
@@ -62,10 +64,12 @@ export class JobScheduler {
     config: JobSchedulerConfig,
     sessionManager: SessionManager,
     state: StateManager,
+    stateDir: string,
   ) {
     this.config = config;
     this.sessionManager = sessionManager;
     this.state = state;
+    this.skipLedger = new SkipLedger(stateDir);
   }
 
   /**
@@ -151,10 +155,12 @@ export class JobScheduler {
     }
 
     if (this.paused) {
+      this.skipLedger.recordSkip(slug, 'paused');
       return 'skipped';
     }
 
     if (!this.canRunJob(job.priority)) {
+      this.skipLedger.recordSkip(slug, 'quota');
       this.state.appendEvent({
         type: 'job_skipped',
         summary: `Job "${slug}" skipped — quota check failed`,
@@ -250,6 +256,13 @@ export class JobScheduler {
    */
   getQueue(): QueuedJob[] {
     return [...this.queue];
+  }
+
+  /**
+   * Get the skip ledger instance (for API routes).
+   */
+  getSkipLedger(): SkipLedger {
+    return this.skipLedger;
   }
 
   private enqueue(slug: string, reason: string): void {

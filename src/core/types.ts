@@ -301,6 +301,43 @@ export interface RelationshipManagerConfig {
   maxRecentInteractions: number;
 }
 
+// ── Skip Ledger & Auto-Tune ─────────────────────────────────────────
+
+export type SkipReason =
+  | 'disabled'    // Job has enabled: false
+  | 'paused'      // Scheduler is paused
+  | 'quota'       // Quota constraints
+  | 'capacity';   // No available session slots (queued instead of skipped, but tracked)
+
+export interface SkipEvent {
+  slug: string;
+  timestamp: string;       // ISO timestamp
+  reason: SkipReason;
+  scheduledAt?: string;    // When this run was scheduled
+}
+
+export interface WorkloadSignal {
+  slug: string;
+  timestamp: string;       // ISO timestamp — when the run completed
+  duration: number;        // Seconds the job actually ran
+  skipFast: boolean;       // Did the job exit early with nothing to do?
+  itemsFound: number;      // How many work items were discovered
+  itemsProcessed: number;  // How many were actually processed
+  saturation: number;      // itemsProcessed / itemsFound (0-1, or 0 if none found)
+  notes?: string;          // Optional context from the job
+}
+
+export interface AutoTuneState {
+  slug: string;
+  baseSchedule: string;         // Original cron expression
+  effectiveSchedule: string;    // Current (possibly adjusted) cron expression
+  tuneFactor: number;           // Multiplier: <1 = faster, >1 = slower
+  lastTuned: string;            // ISO timestamp
+  recentSkipFastRate: number;   // % of recent runs that skip-fasted (0-1)
+  recentSaturation: number;     // Average saturation of recent runs (0-1)
+  windowSize: number;           // How many recent runs to consider
+}
+
 // ── Activity Tracking ───────────────────────────────────────────────
 
 export interface ActivityEvent {

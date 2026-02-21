@@ -21,6 +21,7 @@ export { UserManager } from './users/UserManager.js';
 
 // Scheduler
 export { JobScheduler } from './scheduler/JobScheduler.js';
+export { SkipLedger } from './scheduler/SkipLedger.js';
 export { loadJobs, validateJob } from './scheduler/JobLoader.js';
 
 // Server
@@ -84,5 +85,9 @@ export type {
   UpdateConfig,
   PublishingConfig,
   TunnelConfigType,
+  SkipReason,
+  SkipEvent,
+  WorkloadSignal,
+  AutoTuneState,
 } from './core/types.js';
 export type { Dispatch, DispatchCheckResult, DispatchEvaluation, EvaluationDecision, DispatchFeedback, DispatchStats } from './core/DispatchManager.js';
