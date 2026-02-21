@@ -949,39 +949,67 @@ function installHooks(stateDir: string): void {
   const hooksDir = path.join(stateDir, 'hooks');
   fs.mkdirSync(hooksDir, { recursive: true });
 
-  // Session start hook
+  // Session start hook — fires on startup, resume, clear, compact
+  // Outputs identity content directly so the agent knows who it is immediately.
   fs.writeFileSync(path.join(hooksDir, 'session-start.sh'), `#!/bin/bash
-# Session start hook — injects identity context when a new Claude session begins.
+# Session start hook — injects identity context on session lifecycle events.
+# Fires on: startup, resume, clear, compact (via SessionStart hook type)
+#
+# On startup/resume: outputs a compact identity summary
+# On compact: delegates to compaction-recovery.sh for full injection
 INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
-CONTEXT=""
+EVENT="\${CLAUDE_HOOK_MATCHER:-startup}"
+
+# On compaction, delegate to the dedicated recovery hook
+if [ "\$EVENT" = "compact" ]; then
+  if [ -x "$INSTAR_DIR/hooks/compaction-recovery.sh" ]; then
+    exec bash "$INSTAR_DIR/hooks/compaction-recovery.sh"
+  fi
+fi
+
+# For startup/resume/clear — output a compact orientation
+echo "=== SESSION START ==="
+
+# Identity summary (first 20 lines of AGENT.md — enough for name + role)
 if [ -f "$INSTAR_DIR/AGENT.md" ]; then
-  CONTEXT="\${CONTEXT}Your identity file is at .instar/AGENT.md — read it if you need to remember who you are.\\n"
+  echo ""
+  AGENT_NAME=\$(head -1 "$INSTAR_DIR/AGENT.md" | sed 's/^# //')
+  echo "Identity: \$AGENT_NAME"
+  # Output personality and principles sections
+  sed -n '/^## Personality/,/^## [^P]/p' "$INSTAR_DIR/AGENT.md" 2>/dev/null | head -10
 fi
-if [ -f "$INSTAR_DIR/USER.md" ]; then
-  CONTEXT="\${CONTEXT}Your user context is at .instar/USER.md — read it to know who you're working with.\\n"
-fi
-if [ -f "$INSTAR_DIR/MEMORY.md" ]; then
-  CONTEXT="\${CONTEXT}Your persistent memory is at .instar/MEMORY.md — check it for past learnings.\\n"
-fi
+
+# Key files
+echo ""
+echo "Key files:"
+[ -f "$INSTAR_DIR/AGENT.md" ] && echo "  .instar/AGENT.md — Your identity (read for full context)"
+[ -f "$INSTAR_DIR/USER.md" ] && echo "  .instar/USER.md — Your collaborator"
+[ -f "$INSTAR_DIR/MEMORY.md" ] && echo "  .instar/MEMORY.md — Persistent learnings"
+
+# Relationship count
 if [ -d "$INSTAR_DIR/relationships" ]; then
-  REL_COUNT=$(ls -1 "$INSTAR_DIR/relationships"/*.json 2>/dev/null | wc -l | tr -d ' ')
-  if [ "$REL_COUNT" -gt "0" ]; then
-    CONTEXT="\${CONTEXT}You have \${REL_COUNT} tracked relationships in .instar/relationships/.\\n"
-  fi
+  REL_COUNT=\$(ls -1 "$INSTAR_DIR/relationships"/*.json 2>/dev/null | wc -l | tr -d ' ')
+  [ "\$REL_COUNT" -gt "0" ] && echo "  \${REL_COUNT} tracked relationships in .instar/relationships/"
 fi
-CONTEXT="\${CONTEXT}IMPORTANT: To report bugs or request features, use POST /feedback on your local server. NEVER use gh or GitHub directly.\\n"
 
-# Self-discovery: check what capabilities are available
+# Server status + self-discovery
 if [ -f "$INSTAR_DIR/config.json" ]; then
-  PORT=$(python3 -c "import json; print(json.load(open('$INSTAR_DIR/config.json')).get('port', 4040))" 2>/dev/null || echo "4040")
-  HEALTH=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:\${PORT}/health" 2>/dev/null)
-  if [ "$HEALTH" = "200" ]; then
-    CONTEXT="\${CONTEXT}Instar server is running on port \${PORT}. Query your capabilities: curl http://localhost:\${PORT}/capabilities\\n"
-    CONTEXT="\${CONTEXT}IMPORTANT: Before claiming you lack a capability, check /capabilities first.\\n"
+  PORT=\$(python3 -c "import json; print(json.load(open('$INSTAR_DIR/config.json')).get('port', 4040))" 2>/dev/null || echo "4040")
+  HEALTH=\$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:\${PORT}/health" 2>/dev/null)
+  if [ "\$HEALTH" = "200" ]; then
+    echo ""
+    echo "Instar server: RUNNING on port \${PORT}"
+    echo "Capabilities: curl http://localhost:\${PORT}/capabilities"
+  else
+    echo ""
+    echo "Instar server: NOT RUNNING (port \${PORT})"
   fi
 fi
 
-[ -n "$CONTEXT" ] && echo "$CONTEXT"
+echo ""
+echo "IMPORTANT: To report bugs or request features, use POST /feedback on your local server."
+echo "IMPORTANT: Before claiming you lack a capability, check /capabilities first."
+echo "=== END SESSION START ==="
 `, { mode: 0o755 });
 
   // Dangerous command guard
@@ -1011,15 +1039,55 @@ if echo "$INPUT" | grep -qE "(telegram-reply|send-email|send-message|POST.*/tele
 fi
 `, { mode: 0o755 });
 
-  // Compaction recovery
+  // Compaction recovery — The 164th Lesson: advisory hooks get ignored.
+  // Automatic content injection removes the compliance gap entirely.
+  // Rather than saying "read AGENT.md", we OUTPUT the content directly.
   fs.writeFileSync(path.join(hooksDir, 'compaction-recovery.sh'), `#!/bin/bash
 # Compaction recovery — re-injects identity when Claude's context compresses.
+# Born from Dawn's 164th Lesson: "Advisory hooks get ignored. Automatic content
+# injection removes the compliance gap entirely."
+#
+# This hook OUTPUTS identity content directly into context rather than just
+# pointing to files. After compaction, the agent needs to KNOW who it is,
+# not be told where to look.
 INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
+
+echo "=== IDENTITY RECOVERY (post-compaction) ==="
+
+# Inject AGENT.md content directly — this is the critical fix
 if [ -f "$INSTAR_DIR/AGENT.md" ]; then
-  AGENT_NAME=$(head -5 "$INSTAR_DIR/AGENT.md" | grep -iE "name|I am|My name" | head -1)
-  [ -n "$AGENT_NAME" ] && echo "Identity reminder: $AGENT_NAME"
-  echo "Read .instar/AGENT.md and .instar/MEMORY.md to restore full context."
+  echo ""
+  echo "--- Your Identity (from .instar/AGENT.md) ---"
+  cat "$INSTAR_DIR/AGENT.md"
+  echo ""
+  echo "--- End Identity ---"
 fi
+
+# Inject memory summary (first 50 lines — enough for orientation)
+if [ -f "$INSTAR_DIR/MEMORY.md" ]; then
+  LINES=\$(wc -l < "$INSTAR_DIR/MEMORY.md" | tr -d ' ')
+  echo ""
+  echo "--- Your Memory (.instar/MEMORY.md — \${LINES} lines, showing first 50) ---"
+  head -50 "$INSTAR_DIR/MEMORY.md"
+  if [ "\$LINES" -gt 50 ]; then
+    echo "... (\$((LINES - 50)) more lines — read full file if needed)"
+  fi
+  echo "--- End Memory ---"
+fi
+
+# Check server status
+if [ -f "$INSTAR_DIR/config.json" ]; then
+  PORT=\$(python3 -c "import json; print(json.load(open('$INSTAR_DIR/config.json')).get('port', 4040))" 2>/dev/null || echo "4040")
+  HEALTH=\$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:\${PORT}/health" 2>/dev/null)
+  if [ "\$HEALTH" = "200" ]; then
+    echo "Instar server: RUNNING on port \${PORT}"
+  else
+    echo "Instar server: NOT RUNNING (port \${PORT})"
+  fi
+fi
+
+echo ""
+echo "=== END IDENTITY RECOVERY ==="
 `, { mode: 0o755 });
 
   // Deferral detector — catches agents deferring work they could do themselves.
@@ -1248,36 +1316,62 @@ function installClaudeSettings(projectDir: string): void {
     }
   }
 
-  // PostToolUse: session start identity injection
-  if (!hooks.PostToolUse) {
-    hooks.PostToolUse = [
-      {
-        matcher: '',
-        hooks: [
-          {
-            type: 'command',
-            command: 'bash .instar/hooks/session-start.sh',
-            blocking: false,
-          },
-        ],
-      },
+  // SessionStart: identity injection on all lifecycle events
+  // Uses the correct Claude Code hook type (not PostToolUse or Notification)
+  // The session-start.sh hook handles event routing internally via CLAUDE_HOOK_MATCHER
+  const sessionStartHook = {
+    type: 'command',
+    command: 'bash .instar/hooks/session-start.sh',
+    timeout: 5,
+  };
+
+  if (!hooks.SessionStart) {
+    hooks.SessionStart = [
+      { matcher: 'startup', hooks: [sessionStartHook] },
+      { matcher: 'resume', hooks: [sessionStartHook] },
+      { matcher: 'compact', hooks: [sessionStartHook] },
     ];
+  } else {
+    // Merge: ensure all matchers are covered
+    const sessionStart = hooks.SessionStart as Array<{ matcher?: string; hooks?: unknown[] }>;
+    for (const matcher of ['startup', 'resume', 'compact']) {
+      if (!sessionStart.some(e => e.matcher === matcher)) {
+        sessionStart.push({ matcher, hooks: [sessionStartHook] });
+      }
+    }
   }
 
-  // Notification: compaction recovery
-  if (!hooks.Notification) {
-    hooks.Notification = [
-      {
-        matcher: 'compact',
-        hooks: [
-          {
-            type: 'command',
-            command: 'bash .instar/hooks/compaction-recovery.sh',
-            blocking: false,
-          },
-        ],
-      },
-    ];
+  // Clean up legacy hooks from older versions
+  // PostToolUse with empty matcher for session-start was noisy (fired every tool use)
+  if (hooks.PostToolUse) {
+    const postToolUse = hooks.PostToolUse as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+    const filtered = postToolUse.filter(e => {
+      if (e.matcher === '' && e.hooks?.some(h => h.command?.includes('session-start.sh'))) {
+        return false; // Remove legacy session-start from PostToolUse
+      }
+      return true;
+    });
+    if (filtered.length === 0) {
+      delete hooks.PostToolUse;
+    } else {
+      hooks.PostToolUse = filtered;
+    }
+  }
+
+  // Remove legacy Notification hook for compaction (now handled by SessionStart)
+  if (hooks.Notification) {
+    const notification = hooks.Notification as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
+    const filtered = notification.filter(e => {
+      if (e.matcher === 'compact' && e.hooks?.some(h => h.command?.includes('compaction-recovery.sh'))) {
+        return false; // Remove legacy compaction from Notification
+      }
+      return true;
+    });
+    if (filtered.length === 0) {
+      delete hooks.Notification;
+    } else {
+      hooks.Notification = filtered;
+    }
   }
 
   // MCP Servers: Playwright for browser automation (used by setup wizard, Telegram setup, etc.)

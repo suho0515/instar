@@ -13,30 +13,48 @@
             "type": "command",
             "command": "bash .instar/hooks/grounding-before-messaging.sh \"$TOOL_INPUT\"",
             "blocking": true
+          },
+          {
+            "type": "command",
+            "command": "node .instar/hooks/deferral-detector.js",
+            "timeout": 5000
+          },
+          {
+            "type": "command",
+            "command": "node .instar/hooks/external-communication-guard.js",
+            "timeout": 5000
           }
         ]
       }
     ],
-    "PostToolUse": [
+    "SessionStart": [
       {
-        "matcher": "",
+        "matcher": "startup",
         "hooks": [
           {
             "type": "command",
             "command": "bash .instar/hooks/session-start.sh",
-            "blocking": false
+            "timeout": 5
           }
         ]
-      }
-    ],
-    "Notification": [
+      },
       {
-        "matcher": "compaction",
+        "matcher": "resume",
         "hooks": [
           {
             "type": "command",
-            "command": "bash .instar/hooks/compaction-recovery.sh",
-            "blocking": false
+            "command": "bash .instar/hooks/session-start.sh",
+            "timeout": 5
+          }
+        ]
+      },
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .instar/hooks/session-start.sh",
+            "timeout": 5
           }
         ]
       }

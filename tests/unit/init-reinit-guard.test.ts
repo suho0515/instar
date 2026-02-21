@@ -26,16 +26,19 @@ describe('init — re-initialization guard', () => {
     expect(funcBody).toContain('preserved');
   });
 
-  it('installClaudeSettings includes PostToolUse and Notification hooks', () => {
+  it('installClaudeSettings includes SessionStart hooks and legacy cleanup', () => {
     const source = fs.readFileSync(
       path.join(process.cwd(), 'src/commands/init.ts'),
       'utf-8',
     );
 
-    // Should configure all three hook sections
-    expect(source).toContain('PostToolUse');
-    expect(source).toContain('Notification');
+    // Should configure SessionStart hooks (the correct hook type)
+    expect(source).toContain('SessionStart');
     expect(source).toContain('session-start.sh');
     expect(source).toContain('compaction-recovery.sh');
+
+    // Should clean up legacy PostToolUse/Notification hooks
+    expect(source).toContain('PostToolUse');
+    expect(source).toContain('Notification');
   });
 });
