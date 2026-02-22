@@ -170,7 +170,8 @@ export class SessionManager extends EventEmitter {
         'new-session', '-d',
         '-s', tmuxSession,
         '-c', this.config.projectDir,
-        '-e', 'CLAUDECODE=',
+        '-e', 'CLAUDECODE=', // Prevent nested Claude Code detection
+        '-e', 'ANTHROPIC_API_KEY=', // Clear stale/invalid API keys — agents use Claude subscription
         this.config.claudePath, ...claudeArgs,
       ], { encoding: 'utf-8' });
     } catch (err) {
@@ -440,6 +441,7 @@ export class SessionManager extends EventEmitter {
         '-c', this.config.projectDir,
         '-x', '200', '-y', '50',
         '-e', 'CLAUDECODE=', // Prevent nested Claude Code detection
+        '-e', 'ANTHROPIC_API_KEY=', // Clear stale/invalid API keys — agents use Claude subscription
       ];
 
       if (options?.telegramTopicId) {
