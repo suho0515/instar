@@ -24,43 +24,68 @@ This wizard runs in a terminal that may be narrow (80-120 chars). Long text gets
 **Good** (fits in terminal):
 > Everything here is just a starting point. You can change any of it later — or just tell your agent to adjust itself.
 
-## Phase 1: Welcome & Use Case Selection
+## Phase 1: Context Detection & Welcome
 
-Start with a brief welcome, then immediately ask HOW they want to use Instar.
+**Do NOT ask "how do you want to use Instar?"** Instead, detect the context automatically and present an intelligent default.
+
+### Step 1a: Detect Environment
+
+Run these checks BEFORE showing anything to the user:
+
+```bash
+# Check if we're inside a git repository
+git rev-parse --show-toplevel 2>/dev/null
+
+# Get the repo name if it exists
+basename "$(git rev-parse --show-toplevel 2>/dev/null)" 2>/dev/null
+
+# Check for common project indicators
+ls package.json Cargo.toml pyproject.toml go.mod Gemfile pom.xml 2>/dev/null
+```
+
+### Step 1b: Present Context-Aware Welcome
+
+**If inside a git repository:**
 
 ---
 
 **Welcome to Instar!**
 
-Instar turns Claude Code into a persistent agent you just talk to — through Telegram, not the terminal. This setup gets you there. Two ways to use it:
+I see you're in **[repo-name]** — I'll set up a persistent agent for this project.
+
+Your agent will monitor, build, and maintain this codebase. You'll talk to it through Telegram — no terminal needed after setup.
 
 ---
 
-Present a question with two clear options:
+Then proceed directly — no "project vs general" question needed. The context made it obvious.
 
-1. **Project Agent** — Add an agent to an existing codebase. It monitors, builds, and maintains your project.
-2. **General Agent** — A personal agent on your computer. Like having a persistent AI assistant you talk to through Telegram.
+If the user objects ("actually I want a personal agent, not a project agent"), accommodate immediately: "Got it — setting up a personal agent instead."
 
-This choice determines the defaults, but the agent can always grow into more.
+**If NOT inside a git repository:**
 
-### If "Project Agent" selected:
-- Use the current working directory as the project
-- Default jobs focus on health checks, code monitoring, reflection
-- The agent's identity centers on the project
+---
 
-### If "General Agent" selected:
-- Ask for a name for the agent (this becomes the directory name)
-- Create the directory in the current location or home dir
-- Default jobs focus on communication, scheduling, research
-- **Telegram is essential** — without it, a general agent has no natural interface
-- Frame the identity around being a personal assistant, not a code monitor
-- The AGENT.md should emphasize: "I'm your personal agent. Talk to me through Telegram."
+**Welcome to Instar!**
+
+You're not inside a project, so I'll set up a personal agent — a persistent AI companion you talk to through Telegram.
+
+It can research, schedule tasks, manage files, and grow over time.
+
+---
+
+Then ask: "What should your agent be called?" (default: "my-agent")
+
+### Key principle: Telegram is the interface, always
+
+Regardless of project or personal agent, **Telegram is how you talk to your agent**. This should be clear from the very first message. Don't present it as an optional add-on — it's the destination of this entire setup.
+
+The terminal session is the on-ramp. Telegram is where the agent experience lives.
 
 ## Phase 2: Identity Bootstrap — The Birth Conversation
 
 **This is the most important part.** Have a conversation to understand who the user is and who their agent will become. Keep it natural and concise.
 
-For **General Agents**: emphasize that this agent will be their persistent companion. It grows, learns, and communicates through Telegram. It's not a project tool — it's a presence.
+For **Personal Agents**: emphasize that this agent will be their persistent companion. It grows, learns, and communicates through Telegram. It's not a project tool — it's a presence.
 
 For **Project Agents**: emphasize that this agent will own the project's health and development. It monitors, builds, and maintains.
 
@@ -225,30 +250,11 @@ This project uses instar for persistent agent capabilities.
 - **Research before escalating** — Check tools first. Build solutions. "Needs human" is last resort.
 ```
 
-## Phase 3: Technical Configuration
+## Phase 3: Telegram Setup — The Destination
 
-Now that identity is established, move to the technical setup. This feels more natural — the user already knows what they're building and why.
+**Telegram comes BEFORE technical configuration.** It's the whole point — everything else supports getting the user onto Telegram.
 
-### 3a. Project Detection
-
-- The project directory is passed in the prompt (e.g., "The project to set up is at: /path/to/project")
-- All files should be written there, not in the instar package directory
-- Check if `.instar/config.json` already exists (offer to reconfigure or skip)
-- Verify prerequisites: check that `tmux` and `claude` CLI are available
-
-```bash
-which tmux
-which claude
-```
-
-### 3b. Server Configuration
-
-- **Port** (default: 4040) — "The agent runs a small HTTP server for health checks and internal communication."
-- **Max sessions** (default: 3) — "This limits how many Claude sessions can run at once. 2-3 is usually right."
-
-### 3c. Telegram Setup — The Destination
-
-**This terminal session is the on-ramp. Telegram is where the agent experience truly begins.** Frame it that way:
+Frame it clearly:
 
 > Right now we're in a terminal. Telegram is where your agent comes alive:
 > - **Just talk** — no commands, no terminal, just conversation
@@ -256,9 +262,7 @@ which claude
 > - **Mobile access** — your agent is always reachable
 > - **Proactive** — your agent reaches out when something matters
 
-The goal of this setup is to get the user onto Telegram as fast as possible. Everything else (jobs, config, technical setup) supports that destination.
-
-For **General Agents**: Telegram is essential. Without it, there IS no natural interface. Be direct: "This is how you'll talk to your agent."
+For **Personal Agents**: Telegram is essential. Without it, there IS no natural interface. Be direct: "This is how you'll talk to your agent."
 
 For **Project Agents**: Telegram is strongly recommended. Frame it as: "Your agent can message you about builds, issues, and progress — you just reply."
 
@@ -382,7 +386,32 @@ curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=5"
    - Look for `chat.id` where `chat.type` is "supergroup" or "group"
    - If auto-detection fails, guide manual entry
 
-### 3d. Job Scheduler (Optional)
+## Phase 4: Technical Configuration
+
+Now that identity and Telegram are established, handle the remaining technical setup. These should feel like sensible defaults, not interrogation.
+
+### 4a. Project Detection
+
+- The project directory is passed in the prompt (e.g., "The project to set up is at: /path/to/project")
+- All files should be written there, not in the instar package directory
+- Check if `.instar/config.json` already exists (offer to reconfigure or skip)
+- Verify prerequisites: check that `tmux` and `claude` CLI are available
+
+```bash
+which tmux
+which claude
+```
+
+### 4b. Server Configuration
+
+Present sensible defaults — don't make the user think about these unless they want to:
+
+- **Port** (default: 4040) — "The agent runs a small local server."
+- **Max sessions** (default: 3) — "How many Claude sessions can run at once."
+
+Ask as a single confirmation: "I'll use port 4040 with up to 3 sessions. Want to change these?" If yes, ask for specifics. If no, move on.
+
+### 4c. Job Scheduler (Optional)
 
 - Ask if they want scheduled jobs
 - If yes, walk through adding a first job:
@@ -393,7 +422,7 @@ curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=5"
   - **Execution type**: prompt (AI instruction), script (shell script), or skill (slash command)
 - Offer to add more jobs
 
-### 3e. Write Configuration Files
+### 4d. Write Configuration Files
 
 Create the directory structure and write config files:
 
@@ -438,7 +467,7 @@ mkdir -p .instar/state/sessions .instar/state/jobs .instar/logs
 
 **`.instar/users.json`**: Array of user objects from the identity conversation.
 
-### 3f. Update .gitignore
+### 4e. Update .gitignore
 
 Append if not present:
 ```
@@ -447,7 +476,7 @@ Append if not present:
 .instar/logs/
 ```
 
-## Phase 4: Summary & Launch
+## Phase 5: Summary & Launch
 
 Show what was created briefly, then get the user to their agent.
 
@@ -485,4 +514,4 @@ Offer to start the server.
 
 ## Starting
 
-Begin by reading the project directory, checking for existing config, and then launching into the welcome explanation followed by the identity conversation. Let the conversation flow naturally.
+Begin by detecting the environment (git repo check, project file check), then present the context-aware welcome. Let the conversation flow naturally from there.

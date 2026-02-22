@@ -19,6 +19,8 @@ import { JobScheduler } from '../scheduler/JobScheduler.js';
 import { AgentServer } from '../server/AgentServer.js';
 import { TelegramAdapter } from '../messaging/TelegramAdapter.js';
 import { RelationshipManager } from '../core/RelationshipManager.js';
+import { ClaudeCliIntelligenceProvider } from '../core/ClaudeCliIntelligenceProvider.js';
+import { AnthropicIntelligenceProvider } from '../core/AnthropicIntelligenceProvider.js';
 import { FeedbackManager } from '../core/FeedbackManager.js';
 import { DispatchManager } from '../core/DispatchManager.js';
 import { UpdateChecker } from '../core/UpdateChecker.js';
@@ -26,6 +28,8 @@ import { registerPort, unregisterPort, startHeartbeat } from '../core/PortRegist
 import { TelegraphService } from '../publishing/TelegraphService.js';
 import { PrivateViewer } from '../publishing/PrivateViewer.js';
 import { TunnelManager } from '../tunnel/TunnelManager.js';
+import { EvolutionManager } from '../core/EvolutionManager.js';
+import { QuotaTracker } from '../monitoring/QuotaTracker.js';
 import type { Message } from '../core/types.js';
 
 interface StartOptions {
@@ -260,9 +264,9 @@ function wireTelegramRouting(
 
       const bootstrapMessage = `[telegram:${topicId}] ${text} (IMPORTANT: Read ${ctxPath} for Telegram relay instructions — you MUST relay your response back.)`;
 
-      sessionManager.spawnInteractiveSession(bootstrapMessage, storedName).then((newSessionName) => {
+      sessionManager.spawnInteractiveSession(bootstrapMessage, storedName, { telegramTopicId: topicId }).then((newSessionName) => {
         telegram.registerTopicSession(topicId, newSessionName);
-        telegram.sendToTopic(topicId, `Session created.`).catch(() => {});
+        telegram.sendToTopic(topicId, `Session starting up — reading your message now. One moment.`).catch(() => {});
         console.log(`[telegram→session] Auto-spawned "${newSessionName}" for topic ${topicId}`);
       }).catch((err) => {
         console.error(`[telegram→session] Auto-spawn failed:`, err);
@@ -411,13 +415,54 @@ export async function startServer(options: StartOptions): Promise<void> {
     const sessionManager = new SessionManager(config.sessions, state);
     let relationships: RelationshipManager | undefined;
     if (config.relationships) {
+      // Wire LLM intelligence for identity resolution.
+      // Priority: Claude CLI (subscription, zero extra cost) > Anthropic API (explicit opt-in only)
+      const claudePath = config.sessions.claudePath;
+      let intelligenceMode = 'heuristic-only';
+
+      // Check if user explicitly opted into API-based intelligence
+      // (intelligenceProvider is a config-file-only field, not in the TypeScript type)
+      const explicitProvider = (config.relationships as unknown as { intelligenceProvider?: string }).intelligenceProvider;
+
+      if (explicitProvider === 'anthropic-api') {
+        // User explicitly chose API — respect their decision
+        const apiProvider = AnthropicIntelligenceProvider.fromEnv();
+        if (apiProvider) {
+          config.relationships.intelligence = apiProvider;
+          intelligenceMode = 'LLM-supervised (Anthropic API — user choice)';
+        } else {
+          console.log(pc.yellow('  intelligenceProvider: "anthropic-api" set but ANTHROPIC_API_KEY not found'));
+        }
+      } else if (claudePath) {
+        // Default: use Claude CLI via subscription (zero extra cost)
+        config.relationships.intelligence = new ClaudeCliIntelligenceProvider(claudePath);
+        intelligenceMode = 'LLM-supervised (Claude CLI subscription)';
+      }
+
       relationships = new RelationshipManager(config.relationships);
-      console.log(pc.green(`  Relationships loaded: ${relationships.getAll().length} tracked`));
+      const count = relationships.getAll().length;
+      console.log(pc.green(`  Relationships loaded: ${count} tracked (${intelligenceMode})`));
+    }
+
+    // Set up quota tracking if enabled
+    let quotaTracker: QuotaTracker | undefined;
+    if (config.monitoring?.quotaTracking) {
+      const quotaFile = (config.monitoring as any).quotaStateFile
+        || path.join(config.stateDir, 'quota-state.json');
+      quotaTracker = new QuotaTracker({
+        quotaFile,
+        thresholds: config.scheduler?.quotaThresholds ?? { normal: 50, elevated: 60, critical: 80, shutdown: 95 },
+      });
+      console.log(pc.green(`  Quota tracking enabled (${quotaFile})`));
     }
 
     let scheduler: JobScheduler | undefined;
     if (config.scheduler.enabled) {
       scheduler = new JobScheduler(config.scheduler, sessionManager, state, config.stateDir);
+      if (quotaTracker) {
+        scheduler.canRunJob = quotaTracker.canRunJob.bind(quotaTracker);
+        scheduler.setQuotaTracker(quotaTracker);
+      }
       scheduler.start();
       console.log(pc.green('  Scheduler started'));
     }
@@ -526,7 +571,14 @@ export async function startServer(options: StartOptions): Promise<void> {
       });
     }
 
-    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, dispatches, updateChecker, publisher, viewer, tunnel });
+    // Set up evolution system (always enabled — the feedback loop infrastructure)
+    const evolution = new EvolutionManager({
+      stateDir: config.stateDir,
+      ...(config.evolution || {}),
+    });
+    console.log(pc.green('  Evolution system enabled'));
+
+    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, dispatches, updateChecker, quotaTracker, publisher, viewer, tunnel, evolution });
     await server.start();
 
     // Start tunnel AFTER server is listening

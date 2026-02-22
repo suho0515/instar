@@ -12,8 +12,10 @@ import { Cron } from 'croner';
 import { execFileSync } from 'node:child_process';
 import { loadJobs } from './JobLoader.js';
 import { SkipLedger } from './SkipLedger.js';
+import { classifySessionDeath } from '../monitoring/QuotaExhaustionDetector.js';
 import type { SessionManager } from '../core/SessionManager.js';
 import type { StateManager } from '../core/StateManager.js';
+import type { QuotaTracker } from '../monitoring/QuotaTracker.js';
 import type { MessagingAdapter, SkipReason } from '../core/types.js';
 import type { JobDefinition, JobSchedulerConfig, JobState, JobPriority } from '../core/types.js';
 import type { TelegramAdapter } from '../messaging/TelegramAdapter.js';
@@ -60,6 +62,9 @@ export class JobScheduler {
   /** Optional Telegram adapter for job-topic coupling */
   private telegram: TelegramAdapter | null = null;
 
+  /** Optional quota tracker for death classification cross-reference */
+  private quotaTracker: QuotaTracker | null = null;
+
   constructor(
     config: JobSchedulerConfig,
     sessionManager: SessionManager,
@@ -85,6 +90,15 @@ export class JobScheduler {
    */
   setTelegram(adapter: TelegramAdapter): void {
     this.telegram = adapter;
+  }
+
+  /**
+   * Set the quota tracker for session death classification.
+   * When set, session deaths are cross-referenced with quota state
+   * to determine if they died from quota exhaustion.
+   */
+  setQuotaTracker(tracker: QuotaTracker): void {
+    this.quotaTracker = tracker;
   }
 
   /**
@@ -423,6 +437,26 @@ export class JobScheduler {
       // Session may already be dead — that's fine
     }
 
+    // Classify death cause if session failed/was killed
+    let deathCause: string | undefined;
+    if (failed && output) {
+      const quotaState = this.quotaTracker?.getState() ?? null;
+      const classification = classifySessionDeath(output, quotaState);
+      deathCause = classification.cause;
+
+      this.state.appendEvent({
+        type: 'session_death_classified',
+        summary: `Session for "${job.slug}" classified as ${classification.cause} (${classification.confidence}): ${classification.detail}`,
+        timestamp: new Date().toISOString(),
+        metadata: {
+          slug: job.slug,
+          cause: classification.cause,
+          confidence: classification.confidence,
+          detail: classification.detail,
+        },
+      });
+    }
+
     // Build a summary message
     const duration = session.startedAt
       ? Math.round((Date.now() - new Date(session.startedAt).getTime()) / 1000)
@@ -433,7 +467,9 @@ export class JobScheduler {
       : `${duration}s`;
 
     let summary = `*Job Complete: ${job.name}*\n`;
-    summary += `Status: ${failed ? 'Failed' : 'Done'}\n`;
+    summary += `Status: ${failed ? 'Failed' : 'Done'}`;
+    if (deathCause && deathCause !== 'unknown') summary += ` (${deathCause})`;
+    summary += '\n';
     if (duration > 0) summary += `Duration: ${durationStr}\n`;
 
     if (output) {

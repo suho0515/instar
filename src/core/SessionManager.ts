@@ -393,7 +393,7 @@ export class SessionManager extends EventEmitter {
    * Used for Telegram-driven conversational sessions.
    * Optionally sends an initial message after Claude is ready.
    */
-  async spawnInteractiveSession(initialMessage?: string, name?: string): Promise<string> {
+  async spawnInteractiveSession(initialMessage?: string, name?: string, options?: { telegramTopicId?: number }): Promise<string> {
     const sanitized = name
       ? name.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40)
       : null;
@@ -425,16 +425,25 @@ export class SessionManager extends EventEmitter {
       );
     }
 
-    // Spawn Claude directly — no bash -c shell intermediary.
-    // tmux -c sets the working directory; the command is passed as arguments.
+    // Spawn Claude in tmux. When a Telegram topic triggered the session,
+    // export the topic ID as an env var so hooks can prime Claude to respond.
     try {
-      execFileSync(this.config.tmuxPath, [
+      const tmuxArgs = [
         'new-session', '-d',
         '-s', tmuxSession,
         '-c', this.config.projectDir,
         '-x', '200', '-y', '50',
-        this.config.claudePath, '--dangerously-skip-permissions',
-      ], { encoding: 'utf-8' });
+      ];
+
+      if (options?.telegramTopicId) {
+        // Wrap in bash shell to export env var before Claude starts
+        const claudeCmd = `${this.config.claudePath} --dangerously-skip-permissions`;
+        tmuxArgs.push('bash', '-c', `export INSTAR_TELEGRAM_TOPIC=${options.telegramTopicId} && exec ${claudeCmd}`);
+      } else {
+        tmuxArgs.push(this.config.claudePath, '--dangerously-skip-permissions');
+      }
+
+      execFileSync(this.config.tmuxPath, tmuxArgs, { encoding: 'utf-8' });
     } catch (err) {
       throw new Error(`Failed to create interactive tmux session: ${err}`);
     }

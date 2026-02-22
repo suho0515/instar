@@ -24,6 +24,8 @@ import type { QuotaTracker } from '../monitoring/QuotaTracker.js';
 import type { TelegraphService } from '../publishing/TelegraphService.js';
 import type { PrivateViewer } from '../publishing/PrivateViewer.js';
 import type { TunnelManager } from '../tunnel/TunnelManager.js';
+import type { EvolutionManager } from '../core/EvolutionManager.js';
+import type { EvolutionStatus, EvolutionType, GapCategory } from '../core/types.js';
 
 export interface RouteContext {
   config: InstarConfig;
@@ -39,6 +41,7 @@ export interface RouteContext {
   publisher: TelegraphService | null;
   viewer: PrivateViewer | null;
   tunnel: TunnelManager | null;
+  evolution: EvolutionManager | null;
   startTime: Date;
 }
 
@@ -1535,6 +1538,224 @@ export function createRoutes(ctx: RouteContext): Router {
     } else {
       res.status(503).json({ error: 'No message routing available' });
     }
+  });
+
+  // ── Evolution System ───────────────────────────────────────────
+
+  // Dashboard — overview of all evolution subsystems
+  router.get('/evolution', (_req, res) => {
+    if (!ctx.evolution) {
+      res.json({ enabled: false });
+      return;
+    }
+    res.json({ enabled: true, ...ctx.evolution.getDashboard() });
+  });
+
+  // Evolution proposals
+  router.get('/evolution/proposals', (req, res) => {
+    if (!ctx.evolution) { res.json({ proposals: [] }); return; }
+    const status = req.query.status as EvolutionStatus | undefined;
+    const type = req.query.type as EvolutionType | undefined;
+    res.json({ proposals: ctx.evolution.listProposals({ status, type }) });
+  });
+
+  router.post('/evolution/proposals', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { title, source, description, type, impact, effort, proposedBy, tags } = req.body;
+    if (!title || typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: '"title" must be a string under 500 characters' });
+      return;
+    }
+    if (!description || typeof description !== 'string' || description.length > 10_000) {
+      res.status(400).json({ error: '"description" must be a string under 10KB' });
+      return;
+    }
+    const validTypes = ['capability', 'infrastructure', 'voice', 'workflow', 'philosophy', 'integration', 'performance'];
+    if (type && !validTypes.includes(type)) {
+      res.status(400).json({ error: `"type" must be one of: ${validTypes.join(', ')}` });
+      return;
+    }
+    const proposal = ctx.evolution.addProposal({
+      title, source: source || 'api', description,
+      type: type || 'capability', impact, effort, proposedBy, tags,
+    });
+    res.status(201).json(proposal);
+  });
+
+  router.patch('/evolution/proposals/:id', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { status, resolution } = req.body;
+    const validStatuses = ['proposed', 'approved', 'in_progress', 'implemented', 'rejected', 'deferred'];
+    if (!status || !validStatuses.includes(status)) {
+      res.status(400).json({ error: `"status" must be one of: ${validStatuses.join(', ')}` });
+      return;
+    }
+    const success = ctx.evolution.updateProposalStatus(req.params.id, status, resolution);
+    if (!success) {
+      res.status(404).json({ error: 'Proposal not found' });
+      return;
+    }
+    res.json({ ok: true, id: req.params.id, status });
+  });
+
+  // Learning registry
+  router.get('/evolution/learnings', (req, res) => {
+    if (!ctx.evolution) { res.json({ learnings: [] }); return; }
+    const category = req.query.category as string | undefined;
+    const applied = req.query.applied !== undefined ? req.query.applied === 'true' : undefined;
+    res.json({ learnings: ctx.evolution.listLearnings({ category, applied }) });
+  });
+
+  router.post('/evolution/learnings', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { title, category, description, source, tags, evolutionRelevance } = req.body;
+    if (!title || typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: '"title" must be a string under 500 characters' });
+      return;
+    }
+    if (!description || typeof description !== 'string') {
+      res.status(400).json({ error: '"description" is required' });
+      return;
+    }
+    const learning = ctx.evolution.addLearning({
+      title, category: category || 'general', description,
+      source: source || { discoveredAt: new Date().toISOString() },
+      tags, evolutionRelevance,
+    });
+    res.status(201).json(learning);
+  });
+
+  router.patch('/evolution/learnings/:id/apply', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { appliedTo } = req.body;
+    if (!appliedTo || typeof appliedTo !== 'string') {
+      res.status(400).json({ error: '"appliedTo" is required' });
+      return;
+    }
+    const success = ctx.evolution.markLearningApplied(req.params.id, appliedTo);
+    if (!success) {
+      res.status(404).json({ error: 'Learning not found' });
+      return;
+    }
+    res.json({ ok: true, id: req.params.id, appliedTo });
+  });
+
+  // Capability gaps
+  router.get('/evolution/gaps', (req, res) => {
+    if (!ctx.evolution) { res.json({ gaps: [] }); return; }
+    const severity = req.query.severity as string | undefined;
+    const category = req.query.category as GapCategory | undefined;
+    const status = req.query.status as string | undefined;
+    res.json({ gaps: ctx.evolution.listGaps({ severity, category, status }) });
+  });
+
+  router.post('/evolution/gaps', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { title, category, severity, description, context, platform, session, currentState, proposedSolution } = req.body;
+    if (!title || typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: '"title" must be a string under 500 characters' });
+      return;
+    }
+    if (!description || typeof description !== 'string') {
+      res.status(400).json({ error: '"description" is required' });
+      return;
+    }
+    const validSeverities = ['critical', 'high', 'medium', 'low'];
+    if (severity && !validSeverities.includes(severity)) {
+      res.status(400).json({ error: `"severity" must be one of: ${validSeverities.join(', ')}` });
+      return;
+    }
+    const gap = ctx.evolution.addGap({
+      title, category: category || 'custom', severity: severity || 'medium',
+      description, context: context || '', platform, session,
+      currentState, proposedSolution,
+    });
+    res.status(201).json(gap);
+  });
+
+  router.patch('/evolution/gaps/:id/address', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { resolution } = req.body;
+    if (!resolution || typeof resolution !== 'string') {
+      res.status(400).json({ error: '"resolution" is required' });
+      return;
+    }
+    const success = ctx.evolution.addressGap(req.params.id, resolution);
+    if (!success) {
+      res.status(404).json({ error: 'Gap not found' });
+      return;
+    }
+    res.json({ ok: true, id: req.params.id, status: 'addressed' });
+  });
+
+  // Action queue
+  router.get('/evolution/actions', (req, res) => {
+    if (!ctx.evolution) { res.json({ actions: [] }); return; }
+    const status = req.query.status as 'pending' | 'in_progress' | 'completed' | 'cancelled' | undefined;
+    const priority = req.query.priority as string | undefined;
+    res.json({ actions: ctx.evolution.listActions({ status, priority }) });
+  });
+
+  router.get('/evolution/actions/overdue', (_req, res) => {
+    if (!ctx.evolution) { res.json({ overdue: [] }); return; }
+    res.json({ overdue: ctx.evolution.getOverdueActions() });
+  });
+
+  router.post('/evolution/actions', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { title, description, priority, commitTo, dueBy, source, tags } = req.body;
+    if (!title || typeof title !== 'string' || title.length > 500) {
+      res.status(400).json({ error: '"title" must be a string under 500 characters' });
+      return;
+    }
+    if (!description || typeof description !== 'string') {
+      res.status(400).json({ error: '"description" is required' });
+      return;
+    }
+    const action = ctx.evolution.addAction({
+      title, description, priority, commitTo, dueBy, source, tags,
+    });
+    res.status(201).json(action);
+  });
+
+  router.patch('/evolution/actions/:id', (req, res) => {
+    if (!ctx.evolution) {
+      res.status(503).json({ error: 'Evolution system not configured' });
+      return;
+    }
+    const { status, resolution } = req.body;
+    const validStatuses = ['pending', 'in_progress', 'completed', 'cancelled'];
+    if (status && !validStatuses.includes(status)) {
+      res.status(400).json({ error: `"status" must be one of: ${validStatuses.join(', ')}` });
+      return;
+    }
+    const success = ctx.evolution.updateAction(req.params.id, { status, resolution });
+    if (!success) {
+      res.status(404).json({ error: 'Action not found' });
+      return;
+    }
+    res.json({ ok: true, id: req.params.id, status });
   });
 
   return router;

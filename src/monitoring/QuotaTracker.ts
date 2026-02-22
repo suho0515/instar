@@ -79,39 +79,77 @@ export class QuotaTracker {
   /**
    * Determine if a job at the given priority should run based on current quota.
    *
-   * Threshold logic:
-   * - Below normal (e.g. 50%): all jobs run
-   * - Above normal but below elevated (e.g. 60%): high+ only
-   * - Above elevated but below critical (e.g. 80%): critical only
-   * - Above critical (e.g. 95%): no jobs
+   * Checks BOTH weekly usage AND 5-hour rate limit:
+   * - 5-hour >= 95%: block ALL spawns (sessions will immediately fail)
+   * - 5-hour >= 80%: only critical priority
+   * - Weekly >= shutdown (e.g. 95%): no jobs
+   * - Weekly >= critical (e.g. 80%): critical only
+   * - Weekly >= elevated (e.g. 60%): high+ only
+   * - Weekly >= normal (e.g. 50%): medium+ only
    *
    * If quota data is unavailable or stale, defaults to allowing all jobs
    * (fail-open — better to run than to silently stop).
    */
   canRunJob(priority: JobPriority): boolean {
-    const state = this.getState();
-    if (!state) return true; // No data → fail open
+    const result = this.shouldSpawnSession(priority);
+    return result.allowed;
+  }
 
+  /**
+   * Check if a session should be spawned at the given priority.
+   * Returns a structured result with reason — useful for logging and notifications.
+   *
+   * Checks both weekly AND 5-hour rate limits.
+   */
+  shouldSpawnSession(priority?: JobPriority): { allowed: boolean; reason: string } {
+    const state = this.getState();
+    if (!state) return { allowed: true, reason: 'No quota data — fail open' };
+
+    // Check 5-hour rate limit first — these cause immediate session failures
+    const fiveHour = state.fiveHourPercent;
+    if (typeof fiveHour === 'number' && isFinite(fiveHour)) {
+      if (fiveHour >= 95) {
+        return { allowed: false, reason: `5-hour rate limit at ${fiveHour}% — sessions will fail immediately` };
+      }
+      if (fiveHour >= 80 && priority && priority !== 'critical') {
+        return { allowed: false, reason: `5-hour rate limit at ${fiveHour}% — only critical priority allowed` };
+      }
+    }
+
+    // Check weekly usage
     const rawUsage = state.usagePercent;
-    if (typeof rawUsage !== 'number' || !isFinite(rawUsage)) return true; // Bad data → fail open
+    if (typeof rawUsage !== 'number' || !isFinite(rawUsage)) {
+      return { allowed: true, reason: 'Invalid weekly data — fail open' };
+    }
     const usage = Math.max(0, Math.min(100, rawUsage));
     const { normal, elevated, critical, shutdown } = this.config.thresholds;
 
-    if (usage >= shutdown) return false; // Nothing runs
+    if (usage >= shutdown) {
+      return { allowed: false, reason: `Weekly quota at ${usage}% — all jobs stopped` };
+    }
 
     if (usage >= critical) {
-      return priority === 'critical';
+      const ok = !priority || priority === 'critical';
+      return ok
+        ? { allowed: true, reason: `Weekly at ${usage}% — critical only` }
+        : { allowed: false, reason: `Weekly quota at ${usage}% — only critical priority runs` };
     }
 
     if (usage >= elevated) {
-      return priority === 'critical' || priority === 'high';
+      const ok = !priority || priority === 'critical' || priority === 'high';
+      return ok
+        ? { allowed: true, reason: `Weekly at ${usage}% — high+ only` }
+        : { allowed: false, reason: `Weekly quota at ${usage}% — only high+ priority runs` };
     }
 
     if (usage >= normal) {
-      return priority !== 'low';
+      const ok = !priority || priority !== 'low';
+      return ok
+        ? { allowed: true, reason: `Weekly at ${usage}% — medium+ only` }
+        : { allowed: false, reason: `Weekly quota at ${usage}% — low priority paused` };
     }
 
-    return true; // Below normal — everything runs
+    return { allowed: true, reason: 'Quota normal' };
   }
 
   /**
@@ -146,6 +184,10 @@ export class QuotaTracker {
     const state = this.getState();
     if (!state) return 'normal';
 
+    // 5-hour at 95%+ is always 'stop' regardless of weekly
+    if (typeof state.fiveHourPercent === 'number' && state.fiveHourPercent >= 95) return 'stop';
+    if (typeof state.fiveHourPercent === 'number' && state.fiveHourPercent >= 80) return 'critical';
+
     const usage = state.usagePercent;
     const { normal, elevated, critical, shutdown } = this.config.thresholds;
 
@@ -155,4 +197,75 @@ export class QuotaTracker {
     if (usage >= normal) return 'reduce';
     return 'normal';
   }
+
+  /**
+   * Fetch quota status from a remote API (e.g., Dawn's /api/instar/quota).
+   * If the remote says canProceed=false, updates local state accordingly.
+   *
+   * This allows Instar agents to check a central quota authority before
+   * spawning sessions, preventing wasted attempts on exhausted machines.
+   *
+   * @param url - Full URL to the quota API (e.g., "https://dawn.bot-me.ai/api/instar/quota")
+   * @param apiKey - Authorization token (sent as Bearer header)
+   * @param timeoutMs - Request timeout (default 5000ms)
+   * @returns Remote quota status, or null on failure (fail-open)
+   */
+  async fetchRemoteQuota(
+    url: string,
+    apiKey: string,
+    timeoutMs: number = 5000,
+  ): Promise<RemoteQuotaResult | null> {
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Accept': 'application/json',
+        },
+        signal: controller.signal,
+      });
+      clearTimeout(timer);
+
+      if (!response.ok) {
+        console.warn(`[quota] Remote quota API returned ${response.status}`);
+        return null;
+      }
+
+      const data = await response.json() as RemoteQuotaResult;
+
+      // If remote says blocked, update local state to reflect it
+      if (!data.canProceed && typeof data.weeklyPercent === 'number') {
+        const state = this.getState() ?? {
+          usagePercent: 0,
+          lastUpdated: new Date().toISOString(),
+        };
+        state.usagePercent = data.weeklyPercent;
+        if (typeof data.fiveHourPercent === 'number') {
+          state.fiveHourPercent = data.fiveHourPercent;
+        }
+        state.lastUpdated = new Date().toISOString();
+        this.cachedState = state;
+      }
+
+      return data;
+    } catch (err) {
+      // Network failure, timeout, etc. — fail open
+      console.warn(`[quota] Remote quota check failed: ${err instanceof Error ? err.message : err}`);
+      return null;
+    }
+  }
+}
+
+/** Result from a remote quota API (e.g., /api/instar/quota) */
+export interface RemoteQuotaResult {
+  canProceed: boolean;
+  blockReason?: string | null;
+  activeAccount?: string | null;
+  weeklyPercent: number;
+  fiveHourPercent?: number | null;
+  canRunPriority?: string;
+  recommendation?: string | null;
+  stale?: boolean;
 }

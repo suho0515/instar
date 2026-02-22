@@ -8,7 +8,10 @@
 export { SessionManager } from './core/SessionManager.js';
 export { StateManager } from './core/StateManager.js';
 export { RelationshipManager } from './core/RelationshipManager.js';
+export { ClaudeCliIntelligenceProvider } from './core/ClaudeCliIntelligenceProvider.js';
+export { AnthropicIntelligenceProvider } from './core/AnthropicIntelligenceProvider.js';
 export { FeedbackManager } from './core/FeedbackManager.js';
+export { EvolutionManager } from './core/EvolutionManager.js';
 export { DispatchManager } from './core/DispatchManager.js';
 export { UpdateChecker } from './core/UpdateChecker.js';
 export type { RollbackResult, UpdateCheckerConfig } from './core/UpdateChecker.js';
@@ -33,6 +36,8 @@ export { corsMiddleware, authMiddleware, rateLimiter, requestTimeout, errorHandl
 // Monitoring
 export { HealthChecker } from './monitoring/HealthChecker.js';
 export { QuotaTracker } from './monitoring/QuotaTracker.js';
+export type { RemoteQuotaResult } from './monitoring/QuotaTracker.js';
+export { classifySessionDeath } from './monitoring/QuotaExhaustionDetector.js';
 export { SleepWakeDetector } from './core/SleepWakeDetector.js';
 
 // Messaging
@@ -69,6 +74,8 @@ export type {
   MessagingAdapterConfig,
   QuotaState,
   AccountQuota,
+  SessionDeathCause,
+  SessionDeathClassification,
   HealthStatus,
   ComponentHealth,
   ActivityEvent,
@@ -89,5 +96,16 @@ export type {
   SkipEvent,
   WorkloadSignal,
   AutoTuneState,
+  IntelligenceProvider,
+  IntelligenceOptions,
+  EvolutionProposal,
+  EvolutionType,
+  EvolutionStatus,
+  LearningEntry,
+  LearningSource,
+  CapabilityGap,
+  GapCategory,
+  ActionItem,
+  EvolutionManagerConfig,
 } from './core/types.js';
 export type { Dispatch, DispatchCheckResult, DispatchEvaluation, EvaluationDecision, DispatchFeedback, DispatchStats } from './core/DispatchManager.js';

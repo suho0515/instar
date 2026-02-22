@@ -225,8 +225,10 @@ export interface MessagingAdapter {
 // ── Monitoring ──────────────────────────────────────────────────────
 
 export interface QuotaState {
-  /** Current usage percentage (0-100) */
+  /** Current weekly usage percentage (0-100) */
   usagePercent: number;
+  /** 5-hour rolling rate limit utilization (0-100), if available */
+  fiveHourPercent?: number;
   /** When usage data was last updated */
   lastUpdated: string;
   /** Per-account breakdown if multi-account */
@@ -238,8 +240,25 @@ export interface QuotaState {
 export interface AccountQuota {
   email: string;
   usagePercent: number;
+  /** 5-hour rolling rate limit utilization for this account */
+  fiveHourPercent?: number;
   isActive: boolean;
   lastUpdated: string;
+}
+
+/** Cause of a session's death, as classified by QuotaExhaustionDetector */
+export type SessionDeathCause =
+  | 'quota_exhaustion'   // Ran into rate limit or quota cap
+  | 'context_exhausted'  // Context window full
+  | 'crash'              // Unexpected error/crash
+  | 'timeout'            // Killed by session timeout
+  | 'normal_exit'        // Completed normally
+  | 'unknown';           // Could not determine
+
+export interface SessionDeathClassification {
+  cause: SessionDeathCause;
+  confidence: 'high' | 'medium' | 'low';
+  detail: string;
 }
 
 export interface HealthStatus {
@@ -252,6 +271,42 @@ export interface ComponentHealth {
   status: 'healthy' | 'degraded' | 'unhealthy';
   message?: string;
   lastCheck: string;
+}
+
+// ── Intelligence Provider ───────────────────────────────────────────
+
+/**
+ * Optional LLM intelligence for judgment calls.
+ *
+ * Any module that makes decisions beyond simple lookups can declare
+ * `intelligence?: IntelligenceProvider` in its config. This is the
+ * structural pattern that prevents defaulting to brittle heuristics.
+ *
+ * The contract: heuristics narrow candidates, the provider decides.
+ * When no provider is configured, modules fall back to heuristic-only
+ * behavior — functional but less accurate.
+ *
+ * Born from the "heuristics are pre-filters, not decision-makers" lesson.
+ */
+export interface IntelligenceProvider {
+  /**
+   * Ask the LLM to evaluate a judgment call.
+   * Returns a structured response that the caller parses.
+   *
+   * @param prompt - The judgment to make, with full context
+   * @param options - Optional configuration for this call
+   * @returns The LLM's response text
+   */
+  evaluate(prompt: string, options?: IntelligenceOptions): Promise<string>;
+}
+
+export interface IntelligenceOptions {
+  /** Model tier preference (implementations may override based on availability) */
+  model?: 'fast' | 'balanced' | 'capable';
+  /** Maximum tokens for the response */
+  maxTokens?: number;
+  /** Temperature (0-1, lower = more deterministic) */
+  temperature?: number;
 }
 
 // ── Relationship Tracking ───────────────────────────────────────────
@@ -279,6 +334,10 @@ export interface RelationshipRecord {
   significance: number;
   /** Brief summary of the relationship arc */
   arcSummary?: string;
+  /** Relationship category (e.g., 'collaborator', 'community_member', 'kindred_ai') */
+  category?: string;
+  /** Freeform tags for flexible categorization */
+  tags?: string[];
   /** Per-interaction log (last N interactions, kept compact) */
   recentInteractions: InteractionSummary[];
 }
@@ -299,6 +358,13 @@ export interface RelationshipManagerConfig {
   relationshipsDir: string;
   /** Maximum recent interactions to keep per relationship */
   maxRecentInteractions: number;
+  /**
+   * Optional LLM intelligence for judgment calls (identity resolution,
+   * duplicate detection, merge decisions). When absent, falls back to
+   * string-based heuristics. When present, heuristics narrow candidates
+   * and the LLM makes the final call.
+   */
+  intelligence?: IntelligenceProvider;
 }
 
 // ── Skip Ledger & Auto-Tune ─────────────────────────────────────────
@@ -419,6 +485,204 @@ export interface UpdateResult {
   healthCheck?: 'healthy' | 'degraded' | 'unhealthy' | 'skipped';
 }
 
+// ── Evolution System ────────────────────────────────────────────────
+
+/**
+ * Evolution proposal — a staged self-improvement suggestion.
+ *
+ * Unlike direct self-modification (editing jobs.json, creating skills),
+ * proposals are staged for review before implementation. This gives
+ * the agent (and optionally the user) a chance to evaluate whether
+ * the change is wise before it takes effect.
+ *
+ * Born from Portal's EVOLUTION_QUEUE pattern (100+ completed proposals).
+ */
+export interface EvolutionProposal {
+  /** Unique ID (e.g., "EVO-001") */
+  id: string;
+  /** Short title describing the proposed change */
+  title: string;
+  /** Where this proposal came from */
+  source: string;
+  /** Full description of what to change and why */
+  description: string;
+  /** Category of change */
+  type: EvolutionType;
+  /** Expected impact if implemented */
+  impact: 'high' | 'medium' | 'low';
+  /** Estimated effort to implement */
+  effort: 'high' | 'medium' | 'low';
+  /** Current status */
+  status: EvolutionStatus;
+  /** Who or what proposed this */
+  proposedBy: string;
+  /** When proposed */
+  proposedAt: string;
+  /** When implemented (if status is 'implemented') */
+  implementedAt?: string;
+  /** Implementation notes */
+  resolution?: string;
+  /** Tags for categorization */
+  tags?: string[];
+}
+
+export type EvolutionType =
+  | 'capability'     // New ability the agent should have
+  | 'infrastructure' // Change to jobs, hooks, scripts
+  | 'voice'          // Communication style improvement
+  | 'workflow'       // Process/pipeline improvement
+  | 'philosophy'     // Deeper understanding or principle
+  | 'integration'    // New platform or service connection
+  | 'performance';   // Efficiency improvement
+
+export type EvolutionStatus =
+  | 'proposed'       // Identified but not yet evaluated
+  | 'approved'       // Evaluated and approved for implementation
+  | 'in_progress'    // Currently being implemented
+  | 'implemented'    // Done
+  | 'rejected'       // Evaluated and decided against
+  | 'deferred';      // Good idea but not now
+
+/**
+ * Structured learning entry — an insight captured from interaction.
+ *
+ * Unlike freeform MEMORY.md entries, these are structured, searchable,
+ * cross-referenceable, and trackable (applied vs unapplied).
+ */
+export interface LearningEntry {
+  /** Unique ID (e.g., "LRN-001") */
+  id: string;
+  /** Short title */
+  title: string;
+  /** Category of learning */
+  category: string;
+  /** Full description of the insight */
+  description: string;
+  /** Where this learning came from */
+  source: LearningSource;
+  /** Tags for cross-referencing */
+  tags: string[];
+  /** Has this learning been applied to improve the agent? */
+  applied: boolean;
+  /** What it was applied to (e.g., "EVO-003", "MEMORY.md") */
+  appliedTo?: string;
+  /** How relevant this is to agent evolution (freeform) */
+  evolutionRelevance?: string;
+}
+
+export interface LearningSource {
+  /** Who/what taught this */
+  agent?: string;
+  /** Platform where discovered */
+  platform?: string;
+  /** Content reference (post ID, thread ID, etc.) */
+  contentId?: string;
+  /** When discovered */
+  discoveredAt: string;
+  /** Session that captured this */
+  session?: string;
+}
+
+/**
+ * Capability gap — something the agent can't do but should.
+ *
+ * Extends self-diagnosis from "is my infrastructure broken?" to
+ * "is my infrastructure sufficient?"
+ */
+export interface CapabilityGap {
+  /** Unique ID (e.g., "GAP-001") */
+  id: string;
+  /** Short title */
+  title: string;
+  /** Category of gap */
+  category: GapCategory;
+  /** How critical this gap is */
+  severity: 'critical' | 'high' | 'medium' | 'low';
+  /** Full description of the gap */
+  description: string;
+  /** How the gap was discovered */
+  discoveredFrom: {
+    context: string;
+    platform?: string;
+    discoveredAt: string;
+    session?: string;
+  };
+  /** What the agent currently does (or doesn't) */
+  currentState: string;
+  /** What should be built to close the gap */
+  proposedSolution?: string;
+  /** Current status */
+  status: 'identified' | 'addressed' | 'wont_fix';
+  /** How it was resolved */
+  resolution?: string;
+  /** When addressed */
+  addressedAt?: string;
+}
+
+export type GapCategory =
+  | 'skill'          // Missing skill or capability
+  | 'knowledge'      // Missing knowledge or context
+  | 'integration'    // Missing platform or service connection
+  | 'workflow'       // Inefficient or missing workflow
+  | 'communication'  // Communication limitation
+  | 'monitoring'     // Missing observability
+  | 'custom';        // Agent-defined category
+
+/**
+ * Action/commitment item — something the agent promised to do.
+ *
+ * Tracks commitments made during interactions so they don't get lost.
+ * Stale commitments are escalated automatically.
+ */
+export interface ActionItem {
+  /** Unique ID (e.g., "ACT-001") */
+  id: string;
+  /** What was committed */
+  title: string;
+  /** Full description */
+  description: string;
+  /** Priority level */
+  priority: 'critical' | 'high' | 'medium' | 'low';
+  /** Current status */
+  status: 'pending' | 'in_progress' | 'completed' | 'cancelled';
+  /** Who this commitment was made to */
+  commitTo?: string;
+  /** When this was created */
+  createdAt: string;
+  /** When this should be done by (ISO date) */
+  dueBy?: string;
+  /** When completed */
+  completedAt?: string;
+  /** How it was resolved */
+  resolution?: string;
+  /** Where this commitment was made */
+  source?: {
+    platform?: string;
+    contentId?: string;
+    context?: string;
+  };
+  /** Tags for categorization */
+  tags?: string[];
+}
+
+/**
+ * Evolution manager configuration.
+ */
+export interface EvolutionManagerConfig {
+  /** Directory for evolution state files */
+  stateDir: string;
+  /** Whether auto-implementation of approved proposals is enabled */
+  autoImplement?: boolean;
+  /** Maximum proposals before oldest get archived */
+  maxProposals?: number;
+  /** Maximum learning entries before oldest get archived */
+  maxLearnings?: number;
+  /** Maximum gaps before oldest addressed get archived */
+  maxGaps?: number;
+  /** Maximum action items before oldest completed get archived */
+  maxActions?: number;
+}
+
 // ── Server Configuration ────────────────────────────────────────────
 
 export interface InstarConfig {
@@ -462,6 +726,8 @@ export interface InstarConfig {
   version?: string;
   /** Safety configuration for autonomous operation */
   safety?: SafetyConfig;
+  /** Evolution system configuration */
+  evolution?: EvolutionManagerConfig;
 }
 
 /**

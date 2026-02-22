@@ -79,8 +79,23 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
   console.log(pc.dim('  scoped access — not permission dialogs. See: README.md > Security Model'));
   console.log();
 
+  // Detect git context to pass to the conversational wizard
+  const projectDir = process.cwd();
+  let gitContext = '';
+  try {
+    const gitRoot = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: projectDir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    const repoName = path.basename(gitRoot);
+    gitContext = ` This directory is inside a git repository "${repoName}" at ${gitRoot}.`;
+  } catch {
+    gitContext = ' This directory is NOT inside a git repository.';
+  }
+
   // Launch Claude Code from the instar package root (where .claude/skills/ lives)
-  // and pass the target project directory in the prompt.
+  // and pass the target project directory + git context in the prompt.
   //
   // --dangerously-skip-permissions is required here because the setup wizard
   // runs in instar's OWN package directory (instarRoot), not the user's
@@ -88,10 +103,9 @@ export async function runSetup(opts?: { classic?: boolean }): Promise<void> {
   // user's project directory, which breaks the interactive flow. The wizard
   // only writes to well-defined locations (.instar/, .claude/, CLAUDE.md).
   const instarRoot = findInstarRoot();
-  const projectDir = process.cwd();
   const child = spawn(claudePath, [
     '--dangerously-skip-permissions',
-    `/setup-wizard The project to set up is at: ${projectDir}`,
+    `/setup-wizard The project to set up is at: ${projectDir}.${gitContext}`,
   ], {
     cwd: instarRoot,
     stdio: 'inherit',
@@ -137,13 +151,29 @@ function findInstarRoot(): string {
 }
 
 /**
+ * Detect whether the current directory is inside a git repository.
+ */
+function detectGitRepo(dir: string): { isRepo: boolean; repoRoot?: string; repoName?: string } {
+  try {
+    const root = execFileSync('git', ['rev-parse', '--show-toplevel'], {
+      cwd: dir,
+      encoding: 'utf-8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    }).trim();
+    return { isRepo: true, repoRoot: root, repoName: path.basename(root) };
+  } catch {
+    return { isRepo: false };
+  }
+}
+
+/**
  * Classic inquirer-based setup wizard.
  * The original interactive setup experience.
  */
 async function runClassicSetup(): Promise<void> {
   console.log();
   console.log(pc.bold('  Welcome to Instar'));
-  console.log(pc.dim('  Persistent agent infrastructure for any Claude Code project'));
+  console.log(pc.dim('  Turn Claude Code into a persistent agent you talk to through Telegram.'));
   console.log();
 
   // ── Step 0: Check and install prerequisites ─────────────────────
@@ -157,23 +187,64 @@ async function runClassicSetup(): Promise<void> {
   // Use a scoped name to avoid shadowing the outer runSetup's claudePath
   const claudePath = prereqs.results.find(r => r.name === 'Claude CLI')!.path!;
 
-  // ── Step 1: Project ──────────────────────────────────────────────
+  // ── Step 1: Detect context and determine mode ─────────────────
 
   const detectedDir = process.cwd();
-  const detectedName = path.basename(detectedDir);
+  const gitInfo = detectGitRepo(detectedDir);
 
-  const projectDir = detectedDir; // Always use cwd
+  let projectDir: string;
+  let projectName: string;
+  let isProjectAgent: boolean;
 
-  const projectName = await input({
-    message: 'Project name',
-    default: detectedName,
-  });
+  if (gitInfo.isRepo) {
+    // Inside a git repository — suggest project agent
+    console.log(`  ${pc.green('✓')} Detected git repository: ${pc.cyan(gitInfo.repoName!)}`);
+    console.log(pc.dim(`    ${gitInfo.repoRoot}`));
+    console.log();
+    console.log(pc.dim('  Your agent will live alongside this project — monitoring, building,'));
+    console.log(pc.dim('  and maintaining it. You talk to it through Telegram.'));
+    console.log();
+
+    const useThisRepo = await confirm({
+      message: `Set up an agent for ${gitInfo.repoName}?`,
+      default: true,
+    });
+
+    if (useThisRepo) {
+      projectDir = gitInfo.repoRoot!;
+      projectName = await input({
+        message: 'Agent name',
+        default: gitInfo.repoName!,
+      });
+      isProjectAgent = true;
+    } else {
+      // They want a general agent instead
+      projectName = await input({
+        message: 'What should your agent be called?',
+        default: 'my-agent',
+      });
+      projectDir = detectedDir;
+      isProjectAgent = false;
+    }
+  } else {
+    // Not in a git repo — this is a general/personal agent
+    console.log(pc.dim('  No git repository detected — setting up a personal agent.'));
+    console.log(pc.dim('  A personal agent lives on your machine and you talk to it through Telegram.'));
+    console.log();
+
+    projectName = await input({
+      message: 'What should your agent be called?',
+      default: 'my-agent',
+    });
+    projectDir = detectedDir;
+    isProjectAgent = false;
+  }
 
   // Check if already initialized
   const stateDir = path.join(projectDir, '.instar');
   if (fs.existsSync(path.join(stateDir, 'config.json'))) {
     const overwrite = await confirm({
-      message: 'Agent kit already initialized here. Reconfigure?',
+      message: 'Agent already initialized here. Reconfigure?',
       default: false,
     });
     if (!overwrite) {
@@ -182,7 +253,21 @@ async function runClassicSetup(): Promise<void> {
     }
   }
 
-  // ── Step 2: Server port + sessions ─────────────────────────────
+  // ── Step 2: Telegram — the primary interface ───────────────────
+
+  console.log();
+  console.log(pc.bold('  Telegram — How You Talk to Your Agent'));
+  console.log();
+  console.log(pc.dim('  Once connected, you just talk — no commands, no terminal.'));
+  console.log(pc.dim('  Topic threads, message history, mobile access, proactive notifications.'));
+  if (!isProjectAgent) {
+    console.log();
+    console.log(pc.dim('  For a personal agent, Telegram IS the interface.'));
+  }
+  console.log();
+  const telegramConfig = await promptForTelegram();
+
+  // ── Step 3: Server config (sensible defaults) ──────────────────
 
   const port = await number({
     message: 'Server port',
@@ -201,16 +286,6 @@ async function runClassicSetup(): Promise<void> {
       return true;
     },
   }) ?? 3;
-
-  // ── Step 3: Telegram (BEFORE users, so we know context) ────────
-
-  console.log();
-  console.log(pc.bold('  Telegram — Where Your Agent Lives'));
-  console.log(pc.dim('  Telegram is where the real experience begins.'));
-  console.log(pc.dim('  Once connected, you just talk — no commands, no terminal.'));
-  console.log(pc.dim('  Topic threads, message history, mobile access, proactive notifications.'));
-  console.log();
-  const telegramConfig = await promptForTelegram();
 
   // ── Step 4: User setup ─────────────────────────────────────────
 

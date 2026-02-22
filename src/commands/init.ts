@@ -1417,6 +1417,15 @@ fi
 # For startup/resume/clear — output a compact orientation
 echo "=== SESSION START ==="
 
+# Telegram-spawned session awareness
+# When auto-created for a Telegram topic, prime the agent to respond immediately
+if [ -n "\$INSTAR_TELEGRAM_TOPIC" ]; then
+  echo ""
+  echo "This session was auto-spawned for Telegram topic \$INSTAR_TELEGRAM_TOPIC."
+  echo "A message from your user triggered this session and will arrive momentarily."
+  echo "IMMEDIATELY acknowledge it via your Telegram relay — they are waiting."
+fi
+
 # Identity summary (first 20 lines of AGENT.md — enough for name + role)
 if [ -f "$INSTAR_DIR/AGENT.md" ]; then
   echo ""
