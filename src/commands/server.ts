@@ -33,6 +33,9 @@ import { PrivateViewer } from '../publishing/PrivateViewer.js';
 import { TunnelManager } from '../tunnel/TunnelManager.js';
 import { EvolutionManager } from '../core/EvolutionManager.js';
 import { QuotaTracker } from '../monitoring/QuotaTracker.js';
+import { AccountSwitcher } from '../monitoring/AccountSwitcher.js';
+import { QuotaNotifier } from '../monitoring/QuotaNotifier.js';
+import { classifySessionDeath } from '../monitoring/QuotaExhaustionDetector.js';
 import type { Message } from '../core/types.js';
 
 interface StartOptions {
@@ -118,6 +121,9 @@ function wireTelegramCallbacks(
   telegram: TelegramAdapter,
   sessionManager: SessionManager,
   state: StateManager,
+  quotaTracker?: QuotaTracker,
+  accountSwitcher?: AccountSwitcher,
+  claudePath?: string,
 ): void {
   // /interrupt — send Escape key to a tmux session
   telegram.onInterruptSession = async (sessionName: string): Promise<boolean> => {
@@ -179,6 +185,169 @@ function wireTelegramCallbacks(
     }
     return false;
   };
+
+  // /switch-account — swap active Claude Code account
+  if (accountSwitcher) {
+    telegram.onSwitchAccountRequest = async (target: string, replyTopicId: number): Promise<void> => {
+      try {
+        const result = await accountSwitcher.switchAccount(target);
+        await telegram.sendToTopic(replyTopicId, result.message);
+      } catch (err) {
+        await telegram.sendToTopic(replyTopicId, `Account switch failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+  }
+
+  // /quota — show quota status
+  if (quotaTracker) {
+    telegram.onQuotaStatusRequest = async (replyTopicId: number): Promise<void> => {
+      try {
+        const quotaState = quotaTracker.getState();
+        if (!quotaState) {
+          await telegram.sendToTopic(replyTopicId, 'No quota data available.');
+          return;
+        }
+        const recommendation = quotaTracker.getRecommendation();
+        const lines = [
+          `Weekly: ${quotaState.usagePercent}%`,
+          quotaState.fiveHourPercent != null ? `5-Hour: ${quotaState.fiveHourPercent}%` : null,
+          `Recommendation: ${recommendation}`,
+          `Last updated: ${quotaState.lastUpdated}`,
+        ].filter(Boolean);
+
+        // Add account info if available
+        if (accountSwitcher) {
+          const statuses = accountSwitcher.getAccountStatuses();
+          if (statuses.length > 0) {
+            lines.push('', 'Accounts:');
+            for (const s of statuses) {
+              const marker = s.isActive ? '→ ' : '  ';
+              const stale = s.isStale ? ' (stale)' : '';
+              const expired = s.tokenExpired ? ' (token expired)' : '';
+              lines.push(`${marker}${s.name || s.email}: ${s.weeklyPercent}%${stale}${expired}`);
+            }
+          }
+        }
+
+        await telegram.sendToTopic(replyTopicId, lines.join('\n'));
+      } catch (err) {
+        await telegram.sendToTopic(replyTopicId, `Failed to get quota: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    };
+  }
+
+  // Classify session deaths for quota-aware stall detection
+  telegram.onClassifySessionDeath = async (sessionName: string): Promise<{ cause: string; detail: string } | null> => {
+    try {
+      const output = sessionManager.captureOutput(sessionName, 100);
+      if (!output) return null;
+
+      const quotaState = quotaTracker?.getState() ?? null;
+      const classification = classifySessionDeath(output, quotaState);
+      return { cause: classification.cause, detail: classification.detail };
+    } catch {
+      return null;
+    }
+  };
+
+  // /login — seamless OAuth login flow
+  telegram.onLoginRequest = async (email: string | null, replyTopicId: number): Promise<void> => {
+    const tmuxPath = detectTmuxPath();
+    if (!tmuxPath) {
+      await telegram.sendToTopic(replyTopicId, 'tmux not found — cannot run login flow.');
+      return;
+    }
+
+    const loginSession = 'instar-login-flow';
+
+    try {
+      // Kill any existing login session
+      try {
+        execFileSync(tmuxPath, ['kill-session', '-t', `=${loginSession}`], { stdio: 'ignore' });
+      } catch { /* not running */ }
+
+      // Start login command in tmux
+      const cliPath = claudePath || 'claude';
+      const loginCmd = email
+        ? `${cliPath} auth login --email "${email}"`
+        : `${cliPath} auth login`;
+
+      execFileSync(tmuxPath, ['new-session', '-d', '-s', loginSession, loginCmd], {
+        timeout: 10000,
+      });
+
+      await telegram.sendToTopic(replyTopicId, `Login flow started${email ? ` for ${email}` : ''}. Watching for OAuth URL...`);
+
+      // Poll for OAuth URL (up to 15 seconds)
+      let oauthUrl: string | null = null;
+      for (let i = 0; i < 30; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        try {
+          const output = sessionManager.captureOutput(loginSession, 50) || '';
+          const urlMatch = output.match(/https:\/\/[^\s]+auth[^\s]*/i)
+            || output.match(/https:\/\/[^\s]+login[^\s]*/i)
+            || output.match(/https:\/\/[^\s]+oauth[^\s]*/i)
+            || output.match(/https:\/\/console\.anthropic\.com[^\s]*/i);
+          if (urlMatch) {
+            oauthUrl = urlMatch[0];
+            break;
+          }
+        } catch { /* retry */ }
+      }
+
+      if (!oauthUrl) {
+        await telegram.sendToTopic(replyTopicId, 'Could not detect OAuth URL. Check the login session manually.');
+        return;
+      }
+
+      await telegram.sendToTopic(replyTopicId, `Open this URL to authenticate:\n\n${oauthUrl}\n\nI'll detect when you're done.`);
+
+      // Poll for auth completion (up to 5 minutes)
+      let authComplete = false;
+      for (let i = 0; i < 300; i++) {
+        await new Promise(r => setTimeout(r, 1000));
+        try {
+          const output = sessionManager.captureOutput(loginSession, 30) || '';
+          const lower = output.toLowerCase();
+
+          if (lower.includes('successfully') || lower.includes('authenticated') || lower.includes('logged in')) {
+            authComplete = true;
+            break;
+          }
+
+          // Detect "press Enter to continue" prompt
+          if (lower.includes('press enter') || lower.includes('press any key')) {
+            execFileSync(tmuxPath, ['send-keys', '-t', `=${loginSession}:`, 'Enter'], { timeout: 5000 });
+            await new Promise(r => setTimeout(r, 2000));
+
+            // Check if that completed it
+            const finalOutput = sessionManager.captureOutput(loginSession, 30) || '';
+            if (finalOutput.toLowerCase().includes('successfully') || finalOutput.toLowerCase().includes('authenticated')) {
+              authComplete = true;
+            }
+            break;
+          }
+        } catch { /* retry */ }
+      }
+
+      // Clean up
+      try {
+        execFileSync(tmuxPath, ['kill-session', '-t', `=${loginSession}`], { stdio: 'ignore' });
+      } catch { /* already ended */ }
+
+      if (authComplete) {
+        await telegram.sendToTopic(replyTopicId, 'Authentication successful! New sessions will use this account.');
+      } else {
+        await telegram.sendToTopic(replyTopicId, 'Login flow ended. Check `claude auth status` to verify.');
+      }
+    } catch (err) {
+      // Clean up on error
+      try {
+        execFileSync(tmuxPath, ['kill-session', '-t', `=${loginSession}`], { stdio: 'ignore' });
+      } catch { /* ignore */ }
+      await telegram.sendToTopic(replyTopicId, `Login failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  };
 }
 
 /**
@@ -188,6 +357,7 @@ function wireTelegramCallbacks(
 function wireTelegramRouting(
   telegram: TelegramAdapter,
   sessionManager: SessionManager,
+  quotaTracker?: QuotaTracker,
 ): void {
   telegram.onTopicMessage = (msg: Message) => {
     const topicId = (msg.metadata?.messageThreadId as number) ?? null;
@@ -234,11 +404,29 @@ function wireTelegramRouting(
         // Track for stall detection
         telegram.trackMessageInjection(topicId, targetSession, text);
       } else {
-        // Session died — respawn with thread history
-        telegram.sendToTopic(topicId, `🔄 Session restarting — message queued.`).catch(() => {});
-        respawnSessionForTopic(sessionManager, telegram, targetSession, topicId, text).catch(err => {
-          console.error(`[telegram→session] Respawn failed:`, err);
-        });
+        // Session died — check if it's a quota death before respawning
+        let isQuotaDeath = false;
+        try {
+          const output = sessionManager.captureOutput(targetSession, 100);
+          if (output) {
+            const quotaState = quotaTracker?.getState() ?? null;
+            const classification = classifySessionDeath(output, quotaState);
+            if (classification.cause === 'quota_exhaustion' && classification.confidence !== 'low') {
+              isQuotaDeath = true;
+              telegram.sendToTopic(topicId,
+                `🔴 Session died — quota limit reached.\n${classification.detail}\n\n` +
+                `Use /switch-account to switch, /login to add an account, or reply again to force restart.`
+              ).catch(() => {});
+            }
+          }
+        } catch { /* classification failed — fall through to respawn */ }
+
+        if (!isQuotaDeath) {
+          telegram.sendToTopic(topicId, `🔄 Session restarting — message queued.`).catch(() => {});
+          respawnSessionForTopic(sessionManager, telegram, targetSession, topicId, text).catch(err => {
+            console.error(`[telegram→session] Respawn failed:`, err);
+          });
+        }
       }
     } else {
       // No session mapped — auto-spawn one
@@ -482,9 +670,33 @@ export async function startServer(options: StartOptions): Promise<void> {
       await telegram.start();
       console.log(pc.green('  Telegram connected'));
 
+      // Set up account switcher (Keychain-based OAuth account swapping)
+      const accountSwitcher = new AccountSwitcher();
+
+      // Set up quota notifier (Telegram alerts on threshold crossings)
+      const quotaNotifier = new QuotaNotifier(config.stateDir);
+      const alertTopicId = state.get<number>('agent-attention-topic') ?? null;
+      quotaNotifier.configure(
+        async (topicId, text) => { await telegram!.sendToTopic(topicId, text); },
+        alertTopicId,
+      );
+
+      // Periodic quota notification check (every 10 minutes)
+      if (quotaTracker) {
+        setInterval(() => {
+          const quotaState = quotaTracker!.getState();
+          if (quotaState) {
+            quotaNotifier.checkAndNotify(quotaState).catch(err => {
+              console.error('[QuotaNotifier] Check failed:', err);
+            });
+          }
+        }, 10 * 60 * 1000);
+        console.log(pc.green('  Quota notifications enabled'));
+      }
+
       // Wire up topic → session routing and session management callbacks
-      wireTelegramRouting(telegram, sessionManager);
-      wireTelegramCallbacks(telegram, sessionManager, state);
+      wireTelegramRouting(telegram, sessionManager, quotaTracker);
+      wireTelegramCallbacks(telegram, sessionManager, state, quotaTracker, accountSwitcher, config.sessions.claudePath);
       console.log(pc.green('  Telegram message routing active'));
 
       if (scheduler) {

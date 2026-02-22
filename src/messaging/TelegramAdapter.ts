@@ -172,6 +172,12 @@ export class TelegramAdapter implements MessagingAdapter {
   // Attention queue callbacks
   public onAttentionStatusChange: ((itemId: string, status: string) => Promise<void>) | null = null;
 
+  // Quota management callbacks
+  public onSwitchAccountRequest: ((target: string, replyTopicId: number) => Promise<void>) | null = null;
+  public onQuotaStatusRequest: ((replyTopicId: number) => Promise<void>) | null = null;
+  public onLoginRequest: ((email: string | null, replyTopicId: number) => Promise<void>) | null = null;
+  public onClassifySessionDeath: ((sessionName: string) => Promise<{ cause: string; detail: string } | null>) | null = null;
+
   constructor(config: TelegramConfig, stateDir: string) {
     this.config = config;
     this.stateDir = stateDir;
@@ -529,14 +535,37 @@ export class TelegramAdapter implements MessagingAdapter {
 
       pending.alerted = true;
 
-      const status = alive ? 'running but not responding' : 'no longer running';
-      const minutesAgo = Math.round((now - pending.injectedAt) / 60000);
-      this.sendToTopic(
-        pending.topicId,
-        `\u26a0\ufe0f No response after ${minutesAgo} minutes. Session "${pending.sessionName}" is ${status}.\n\nMessage: "${pending.messageText}..."${alive ? '\n\nTry /interrupt to unstick, or /restart to respawn.' : '\n\nSend another message to auto-respawn.'}`,
-      ).catch(err => {
-        console.error(`[telegram] Stall alert failed: ${err}`);
-      });
+      // Classify the stall — check if it's a quota death
+      let isQuotaDeath = false;
+      if (this.onClassifySessionDeath) {
+        try {
+          const classification = await this.onClassifySessionDeath(pending.sessionName);
+          if (classification && classification.cause === 'quota_exhaustion') {
+            isQuotaDeath = true;
+            this.sendToTopic(
+              pending.topicId,
+              `\ud83d\udd34 Session hit quota limit \u2014 "${pending.sessionName}" can't respond.\n\n` +
+              `${classification.detail}\n\n` +
+              `Use /quota to check accounts, /switch-account to switch, or /login to authenticate a new account.`,
+            ).catch(err => {
+              console.error(`[telegram] Quota stall alert failed: ${err}`);
+            });
+          }
+        } catch {
+          // Classification failed — fall through to generic
+        }
+      }
+
+      if (!isQuotaDeath) {
+        const status = alive ? 'running but not responding' : 'no longer running';
+        const minutesAgo = Math.round((now - pending.injectedAt) / 60000);
+        this.sendToTopic(
+          pending.topicId,
+          `\u26a0\ufe0f No response after ${minutesAgo} minutes. Session "${pending.sessionName}" is ${status}.\n\nMessage: "${pending.messageText}..."${alive ? '\n\nTry /interrupt to unstick, or /restart to respawn.' : '\n\nSend another message to auto-respawn.'}`,
+        ).catch(err => {
+          console.error(`[telegram] Stall alert failed: ${err}`);
+        });
+      }
     }
 
     // Clean up old entries (older than 30 minutes, already alerted)
@@ -857,6 +886,49 @@ export class TelegramAdapter implements MessagingAdapter {
         `Pending stall alerts: ${s.pendingStalls}`,
       ];
       await this.sendToTopic(topicId, lines.join('\n')).catch(() => {});
+      return true;
+    }
+
+    // /switch-account (or /sa) <target> — switch active Claude account
+    const switchMatch = text.match(/^\/(?:switch[-_]?account|sa)\s+(.+)$/i);
+    if (switchMatch) {
+      const target = switchMatch[1].trim();
+      if (this.onSwitchAccountRequest) {
+        this.onSwitchAccountRequest(target, topicId).catch(err => {
+          console.error('[telegram] Switch account failed:', err);
+          this.sendToTopic(topicId, `Switch failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+        });
+      } else {
+        await this.sendToTopic(topicId, 'Account switching not available.').catch(() => {});
+      }
+      return true;
+    }
+
+    // /quota (or /q) — show multi-account quota summary
+    if (cmd === '/quota' || cmd === '/q') {
+      if (this.onQuotaStatusRequest) {
+        this.onQuotaStatusRequest(topicId).catch(err => {
+          console.error('[telegram] Quota status failed:', err);
+          this.sendToTopic(topicId, `Quota check failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+        });
+      } else {
+        await this.sendToTopic(topicId, 'Quota status not available.').catch(() => {});
+      }
+      return true;
+    }
+
+    // /login [email] — seamless OAuth login from Telegram
+    const loginMatch = text.match(/^\/login(?:\s+(.+))?$/i);
+    if (loginMatch) {
+      const email = loginMatch[1]?.trim() || null;
+      if (this.onLoginRequest) {
+        this.onLoginRequest(email, topicId).catch(err => {
+          console.error('[telegram] Login flow failed:', err);
+          this.sendToTopic(topicId, `Login failed: ${err instanceof Error ? err.message : String(err)}`).catch(() => {});
+        });
+      } else {
+        await this.sendToTopic(topicId, 'Login not available.').catch(() => {});
+      }
       return true;
     }
 
