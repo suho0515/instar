@@ -503,20 +503,58 @@ async function runClassicSetup(): Promise<void> {
   await startServer({ foreground: false });
 
   if (telegramConfig?.chatId) {
-    // Send a greeting from the new agent via Telegram
+    // Create the Lifeline topic — the always-available channel
+    let lifelineThreadId: number | null = null;
     try {
-      const greeting = `Hey! I'm ${projectName}, your new agent. I'm up and running — talk to me here anytime. What should we work on first?`;
+      const topicResult = execFileSync('curl', [
+        '-s', '-X', 'POST',
+        `https://api.telegram.org/bot${telegramConfig.token}/createForumTopic`,
+        '-H', 'Content-Type: application/json',
+        '-d', JSON.stringify({ chat_id: telegramConfig.chatId, name: 'Lifeline', icon_color: 9367192 }),
+      ], { encoding: 'utf-8', stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 });
+      const parsed = JSON.parse(topicResult);
+      if (parsed.ok && parsed.result?.message_thread_id) {
+        lifelineThreadId = parsed.result.message_thread_id;
+      }
+    } catch {
+      // Non-fatal — greeting will go to General
+    }
+
+    // Send greeting to the Lifeline topic (or General if topic creation failed)
+    try {
+      const greeting = [
+        `Hey! I'm ${projectName}, your new agent. I'm up and running.`,
+        '',
+        'This is the **Lifeline** topic — it\'s always here, always available.',
+        '',
+        '**How topics work:**',
+        '- Each topic is a separate conversation thread',
+        '- Ask me to create new topics for different tasks or focus areas',
+        '- I can proactively create topics when something needs attention',
+        '- Lifeline is always here for anything that doesn\'t fit elsewhere',
+        '',
+        'What should we work on first?',
+      ].join('\n');
+      const payload: Record<string, unknown> = {
+        chat_id: telegramConfig.chatId,
+        text: greeting,
+        parse_mode: 'Markdown',
+      };
+      if (lifelineThreadId) {
+        payload.message_thread_id = lifelineThreadId;
+      }
       execFileSync('curl', [
         '-s', '-X', 'POST',
         `https://api.telegram.org/bot${telegramConfig.token}/sendMessage`,
         '-H', 'Content-Type: application/json',
-        '-d', JSON.stringify({ chat_id: telegramConfig.chatId, text: greeting }),
+        '-d', JSON.stringify(payload),
       ], { stdio: ['pipe', 'pipe', 'pipe'], timeout: 10000 });
     } catch {
       // Non-fatal — the agent will greet on first session
     }
     console.log();
-    console.log(pc.bold(`  All done! ${projectName} just messaged you in Telegram.`));
+    const topicNote = lifelineThreadId ? ' in the Lifeline topic' : '';
+    console.log(pc.bold(`  All done! ${projectName} just messaged you${topicNote} on Telegram.`));
     console.log(pc.dim('  That\'s your primary channel from here on — no terminal needed.'));
     console.log(pc.dim('  As long as your computer is running the Instar server, your agent is available.'));
   } else {

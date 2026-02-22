@@ -458,6 +458,23 @@ curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=5"
 6. If auto-detection fails, send another message, wait, and retry once
 7. If still failing, ask the user for the chat ID manually (look at the URL in Telegram Web — prepend `-100` to the number)
 
+**Step 3e-vi: Create the Lifeline topic**
+
+The Lifeline topic is the always-available channel between user and agent. Create it via the Bot API (not browser — more reliable):
+
+```bash
+curl -s -X POST "https://api.telegram.org/bot${TOKEN}/createForumTopic" \
+  -H 'Content-Type: application/json' \
+  -d '{"chat_id": "'${CHAT_ID}'", "name": "Lifeline", "icon_color": 9367192}'
+```
+
+- `icon_color: 9367192` = green (matches the "always available" meaning)
+- Parse the response to get `message_thread_id` — **save this** for sending the greeting
+
+If the API call fails (e.g., topics not enabled yet), that's OK — the greeting will go to General instead.
+
+**CRITICAL: Store the `message_thread_id`** in the config alongside the token and chat ID. The agent will use this as its primary communication channel.
+
 #### Step 3f: Confirm Success
 
 After all steps succeed, tell the user:
@@ -482,6 +499,7 @@ Walk the user through each step with clear instructions:
 curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?offset=-1" > /dev/null
 curl -s "https://api.telegram.org/bot${TOKEN}/getUpdates?timeout=5"
 ```
+6. **Create Lifeline topic** — Even in manual mode, create the Lifeline topic via Bot API (Step 3e-vi). This doesn't require browser automation.
 
 ### Browser Automation Tips
 
@@ -603,29 +621,41 @@ curl -s http://localhost:<port>/health
 
 If the health check fails, retry once. If still failing, tell the user what happened and suggest `instar server start` manually.
 
-### Step 5b: Agent Greets the User via Telegram
+### Step 5b: Agent Greets the User in the Lifeline Topic
 
-**If Telegram was configured, the new agent should reach out to the user.** This is the magic moment — the agent comes alive.
+**If Telegram was configured, the new agent should reach out to the user in the Lifeline topic.** This is the magic moment — the agent comes alive.
 
-Send a greeting message from the bot to the Telegram group using the Bot API:
+Send the greeting to the Lifeline topic (using the `message_thread_id` from Step 3e-vi):
 
 ```bash
 curl -s -X POST "https://api.telegram.org/bot${TOKEN}/sendMessage" \
   -H 'Content-Type: application/json' \
-  -d '{"chat_id": "<CHAT_ID>", "text": "<GREETING>"}'
+  -d '{"chat_id": "<CHAT_ID>", "message_thread_id": <LIFELINE_THREAD_ID>, "text": "<GREETING>"}'
 ```
 
-The greeting should be **in the agent's voice** — using the name, personality, and tone defined in Step 2. For example, if the agent is named "Scout" and is casual:
+If the Lifeline topic wasn't created (Step 3e-vi failed), fall back to General (omit `message_thread_id`).
 
-> "Hey! I'm Scout, your new project agent. I'm up and running — talk to me here anytime. I'll be watching over the codebase and reaching out when something matters. What should we tackle first?"
+The greeting should be **in the agent's voice** AND explain how Telegram topics work. For example, if the agent is named "Scout" and is casual:
 
-Keep it short (2-3 sentences), in character, and inviting.
+> Hey! I'm Scout, your new project agent. I'm up and running.
+>
+> This is the **Lifeline** topic — it's always here, always available. Think of it as the main channel between us.
+>
+> **How topics work:**
+> - Each topic is a separate conversation thread (like Slack channels)
+> - Ask me to create new topics for different tasks or focus areas — e.g., "create a topic for deployment issues"
+> - I can proactively create topics when I notice something worth discussing
+> - The Lifeline topic is always here for anything that doesn't fit elsewhere
+>
+> What should we work on first?
+
+Adapt the tone and examples to the agent's personality and role. Keep it warm and practical.
 
 ### Step 5c: Tell the User
 
 After the server is running and the greeting is sent:
 
-> "All done! [Agent name] just messaged you in Telegram. From here on, that's your primary channel — just talk to your agent there."
+> "All done! [Agent name] just messaged you in the Lifeline topic on Telegram. From here on, that's your primary channel — just talk to your agent there."
 >
 > "As long as your computer is running the Instar server, your agent is available."
 
