@@ -172,6 +172,14 @@ export class SessionManager extends EventEmitter {
         '-c', this.config.projectDir,
         '-e', 'CLAUDECODE=', // Prevent nested Claude Code detection
         '-e', 'ANTHROPIC_API_KEY=', // Clear stale/invalid API keys — agents use Claude subscription
+        // Isolate database credentials — spawned sessions must never inherit production
+        // database URLs from the parent shell. This prevents accidental schema changes
+        // or data operations against the wrong database. (Learned from Portal incident 2026-02-22)
+        '-e', 'DATABASE_URL=',
+        '-e', 'DIRECT_DATABASE_URL=',
+        '-e', 'DATABASE_URL_PROD=',
+        '-e', 'DATABASE_URL_DEV=',
+        '-e', 'DATABASE_URL_TEST=',
         this.config.claudePath, ...claudeArgs,
       ], { encoding: 'utf-8' });
     } catch (err) {
@@ -442,6 +450,13 @@ export class SessionManager extends EventEmitter {
         '-x', '200', '-y', '50',
         '-e', 'CLAUDECODE=', // Prevent nested Claude Code detection
         '-e', 'ANTHROPIC_API_KEY=', // Clear stale/invalid API keys — agents use Claude subscription
+        // Isolate database credentials — spawned sessions must never inherit production
+        // database URLs from the parent shell. (Learned from Portal incident 2026-02-22)
+        '-e', 'DATABASE_URL=',
+        '-e', 'DIRECT_DATABASE_URL=',
+        '-e', 'DATABASE_URL_PROD=',
+        '-e', 'DATABASE_URL_DEV=',
+        '-e', 'DATABASE_URL_TEST=',
       ];
 
       if (options?.telegramTopicId) {

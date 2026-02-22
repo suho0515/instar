@@ -36,6 +36,11 @@ ALWAYS_BLOCK_PATTERNS=(
   "mkfs\."
   "dd if="
   ":(){:|:&};:"
+  # Database schema destruction — these flags/commands exist specifically to bypass
+  # safety checks. Treat them as catastrophic regardless of context.
+  # (Learned from Portal production data loss incident 2026-02-22)
+  "--accept-data-loss"
+  "prisma migrate reset"
 )
 
 for pattern in "${ALWAYS_BLOCK_PATTERNS[@]}"; do
@@ -58,6 +63,11 @@ RISKY_PATTERNS=(
   "DROP DATABASE"
   "TRUNCATE"
   "DELETE FROM"
+  # Schema push against production — "non-destructive" additions can silently
+  # drop tables when schema/DB naming conventions are inconsistent.
+  # Use SQL ALTER TABLE for targeted production changes instead.
+  "prisma db push"
+  "prisma migrate deploy"
 )
 
 for pattern in "${RISKY_PATTERNS[@]}"; do
