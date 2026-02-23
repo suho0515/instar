@@ -39,7 +39,9 @@ import { QuotaNotifier } from '../monitoring/QuotaNotifier.js';
 import { classifySessionDeath } from '../monitoring/QuotaExhaustionDetector.js';
 import { SessionWatchdog } from '../monitoring/SessionWatchdog.js';
 import type { Message } from '../core/types.js';
-import { installAutoStart } from './setup.js';
+// setup.ts uses @inquirer/prompts which requires Node 20.12+
+// Dynamic import to avoid breaking the server on older Node versions
+// import { installAutoStart } from './setup.js';
 
 interface StartOptions {
   foreground?: boolean;
@@ -678,12 +680,16 @@ export async function startServer(options: StartOptions): Promise<void> {
       console.log(pc.green('  Scheduler started'));
     }
 
-    // Set up Telegram if configured (skip if lifeline owns the connection)
+    // Set up Telegram if configured
+    // When --no-telegram is set (lifeline owns polling), create adapter in send-only mode
+    // so the server can still relay replies via /telegram/reply/:topicId
     let telegram: TelegramAdapter | undefined;
     const telegramConfig = config.messaging.find(m => m.type === 'telegram' && m.enabled);
     const skipTelegram = options.telegram === false; // --no-telegram sets telegram: false
     if (skipTelegram && telegramConfig) {
-      console.log(pc.dim('  Telegram polling skipped (--no-telegram flag)'));
+      // Send-only mode: no polling, but sendToTopic() works for session replies
+      telegram = new TelegramAdapter(telegramConfig.config as any, config.stateDir);
+      console.log(pc.green('  Telegram send-only mode (lifeline owns polling)'));
     }
     if (telegramConfig && !skipTelegram) {
       telegram = new TelegramAdapter(telegramConfig.config as any, config.stateDir);
@@ -975,6 +981,7 @@ export async function startServer(options: StartOptions): Promise<void> {
       const hasTelegram = !!telegram;
       const autostartInstalled = isAutostartInstalled(config.projectName);
       if (!autostartInstalled) {
+        const { installAutoStart } = await import('./setup.js');
         const installed = installAutoStart(config.projectName, config.projectDir, hasTelegram);
         if (installed) {
           console.log(pc.green(`  Auto-start self-healed: installed ${process.platform === 'darwin' ? 'LaunchAgent' : 'systemd service'}`));
