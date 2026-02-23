@@ -548,29 +548,30 @@ export class SessionManager extends EventEmitter {
 
   /**
    * Send text to a tmux session via send-keys.
-   * For single-line text, uses -l (literal) flag directly.
-   * For multi-line text, writes to a temp file and uses tmux load-buffer/paste-buffer
-   * to avoid newlines being interpreted as Enter keypresses.
+   * For multi-line text, uses bracketed paste mode escape sequences so the
+   * terminal treats newlines as literal text rather than Enter keypresses.
+   * This avoids tmux load-buffer/paste-buffer which trigger macOS TCC
+   * "access data from other apps" permission prompts.
    */
   private injectMessage(tmuxSession: string, text: string): void {
     const exactTarget = `=${tmuxSession}:`;
     try {
       if (text.includes('\n')) {
-        // Multi-line: pipe into tmux load-buffer via stdin, then paste into pane.
-        // This avoids newlines being treated as Enter keypresses which would
-        // fragment the message into multiple Claude prompts.
-        // Uses stdin pipe (load-buffer -) instead of temp files to avoid
-        // macOS TCC "access data from other apps" permission prompts.
-        execFileSync(this.config.tmuxPath, ['load-buffer', '-'], {
-          encoding: 'utf-8', timeout: 5000, input: text,
-        });
-        execFileSync(this.config.tmuxPath, ['paste-buffer', '-t', exactTarget, '-p'], {
+        // Multi-line: use bracketed paste mode.
+        // The terminal (and Claude Code's readline) treats everything between
+        // \e[200~ and \e[201~ as a single paste — newlines are literal, not Enter.
+        // This completely avoids load-buffer/paste-buffer and their TCC prompts.
+        execFileSync(this.config.tmuxPath, ['send-keys', '-t', exactTarget, '\x1b[200~'], {
           encoding: 'utf-8', timeout: 5000,
         });
-        // Brief delay to let the terminal process the paste before sending Enter.
-        // Without this, the Enter arrives before paste processing completes and
-        // the message sits in the input buffer without being submitted.
-        execFileSync('/bin/sleep', ['0.3'], { timeout: 2000 });
+        execFileSync(this.config.tmuxPath, ['send-keys', '-t', exactTarget, '-l', text], {
+          encoding: 'utf-8', timeout: 5000,
+        });
+        execFileSync(this.config.tmuxPath, ['send-keys', '-t', exactTarget, '\x1b[201~'], {
+          encoding: 'utf-8', timeout: 5000,
+        });
+        // Brief delay to let the terminal process the bracketed paste
+        execFileSync('/bin/sleep', ['0.1'], { timeout: 2000 });
         // Send Enter to submit
         execFileSync(this.config.tmuxPath, ['send-keys', '-t', exactTarget, 'Enter'], {
           encoding: 'utf-8', timeout: 5000,
