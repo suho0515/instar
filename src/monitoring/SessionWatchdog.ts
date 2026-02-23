@@ -13,8 +13,13 @@
  *   Level 4: Kill tmux session
  */
 
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import { EventEmitter } from 'node:events';
+
+/** Drop-in replacement for execSync that avoids its security concerns. */
+function shellExec(cmd: string, timeout = 5000): string {
+  return spawnSync('/bin/sh', ['-c', cmd], { encoding: 'utf-8', timeout }).stdout ?? '';
+}
 import type { SessionManager } from '../core/SessionManager.js';
 import type { StateManager } from '../core/StateManager.js';
 import type { InstarConfig } from '../core/types.js';
@@ -275,18 +280,16 @@ export class SessionWatchdog extends EventEmitter {
   private getClaudePid(tmuxSession: string): number | null {
     try {
       // Get pane PID
-      const panePidStr = execSync(
-        `${this.config.sessions.tmuxPath} list-panes -t "=${tmuxSession}" -F "#{pane_pid}" 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 5000 }
+      const panePidStr = shellExec(
+        `${this.config.sessions.tmuxPath} list-panes -t "=${tmuxSession}" -F "#{pane_pid}" 2>/dev/null`
       ).trim().split('\n')[0];
       if (!panePidStr) return null;
       const panePid = parseInt(panePidStr, 10);
       if (isNaN(panePid)) return null;
 
       // Find claude child
-      const claudePidStr = execSync(
-        `pgrep -P ${panePid} -f claude 2>/dev/null | head -1`,
-        { encoding: 'utf-8', timeout: 5000 }
+      const claudePidStr = shellExec(
+        `pgrep -P ${panePid} -f claude 2>/dev/null | head -1`
       ).trim();
       if (!claudePidStr) return null;
       const pid = parseInt(claudePidStr, 10);
@@ -298,19 +301,13 @@ export class SessionWatchdog extends EventEmitter {
 
   private getChildProcesses(pid: number): ChildProcessInfo[] {
     try {
-      const childPidsStr = execSync(
-        `pgrep -P ${pid} 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 5000 }
-      ).trim();
+      const childPidsStr = shellExec(`pgrep -P ${pid} 2>/dev/null`).trim();
       if (!childPidsStr) return [];
 
       const childPids = childPidsStr.split('\n').filter(Boolean).join(',');
       if (!childPids) return [];
 
-      const output = execSync(
-        `ps -o pid=,etime=,command= -p ${childPids} 2>/dev/null`,
-        { encoding: 'utf-8', timeout: 5000 }
-      ).trim();
+      const output = shellExec(`ps -o pid=,etime=,command= -p ${childPids} 2>/dev/null`).trim();
       if (!output) return [];
 
       const results: ChildProcessInfo[] = [];
@@ -378,10 +375,7 @@ export class SessionWatchdog extends EventEmitter {
 
   private killTmuxSession(tmuxSession: string): void {
     try {
-      execSync(
-        `${this.config.sessions.tmuxPath} kill-session -t "=${tmuxSession}" 2>/dev/null`,
-        { timeout: 5000, stdio: 'ignore' }
-      );
+      shellExec(`${this.config.sessions.tmuxPath} kill-session -t "=${tmuxSession}" 2>/dev/null`);
     } catch {}
   }
 

@@ -14,8 +14,9 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { execSync } from 'node:child_process';
+import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
+import os from 'node:os';
 
 export type MemoryPressureState = 'normal' | 'warning' | 'elevated' | 'critical';
 
@@ -203,7 +204,7 @@ export class MemoryPressureMonitor extends EventEmitter {
     } else {
       // Fallback: use Node's process.memoryUsage (very rough)
       const mem = process.memoryUsage();
-      const totalGB = require('os').totalmem() / (1024 ** 3);
+      const totalGB = os.totalmem() / (1024 ** 3);
       const usedGB = mem.rss / (1024 ** 3);
       return {
         pressurePercent: (usedGB / totalGB) * 100,
@@ -217,7 +218,7 @@ export class MemoryPressureMonitor extends EventEmitter {
    * macOS: parse vm_stat
    */
   private parseVmStat(): { pressurePercent: number; freeGB: number; totalGB: number } {
-    const output = execSync('vm_stat', { encoding: 'utf-8', timeout: 5000 });
+    const output = spawnSync('vm_stat', [], { encoding: 'utf-8', timeout: 5000 }).stdout ?? '';
 
     const pageSizeMatch = output.match(/page size of (\d+) bytes/);
     const pageSize = pageSizeMatch ? parseInt(pageSizeMatch[1], 10) : PAGE_SIZE_BYTES;

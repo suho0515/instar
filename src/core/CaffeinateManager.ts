@@ -10,7 +10,7 @@
  */
 
 import { EventEmitter } from 'node:events';
-import { spawn, ChildProcess, execSync } from 'child_process';
+import { spawn, spawnSync, ChildProcess } from 'child_process';
 import * as fs from 'fs';
 import * as path from 'path';
 
@@ -165,10 +165,10 @@ export class CaffeinateManager extends EventEmitter {
         const stalePid = parseInt(fs.readFileSync(this.pidFile, 'utf-8').trim(), 10);
         if (!isNaN(stalePid) && stalePid > 0) {
           try {
-            const cmdline = execSync(`ps -p ${stalePid} -o comm= 2>/dev/null`, {
+            const cmdline = (spawnSync('ps', ['-p', String(stalePid), '-o', 'comm='], {
               encoding: 'utf-8',
               timeout: 3000,
-            }).trim();
+            }).stdout ?? '').trim();
             if (cmdline.includes('caffeinate')) {
               process.kill(stalePid, 'SIGTERM');
               console.log(`[CaffeinateManager] Killed stale caffeinate (PID: ${stalePid})`);
