@@ -241,6 +241,29 @@ Strip the \`[telegram:N]\` prefix before interpreting the message. Respond natur
       result.skipped.push('CLAUDE.md: Private Viewer section already present');
     }
 
+    // Dashboard section
+    if (!content.includes('**Dashboard**') && !content.includes('/dashboard')) {
+      const section = `
+**Dashboard** — Visual web interface for monitoring and managing sessions. Accessible from any device (phone, tablet, laptop) via tunnel.
+- Local: \`http://localhost:${port}/dashboard\`
+- Remote: When a tunnel is running, the dashboard is accessible at \`{tunnelUrl}/dashboard\`
+- Authentication: Uses a 6-digit PIN (configured via \`dashboardPin\` in \`.instar/config.json\`) — no need to enter the full bearer token
+- Features: Real-time terminal streaming of all running sessions, session management, model badges, mobile-responsive
+- **Sharing the dashboard**: When the user wants to check on sessions from their phone, give them the tunnel URL + PIN. Check tunnel status: \`curl -H "Authorization: Bearer $AUTH" http://localhost:${port}/tunnel\`
+`;
+      // Insert after Server Status or before Scripts section
+      const insertBefore = content.indexOf('**Scripts**');
+      if (insertBefore >= 0) {
+        content = content.slice(0, insertBefore) + section + '\n' + content.slice(insertBefore);
+      } else {
+        content += '\n' + section;
+      }
+      patched = true;
+      result.upgraded.push('CLAUDE.md: added Dashboard section');
+    } else {
+      result.skipped.push('CLAUDE.md: Dashboard section already present');
+    }
+
     if (patched) {
       try {
         fs.writeFileSync(claudeMdPath, content);
@@ -461,6 +484,21 @@ fi
 echo ""
 echo "IMPORTANT: To report bugs or request features, use POST /feedback on your local server."
 echo "IMPORTANT: Before claiming you lack a capability, check /capabilities first."
+
+# Pending upgrade guide — inject knowledge from the latest update
+GUIDE_FILE="$INSTAR_DIR/state/pending-upgrade-guide.md"
+if [ -f "\$GUIDE_FILE" ]; then
+  echo ""
+  echo "=== UPGRADE GUIDE (ACTION REQUIRED) ==="
+  echo "A new version of Instar was installed with upgrade instructions for you."
+  echo "Read the guide below, take the suggested actions based on YOUR context,"
+  echo "then run: instar upgrade-ack"
+  echo ""
+  cat "\$GUIDE_FILE"
+  echo ""
+  echo "=== END UPGRADE GUIDE ==="
+fi
+
 echo "=== END SESSION START ==="
 `;
   }

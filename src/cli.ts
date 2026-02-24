@@ -486,7 +486,7 @@ jobCmd
   .requiredOption('--schedule <cron>', 'Cron expression')
   .option('--description <desc>', 'Job description')
   .option('--priority <priority>', 'Priority (critical|high|medium|low)', 'medium')
-  .option('--model <model>', 'Model tier (opus|sonnet|haiku)', 'sonnet')
+  .option('--model <model>', 'Model tier (opus|sonnet|haiku)', 'opus')
   .option('--type <type>', 'Execution type (skill|prompt|script)', 'prompt')
   .option('--execute <value>', 'Execution value (skill name, prompt text, or script path)')
   .action(addJob);
@@ -674,6 +674,77 @@ autostartCmd
       }
     } else {
       console.log(pc.yellow(`Auto-start is not supported on ${process.platform}.`));
+    }
+  });
+
+// Hidden command: run post-update migration from the NEW binary
+// Called by the auto-updater after `npm install -g` to ensure
+// migrations use the latest code, not the old in-memory modules.
+program
+  .command('migrate')
+  .description('Run post-update knowledge migration')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts: { dir?: string }) => {
+    try {
+      const { loadConfig } = await import('./core/Config.js');
+      const { PostUpdateMigrator } = await import('./core/PostUpdateMigrator.js');
+      const { UpgradeGuideProcessor } = await import('./core/UpgradeGuideProcessor.js');
+      const { getInstarVersion } = await import('./core/Config.js');
+      const config = loadConfig(opts.dir);
+      const hasTelegram = config.messaging?.some((m: { type: string }) => m.type === 'telegram') ?? false;
+
+      // Layer 1: Mechanical migrations (hooks, scripts, CLAUDE.md patches)
+      const migrator = new PostUpdateMigrator({
+        projectDir: config.projectDir,
+        stateDir: config.stateDir,
+        port: config.port,
+        hasTelegram,
+        projectName: config.projectName,
+      });
+      const result = migrator.migrate();
+
+      // Layer 2: Upgrade guide delivery (intelligent knowledge upgrades)
+      const guideProcessor = new UpgradeGuideProcessor({
+        stateDir: config.stateDir,
+        currentVersion: getInstarVersion(),
+      });
+      const guideResult = guideProcessor.process();
+
+      // Combined output for the calling process
+      console.log(JSON.stringify({
+        ...result,
+        upgradeGuide: guideResult.pendingGuides.length > 0 ? {
+          versions: guideResult.pendingGuides,
+          content: guideResult.guideContent,
+          pendingGuidePath: guideResult.pendingGuidePath,
+        } : null,
+      }));
+    } catch (err) {
+      console.error(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }));
+      process.exit(1);
+    }
+  });
+
+// Mark pending upgrade guide as processed (called by agent after reading)
+program
+  .command('upgrade-ack')
+  .description('Acknowledge that upgrade guides have been processed')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts: { dir?: string }) => {
+    try {
+      const { loadConfig } = await import('./core/Config.js');
+      const { UpgradeGuideProcessor } = await import('./core/UpgradeGuideProcessor.js');
+      const { getInstarVersion } = await import('./core/Config.js');
+      const config = loadConfig(opts.dir);
+      const processor = new UpgradeGuideProcessor({
+        stateDir: config.stateDir,
+        currentVersion: getInstarVersion(),
+      });
+      processor.clearPendingGuide();
+      console.log('Upgrade guide acknowledged and cleared.');
+    } catch (err) {
+      console.error(`Failed: ${err instanceof Error ? err.message : String(err)}`);
+      process.exit(1);
     }
   });
 

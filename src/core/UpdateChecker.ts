@@ -161,20 +161,40 @@ export class UpdateChecker {
       this.saveRollbackInfo(previousVersion, newVersion);
     }
 
-    // Post-update migration: upgrade hooks, CLAUDE.md, scripts
+    // Post-update migration: spawn the NEW binary to run migrations.
+    // Critical: the old process has stale modules in memory — only the
+    // new binary on disk has the latest PostUpdateMigrator entries.
+    // This now also processes upgrade guides (Layer 2: intelligent knowledge).
     let migrationSummary = '';
+    let upgradeGuideNote = '';
     if (success && this.migratorConfig) {
       try {
-        const migrator = new PostUpdateMigrator(this.migratorConfig);
-        const migration = migrator.migrate();
-        if (migration.upgraded.length > 0) {
+        const dirFlag = this.migratorConfig.projectDir ? `--dir ${this.migratorConfig.projectDir}` : '';
+        const output = await this.execAsync('instar', ['migrate', ...(dirFlag ? ['--dir', this.migratorConfig.projectDir] : [])], 30000);
+        const migration = JSON.parse(output);
+        if (migration.upgraded && migration.upgraded.length > 0) {
           migrationSummary = ` Intelligence download: ${migration.upgraded.length} files upgraded (${migration.upgraded.join(', ')}).`;
         }
-        if (migration.errors.length > 0) {
+        if (migration.errors && migration.errors.length > 0) {
           migrationSummary += ` Migration warnings: ${migration.errors.join('; ')}.`;
         }
+        // Upgrade guide delivery
+        if (migration.upgradeGuide) {
+          const versions = migration.upgradeGuide.versions as string[];
+          upgradeGuideNote = `\n\nUpgrade guide available for: ${versions.join(', ')}. ` +
+            `Read and process the guide at your next session start, or read .instar/state/pending-upgrade-guide.md now.`;
+        }
       } catch (err) {
-        migrationSummary = ` Post-update migration failed: ${err instanceof Error ? err.message : String(err)}.`;
+        // Fallback: run in-memory migrator (better than nothing)
+        try {
+          const migrator = new PostUpdateMigrator(this.migratorConfig);
+          const migration = migrator.migrate();
+          if (migration.upgraded.length > 0) {
+            migrationSummary = ` Intelligence download (fallback): ${migration.upgraded.length} files upgraded (${migration.upgraded.join(', ')}).`;
+          }
+        } catch (fallbackErr) {
+          migrationSummary = ` Post-update migration failed: ${err instanceof Error ? err.message : String(err)}.`;
+        }
       }
     }
 
@@ -183,7 +203,7 @@ export class UpdateChecker {
       previousVersion,
       newVersion,
       message: success
-        ? `Updated from v${previousVersion} to v${newVersion}.${migrationSummary} ${info.changeSummary || 'Restart to use the new version.'}`
+        ? `Updated from v${previousVersion} to v${newVersion}.${migrationSummary}${upgradeGuideNote} ${info.changeSummary || 'Restart to use the new version.'}`
         : `Update command ran but version didn't change (still v${previousVersion}). May need manual intervention.`,
       restartNeeded: success,
       healthCheck: 'skipped', // Can't check health until after restart
