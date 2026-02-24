@@ -512,11 +512,41 @@ async function ensureAgentAttentionTopic(
     );
     state.set('agent-attention-topic', topic.topicId);
     await telegram.sendToTopic(topic.topicId,
-      `This is your agent's direct line to you.\n\nInfrastructure issues, proactive observations, relationship insights, and anything that doesn't fit into another topic will appear here.`
+      `This is your agent's direct line to you — for things that genuinely need your attention.\n\nBlocked tasks, critical errors, memory pressure, quota alerts, and anything where your agent can't proceed without you.`
     );
     console.log(pc.green(`  Created Agent Attention topic: ${topic.topicId}`));
   } catch (err) {
     console.error(`  Failed to create Agent Attention topic: ${err}`);
+  }
+}
+
+/**
+ * Ensure the Agent Updates topic exists — for version updates, feature announcements, etc.
+ * Separates informational updates from critical attention items.
+ * Created once on first server start, persisted in state.
+ */
+async function ensureAgentUpdatesTopic(
+  telegram: TelegramAdapter,
+  state: StateManager,
+): Promise<void> {
+  const existingTopicId = state.get<number>('agent-updates-topic');
+  if (existingTopicId) {
+    console.log(`  Agent Updates topic: ${existingTopicId}`);
+    return;
+  }
+
+  try {
+    const topic = await telegram.createForumTopic(
+      'Agent Updates',
+      7322096, // Blue — informational
+    );
+    state.set('agent-updates-topic', topic.topicId);
+    await telegram.sendToTopic(topic.topicId,
+      `This is where I'll post updates about new features, version changes, and improvements.\n\nNothing urgent — just keeping you in the loop about what's new.`
+    );
+    console.log(pc.green(`  Created Agent Updates topic: ${topic.topicId}`));
+  } catch (err) {
+    console.error(`  Failed to create Agent Updates topic: ${err}`);
   }
 }
 
@@ -748,6 +778,14 @@ export async function startServer(options: StartOptions): Promise<void> {
       // Send-only mode: no polling, but sendToTopic() works for session replies
       telegram = new TelegramAdapter(telegramConfig.config as any, config.stateDir);
       console.log(pc.green('  Telegram send-only mode (lifeline owns polling)'));
+
+      // Ensure topics exist even in send-only mode (createForumTopic is a simple API call)
+      ensureAgentAttentionTopic(telegram, state).catch(err => {
+        console.error(`[server] Failed to ensure Agent Attention topic: ${err}`);
+      });
+      ensureAgentUpdatesTopic(telegram, state).catch(err => {
+        console.error(`[server] Failed to ensure Agent Updates topic: ${err}`);
+      });
     }
     if (telegramConfig && !skipTelegram) {
       telegram = new TelegramAdapter(telegramConfig.config as any, config.stateDir);
@@ -791,6 +829,11 @@ export async function startServer(options: StartOptions): Promise<void> {
       // Ensure Agent Attention topic exists (the agent's direct line to the user)
       ensureAgentAttentionTopic(telegram, state).catch(err => {
         console.error(`[server] Failed to ensure Agent Attention topic: ${err}`);
+      });
+
+      // Ensure Agent Updates topic exists (informational updates, not critical)
+      ensureAgentUpdatesTopic(telegram, state).catch(err => {
+        console.error(`[server] Failed to ensure Agent Updates topic: ${err}`);
       });
     }
 
@@ -888,6 +931,7 @@ export async function startServer(options: StartOptions): Promise<void> {
     }).catch(() => { /* ignore startup check failures */ });
 
     // Start auto-updater — periodic check + auto-apply + notify + restart
+    // Notifications routed dynamically to Updates topic (see getNotificationTopicId)
     const autoUpdater = new AutoUpdater(
       updateChecker,
       state,
@@ -1071,7 +1115,8 @@ export async function startServer(options: StartOptions): Promise<void> {
               const replyScript = fs.existsSync(replyScriptClaude) ? replyScriptClaude
                 : fs.existsSync(replyScriptInstar) ? replyScriptInstar : '';
               const hasReplyScript = !!replyScript;
-              const attentionTopicId = state.get<number>('agent-attention-topic') || state.get<number>('agent-update-topic') || 0;
+              // Route upgrade notifications to Updates topic (informational, not critical)
+              const notifyTopicId = state.get<number>('agent-updates-topic') || state.get<number>('agent-attention-topic') || 0;
 
               // Gather concrete details the agent should include in the message
               const dashboardPin = config.dashboardPin || '';
@@ -1101,9 +1146,9 @@ export async function startServer(options: StartOptions): Promise<void> {
                   `   - Current version: ${getInstalledVersion()}`,
                   '',
                   `2. Send the message via Telegram:`,
-                  hasReplyScript && attentionTopicId
-                    ? `   Run: cat <<'MSGEOF' | bash ${replyScript} ${attentionTopicId}\nYOUR_MESSAGE_HERE\nMSGEOF`
-                    : `   Use the telegram-reply script in .instar/scripts/ to send to the attention/update topic.`,
+                  hasReplyScript && notifyTopicId
+                    ? `   Run: cat <<'MSGEOF' | bash ${replyScript} ${notifyTopicId}\nYOUR_MESSAGE_HERE\nMSGEOF`
+                    : `   Use the telegram-reply script in .instar/scripts/ to send to the updates topic.`,
                   '',
                   '3. Run: instar upgrade-ack',
                   '',

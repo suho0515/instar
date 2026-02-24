@@ -258,6 +258,19 @@
     .action-btn.danger { border-color: #3a1a1a; color: var(--red); }
     .action-btn.danger:hover { background: #1a0a0a; }
 
+    .action-separator {
+      width: 1px;
+      height: 20px;
+      background: var(--border);
+      margin: 0 2px;
+    }
+
+    .action-btn.action-arrow {
+      padding: 4px 8px;
+      min-width: 28px;
+      text-align: center;
+    }
+
     .terminal-container {
       flex: 1;
       padding: 4px;
@@ -598,10 +611,16 @@
             <span class="model-badge" id="termModelBadge" style="display:none"></span>
           </div>
           <div class="terminal-actions">
-            <button class="action-btn" onclick="sendKey('C-c')" title="Send Ctrl+C">^C</button>
-            <button class="action-btn" onclick="sendKey('Escape')" title="Send Escape">Esc</button>
+            <button class="action-btn" onclick="sendKey('Enter')" title="Send Enter">Enter</button>
             <button class="action-btn" onclick="sendSpecial('y')" title="Send 'y'">y</button>
             <button class="action-btn" onclick="sendSpecial('n')" title="Send 'n'">n</button>
+            <button class="action-btn danger" onclick="sendKey('C-c')" title="Send Ctrl+C">Ctrl+C</button>
+            <span class="action-separator"></span>
+            <button class="action-btn" onclick="sendKey('Escape')" title="Send Escape">Esc</button>
+            <button class="action-btn action-arrow" onclick="sendKey('Up')" title="Arrow Up">&uarr;</button>
+            <button class="action-btn action-arrow" onclick="sendKey('Down')" title="Arrow Down">&darr;</button>
+            <button class="action-btn action-arrow" onclick="sendKey('Left')" title="Arrow Left">&larr;</button>
+            <button class="action-btn action-arrow" onclick="sendKey('Right')" title="Arrow Right">&rarr;</button>
           </div>
         </div>
         <div class="terminal-container" id="terminalContainer"></div>

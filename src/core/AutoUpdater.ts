@@ -362,7 +362,7 @@ export class AutoUpdater {
 
     if (this.telegram) {
       try {
-        const topicId = this.config.notificationTopicId || this.getAttentionTopicId();
+        const topicId = this.config.notificationTopicId || this.getNotificationTopicId();
         if (topicId) {
           await this.telegram.sendToTopic(topicId, formatted);
           return;
@@ -377,10 +377,13 @@ export class AutoUpdater {
   }
 
   /**
-   * Get the Agent Attention topic ID from state (where infrastructure notifications go).
+   * Get the topic ID for update notifications.
+   * Prefers the dedicated Agent Updates topic (informational), falls back to Agent Attention.
    */
-  private getAttentionTopicId(): number {
-    return this.state.get<number>('agent-attention-topic') ?? 0;
+  private getNotificationTopicId(): number {
+    return this.state.get<number>('agent-updates-topic')
+      || this.state.get<number>('agent-attention-topic')
+      || 0;
   }
 
   /**
