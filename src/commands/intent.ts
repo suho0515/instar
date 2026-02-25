@@ -1,6 +1,7 @@
 /**
  * `instar intent reflect` — Review recent decisions against stated intent.
  * `instar intent validate` — Validate agent intent against org constraints.
+ * `instar intent drift` — Detect intent drift from decision journal trends.
  *
  * Reads the decision journal and AGENT.md Intent section, then outputs
  * a human-readable summary. This is a local command — no Claude session needed.
@@ -11,6 +12,7 @@ import path from 'node:path';
 import pc from 'picocolors';
 import { loadConfig } from '../core/Config.js';
 import { DecisionJournal } from '../core/DecisionJournal.js';
+import { IntentDriftDetector } from '../core/IntentDriftDetector.js';
 import { OrgIntentManager } from '../core/OrgIntentManager.js';
 
 interface IntentReflectOptions {
@@ -287,4 +289,115 @@ export async function intentValidate(options: IntentValidateOptions): Promise<vo
   if (hasErrors) {
     process.exit(1);
   }
+}
+
+// ── Intent Drift ──────────────────────────────────────────────────────
+
+interface IntentDriftOptions {
+  dir?: string;
+  window?: number;
+}
+
+export async function intentDrift(options: IntentDriftOptions): Promise<void> {
+  let config;
+  try {
+    config = loadConfig(options.dir);
+  } catch (err) {
+    console.log(pc.red(`Not initialized: ${err instanceof Error ? err.message : String(err)}`));
+    console.log(`Run ${pc.cyan('instar init')} first.`);
+    process.exit(1);
+    return;
+  }
+
+  const windowDays = options.window ?? 14;
+  const detector = new IntentDriftDetector(config.stateDir);
+
+  console.log(pc.bold(`\n  Intent Drift Analysis: ${pc.cyan(config.projectName)}\n`));
+
+  // Run drift analysis
+  const analysis = detector.analyze(windowDays);
+
+  if (analysis.current.decisionCount === 0) {
+    console.log(pc.yellow('  No decision journal entries found.'));
+    console.log();
+    console.log(pc.dim('  Decisions are logged via POST /intent/journal when the agent'));
+    console.log(pc.dim('  faces significant tradeoffs. Once entries accumulate, drift'));
+    console.log(pc.dim('  analysis will compare recent periods automatically.'));
+    console.log();
+    return;
+  }
+
+  console.log(`  Analysis Window: last ${pc.cyan(String(windowDays))} days vs preceding ${pc.cyan(String(windowDays))} days`);
+  console.log();
+
+  // Current period stats
+  console.log(pc.bold('  Current Period:'));
+  console.log(`    Decisions:      ${pc.cyan(String(analysis.current.decisionCount))}`);
+  console.log(`    Conflict Rate:  ${formatPercent(analysis.current.conflictRate)}`);
+  console.log(`    Avg Confidence: ${analysis.current.avgConfidence > 0 ? analysis.current.avgConfidence.toFixed(2) : pc.dim('n/a')}`);
+  if (analysis.current.topPrinciples.length > 0) {
+    const top = analysis.current.topPrinciples[0];
+    console.log(`    Top Principle:  ${top.principle} (${top.count}x)`);
+  }
+  console.log();
+
+  // Previous period stats
+  if (analysis.previous) {
+    console.log(pc.bold('  Previous Period:'));
+    console.log(`    Decisions:      ${pc.cyan(String(analysis.previous.decisionCount))}`);
+    console.log(`    Conflict Rate:  ${formatPercent(analysis.previous.conflictRate)}`);
+    console.log(`    Avg Confidence: ${analysis.previous.avgConfidence > 0 ? analysis.previous.avgConfidence.toFixed(2) : pc.dim('n/a')}`);
+    if (analysis.previous.topPrinciples.length > 0) {
+      const top = analysis.previous.topPrinciples[0];
+      console.log(`    Top Principle:  ${top.principle} (${top.count}x)`);
+    }
+    console.log();
+  } else {
+    console.log(pc.dim('  No previous period data for comparison.'));
+    console.log();
+  }
+
+  // Drift signals
+  if (analysis.signals.length > 0) {
+    console.log(pc.bold('  Drift Signals:'));
+    for (const signal of analysis.signals) {
+      const icon = signal.severity === 'alert'
+        ? pc.red('!!')
+        : signal.severity === 'warning'
+          ? pc.yellow('!!')
+          : pc.blue('i ');
+      console.log(`    ${icon} ${signal.description}`);
+    }
+    console.log();
+  } else if (analysis.previous) {
+    console.log(pc.green('  No drift signals detected.'));
+    console.log();
+  }
+
+  // Drift score
+  const driftLevel = analysis.driftScore > 0.6 ? 'high' : analysis.driftScore > 0.3 ? 'moderate' : 'low';
+  const driftColor = analysis.driftScore > 0.6 ? pc.red : analysis.driftScore > 0.3 ? pc.yellow : pc.green;
+  console.log(`  Drift Score: ${driftColor(`${analysis.driftScore.toFixed(2)} (${driftLevel})`)}`);
+  console.log();
+
+  // Alignment score
+  const alignment = detector.alignmentScore();
+  const gradeColor = alignment.grade === 'A' ? pc.green
+    : alignment.grade === 'B' ? pc.cyan
+      : alignment.grade === 'C' ? pc.yellow
+        : pc.red;
+
+  console.log(`  Alignment Score: ${gradeColor(`${alignment.score}/100 (${alignment.grade})`)}`);
+  console.log(`    Conflict Freedom:      ${alignment.components.conflictFreedom}/100`);
+  console.log(`    Confidence Level:       ${alignment.components.confidenceLevel}/100`);
+  console.log(`    Principle Consistency:  ${alignment.components.principleConsistency}/100`);
+  console.log(`    Journal Health:         ${alignment.components.journalHealth}/100`);
+  console.log();
+}
+
+function formatPercent(rate: number): string {
+  const pct = (rate * 100).toFixed(1) + '%';
+  if (rate > 0.1) return pc.red(pct);
+  if (rate > 0) return pc.yellow(pct);
+  return pc.green(pct);
 }

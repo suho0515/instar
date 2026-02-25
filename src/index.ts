@@ -15,6 +15,8 @@ export type { FeedbackQualityResult } from './core/FeedbackManager.js';
 export { EvolutionManager } from './core/EvolutionManager.js';
 export { DecisionJournal } from './core/DecisionJournal.js';
 export type { DecisionJournalStats } from './core/DecisionJournal.js';
+export { IntentDriftDetector } from './core/IntentDriftDetector.js';
+export type { DriftWindow, DriftSignal, DriftAnalysis, AlignmentScore } from './core/IntentDriftDetector.js';
 export { OrgIntentManager } from './core/OrgIntentManager.js';
 export type { OrgConstraint, OrgGoal, ParsedOrgIntent, IntentConflict, IntentValidationResult } from './core/OrgIntentManager.js';
 export { DispatchManager } from './core/DispatchManager.js';

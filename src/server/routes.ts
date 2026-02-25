@@ -2735,6 +2735,31 @@ export function createRoutes(ctx: RouteContext): Router {
     }
   });
 
+  // ── Intent Drift & Alignment ────────────────────────────────────
+
+  router.get('/intent/drift', async (req, res) => {
+    try {
+      const { IntentDriftDetector } = await import('../core/IntentDriftDetector.js');
+      const detector = new IntentDriftDetector(ctx.config.stateDir);
+      const windowDays = req.query.window ? parseInt(req.query.window as string, 10) : 14;
+      const analysis = detector.analyze(windowDays);
+      res.json(analysis);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to analyze drift' });
+    }
+  });
+
+  router.get('/intent/alignment', async (_req, res) => {
+    try {
+      const { IntentDriftDetector } = await import('../core/IntentDriftDetector.js');
+      const detector = new IntentDriftDetector(ctx.config.stateDir);
+      const score = detector.alignmentScore();
+      res.json(score);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Failed to compute alignment score' });
+    }
+  });
+
   // ── Triage ───────────────────────────────────────────────────────
 
   router.get('/triage/status', (_req, res) => {

@@ -517,6 +517,16 @@ intentCmd
     return intentValidate(opts);
   });
 
+intentCmd
+  .command('drift')
+  .description('Detect intent drift from decision journal trends')
+  .option('-d, --dir <path>', 'Project directory')
+  .option('--window <days>', 'Window size in days (default: 14)', (v: string) => parseInt(v, 10))
+  .action(async (opts) => {
+    const { intentDrift } = await import('./commands/intent.js');
+    return intentDrift(opts);
+  });
+
 // ── Feedback ─────────────────────────────────────────────────────
 
 program

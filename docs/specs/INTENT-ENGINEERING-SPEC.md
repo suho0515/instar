@@ -792,17 +792,17 @@ Dawn is the existence proof. Everything described in this spec was built first f
 - [x] Rate-limit UP submissions per agent (10/min endpoint + per-agent anomaly detector)
 - [x] Add anomaly detection for learning submissions (FeedbackAnomalyDetector: burst/rapid-fire/daily limits)
 
-### Phase 3: Organizational (After 2-3 Weeks of Decision Journal Data)
-- [ ] Evaluate decision journal data to determine if structured format is needed (v2 decision)
-- [ ] Build `instar org init` wizard for ORG-INTENT.md
-- [ ] Implement org-intent inheritance with three-rule contract
-- [ ] Add conflict detection and logging when agent intent contradicts org constraints
-- [ ] Build `instar intent validate` static analyzer
+### Phase 3: Organizational ✅ (commit 01b632d)
+- [x] Evaluate decision journal data format — prose (v1) sufficient; structured format deferred to v2 if field data shows need
+- [x] Build `instar intent org-init` command for ORG-INTENT.md (OrgIntentManager + CLI)
+- [x] Implement org-intent inheritance with three-rule contract (constraints mandatory, goals specializable, identity agent-level)
+- [x] Add conflict detection and logging when agent intent contradicts org constraints (heuristic-based, logged to decision journal)
+- [x] Build `instar intent validate` static analyzer (CLI + API route)
 
-### Phase 4: Measurement & Enterprise (After Org-Intent Ships)
-- [ ] Build intent drift detection from decision journal trends
-- [ ] Design alignment score methodology from real field data
-- [ ] Define open-core boundary (which features require Pro/Enterprise tier)
+### Phase 4: Measurement & Enterprise
+- [x] Build intent drift detection from decision journal trends (IntentDriftDetector — deterministic window comparison with 4 signal types)
+- [x] Design alignment score methodology from real field data (AlignmentScore — weighted 4-component scoring: conflict freedom, confidence, principle consistency, journal health)
+- [x] Define open-core boundary (which features require Pro/Enterprise tier) — documented in Revenue Strategy section above
 - [ ] Publish Dawn case study with observable metrics
 - [ ] Begin enterprise intent infrastructure positioning
 
