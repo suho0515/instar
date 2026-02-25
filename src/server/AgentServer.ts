@@ -72,6 +72,8 @@ export class AgentServer {
     feedbackAnomalyDetector?: FeedbackAnomalyDetector;
     projectMapper?: import('../core/ProjectMapper.js').ProjectMapper;
     coherenceGate?: import('../core/CoherenceGate.js').CoherenceGate;
+    contextHierarchy?: import('../core/ContextHierarchy.js').ContextHierarchy;
+    canonicalState?: import('../core/CanonicalState.js').CanonicalState;
     coordinator?: MultiMachineCoordinator;
     localSigningKeyPem?: string;
   }) {
@@ -196,6 +198,8 @@ export class AgentServer {
       feedbackAnomalyDetector: options.feedbackAnomalyDetector ?? null,
       projectMapper: options.projectMapper ?? null,
       coherenceGate: options.coherenceGate ?? null,
+      contextHierarchy: options.contextHierarchy ?? null,
+      canonicalState: options.canonicalState ?? null,
       startTime: this.startTime,
     });
     this.app.use(routes);

@@ -38,6 +38,9 @@ import { allocatePort, registerAgent, validateAgentName } from '../core/AgentReg
 import { defaultIdentity } from '../scaffold/bootstrap.js';
 import { MachineIdentityManager, ensureGitignore } from '../core/MachineIdentity.js';
 import { PostUpdateMigrator } from '../core/PostUpdateMigrator.js';
+import { ProjectMapper } from '../core/ProjectMapper.js';
+import { ContextHierarchy } from '../core/ContextHierarchy.js';
+import { CanonicalState } from '../core/CanonicalState.js';
 import {
   generateAgentMd,
   generateUserMd,
@@ -249,6 +252,21 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
   // Install hooks
   installHooks(stateDir);
   console.log(`  ${pc.green('✓')} Created .instar/hooks/ (behavioral guardrails)`);
+
+  // Initialize coherence infrastructure
+  try {
+    const mapper = new ProjectMapper({ projectDir, stateDir });
+    mapper.generateAndSave();
+    console.log(`  ${pc.green('✓')} Created .instar/project-map.json + project-map.md`);
+  } catch { /* non-critical */ }
+
+  const ctxHierarchy = new ContextHierarchy({ stateDir, projectDir, projectName });
+  ctxHierarchy.initialize();
+  console.log(`  ${pc.green('✓')} Created .instar/context/ (tiered context hierarchy)`);
+
+  const canonicalState = new CanonicalState({ stateDir });
+  canonicalState.initialize(projectName, projectDir);
+  console.log(`  ${pc.green('✓')} Created .instar/quick-facts.json, anti-patterns.json, project-registry.json`);
 
   // Create .claude/ structure
   installClaudeSettings(projectDir);
@@ -507,6 +525,27 @@ async function initExistingProject(options: InitOptions): Promise<void> {
   // Install hooks
   installHooks(stateDir);
   console.log(pc.green('  Created:') + ' .instar/hooks/ (behavioral guardrails)');
+
+  // Initialize coherence infrastructure (additive only)
+  try {
+    const mapper = new ProjectMapper({ projectDir, stateDir });
+    if (!fs.existsSync(path.join(stateDir, 'project-map.json'))) {
+      mapper.generateAndSave();
+      console.log(pc.green('  Created:') + ' .instar/project-map.json + project-map.md');
+    }
+  } catch { /* non-critical */ }
+
+  const ctxHierarchy = new ContextHierarchy({ stateDir, projectDir, projectName });
+  const ctxResult = ctxHierarchy.initialize();
+  if (ctxResult.created.length > 0) {
+    console.log(pc.green('  Created:') + ` .instar/context/ (${ctxResult.created.length} segments)`);
+  }
+
+  const canonicalState = new CanonicalState({ stateDir });
+  const stateResult = canonicalState.initialize(projectName, projectDir);
+  if (stateResult.created.length > 0) {
+    console.log(pc.green('  Created:') + ` canonical state (${stateResult.created.join(', ')})`);
+  }
 
   // Configure Claude Code settings with hooks
   installClaudeSettings(projectDir);
@@ -1496,6 +1535,49 @@ Also check pending actions (curl -s http://localhost:${port}/evolution/actions?s
 If no overdue or stale items, exit silently.`,
       },
       tags: ['coherence', 'default', 'evolution'],
+    },
+    {
+      slug: 'project-map-refresh',
+      name: 'Project Map Refresh',
+      description: 'Regenerate the project territory map to keep spatial awareness current.',
+      schedule: '0 */12 * * *',
+      priority: 'low',
+      expectedDurationMinutes: 1,
+      model: 'haiku',
+      enabled: true,
+      gate: `curl -sf http://localhost:${port}/health >/dev/null 2>&1`,
+      execute: {
+        type: 'script',
+        value: `RESULT=$(curl -s -X POST http://localhost:${port}/project-map/refresh -H "Authorization: Bearer $(python3 -c "import json; print(json.load(open('.instar/config.json')).get('authToken',''))" 2>/dev/null)" 2>/dev/null); echo "$RESULT" | python3 -c "import sys,json; d=json.load(sys.stdin); print(f'Project map refreshed: {d.get(\"totalFiles\",0)} files, {d.get(\"directories\",0)} dirs')" 2>/dev/null || echo "Project map refresh: done"`,
+      },
+      tags: ['coherence', 'default', 'maintenance'],
+    },
+    {
+      slug: 'coherence-audit',
+      name: 'Coherence Audit',
+      description: 'Verify topic-project bindings are still valid, state files are healthy, and no drift has occurred.',
+      schedule: '0 */8 * * *',
+      priority: 'low',
+      expectedDurationMinutes: 2,
+      model: 'haiku',
+      enabled: true,
+      gate: `curl -sf http://localhost:${port}/health >/dev/null 2>&1`,
+      execute: {
+        type: 'prompt',
+        value: `Run a coherence audit to verify the agent's awareness infrastructure is healthy.
+
+AUTH=$(python3 -c "import json; print(json.load(open('.instar/config.json')).get('authToken',''))" 2>/dev/null)
+
+Check each area:
+
+1. **Topic-Project Bindings**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/topic-bindings — are all bindings still valid? Do the project directories exist?
+2. **Project Map**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/project-map — is the map recent (check generatedAt)? If older than 24 hours, refresh it.
+3. **Canonical State**: Check .instar/quick-facts.json, .instar/anti-patterns.json, .instar/project-registry.json — are they parseable? Any stale entries?
+4. **Context Segments**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/context — are all segments present? Any with 0 bytes?
+
+If issues found, log them as learnings (POST /evolution/learnings) and fix what you can. Exit silently if healthy.`,
+      },
+      tags: ['coherence', 'default', 'maintenance'],
     },
   ];
 }

@@ -23,6 +23,7 @@ const GROUNDING_EXEMPT_SLUGS: ReadonlySet<string> = new Set([
   'feedback-retry',
   'dispatch-check',
   'update-check',
+  'project-map-refresh',
 ]);
 
 /**

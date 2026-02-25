@@ -74,6 +74,10 @@ export { ProjectMapper } from './core/ProjectMapper.js';
 export type { ProjectMapConfig, ProjectMap, ProjectMapEntry } from './core/ProjectMapper.js';
 export { CoherenceGate } from './core/CoherenceGate.js';
 export type { CoherenceGateConfig, CoherenceCheckResult, CoherenceCheck, TopicProjectBinding, HighRiskAction } from './core/CoherenceGate.js';
+export { ContextHierarchy } from './core/ContextHierarchy.js';
+export type { ContextSegment, ContextHierarchyConfig, ContextDispatchTable } from './core/ContextHierarchy.js';
+export { CanonicalState } from './core/CanonicalState.js';
+export type { QuickFact, AntiPattern, ProjectEntry, CanonicalStateConfig } from './core/CanonicalState.js';
 
 // Memory
 export { MemoryIndex } from './memory/MemoryIndex.js';

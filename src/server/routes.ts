@@ -38,6 +38,8 @@ import type { FeedbackAnomalyDetector } from '../monitoring/FeedbackAnomalyDetec
 import type { ProjectMapper } from '../core/ProjectMapper.js';
 import type { CoherenceGate } from '../core/CoherenceGate.js';
 import type { HighRiskAction } from '../core/CoherenceGate.js';
+import type { ContextHierarchy } from '../core/ContextHierarchy.js';
+import type { CanonicalState } from '../core/CanonicalState.js';
 
 export interface RouteContext {
   config: InstarConfig;
@@ -62,6 +64,8 @@ export interface RouteContext {
   feedbackAnomalyDetector: FeedbackAnomalyDetector | null;
   projectMapper: ProjectMapper | null;
   coherenceGate: CoherenceGate | null;
+  contextHierarchy: ContextHierarchy | null;
+  canonicalState: CanonicalState | null;
   startTime: Date;
 }
 
@@ -551,6 +555,27 @@ export function createRoutes(ctx: RouteContext): Router {
           'POST /project-map/refresh — regenerate the project map',
         ] : [],
       },
+      contextHierarchy: {
+        enabled: !!ctx.contextHierarchy,
+        segments: ctx.contextHierarchy?.listSegments().map(s => ({ id: s.id, tier: s.tier, exists: s.exists })) ?? [],
+        endpoints: ctx.contextHierarchy ? [
+          'GET /context — list all context segments with status',
+          'GET /context/dispatch — dispatch table (when X, load Y)',
+          'GET /context/:segmentId — load a specific context segment',
+        ] : [],
+      },
+      canonicalState: {
+        enabled: !!ctx.canonicalState,
+        endpoints: ctx.canonicalState ? [
+          'GET /state/quick-facts — fast answers to common questions',
+          'POST /state/quick-facts — add/update a quick fact',
+          'GET /state/anti-patterns — things NOT to do',
+          'POST /state/anti-patterns — record a new anti-pattern',
+          'GET /state/projects — all known projects',
+          'POST /state/projects — register a project',
+          'GET /state/summary — compact state summary',
+        ] : [],
+      },
       coherence: {
         enabled: !!ctx.coherenceGate,
         endpoints: ctx.coherenceGate ? [
@@ -685,6 +710,117 @@ export function createRoutes(ctx: RouteContext): Router {
 
     ctx.coherenceGate.setTopicBinding(Number(topicId), binding);
     res.json({ bound: true, topicId: Number(topicId), binding });
+  });
+
+  // ── Context Hierarchy ──────────────────────────────────────────────
+  //
+  // Tiered context loading for efficient agent awareness.
+
+  router.get('/context', (_req, res) => {
+    if (!ctx.contextHierarchy) {
+      res.status(501).json({ error: 'ContextHierarchy not initialized' });
+      return;
+    }
+    res.json(ctx.contextHierarchy.listSegments());
+  });
+
+  router.get('/context/dispatch', (_req, res) => {
+    if (!ctx.contextHierarchy) {
+      res.status(501).json({ error: 'ContextHierarchy not initialized' });
+      return;
+    }
+    res.json(ctx.contextHierarchy.getDispatchTable());
+  });
+
+  router.get('/context/:segmentId', (req, res) => {
+    if (!ctx.contextHierarchy) {
+      res.status(501).json({ error: 'ContextHierarchy not initialized' });
+      return;
+    }
+    const content = ctx.contextHierarchy.loadSegment(req.params.segmentId);
+    if (content === null) {
+      res.status(404).json({ error: `Segment not found: ${req.params.segmentId}` });
+      return;
+    }
+    res.type('text/markdown').send(content);
+  });
+
+  // ── Canonical State ───────────────────────────────────────────────
+  //
+  // Registry-first state management: quick facts, anti-patterns, project registry.
+
+  router.get('/state/quick-facts', (_req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    res.json(ctx.canonicalState.getQuickFacts());
+  });
+
+  router.post('/state/quick-facts', (req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    const { question, answer, source } = req.body;
+    if (!question || !answer) {
+      res.status(400).json({ error: 'Required: question, answer' });
+      return;
+    }
+    ctx.canonicalState.setFact(question, answer, source || 'api');
+    res.json({ saved: true, question, answer });
+  });
+
+  router.get('/state/anti-patterns', (_req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    res.json(ctx.canonicalState.getAntiPatterns());
+  });
+
+  router.post('/state/anti-patterns', (req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    const { pattern, consequence, alternative, incident } = req.body;
+    if (!pattern || !consequence || !alternative) {
+      res.status(400).json({ error: 'Required: pattern, consequence, alternative' });
+      return;
+    }
+    const entry = ctx.canonicalState.addAntiPattern({ pattern, consequence, alternative, incident });
+    res.json(entry);
+  });
+
+  router.get('/state/projects', (_req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    res.json(ctx.canonicalState.getProjects());
+  });
+
+  router.post('/state/projects', (req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    const { name, dir, gitRemote, deploymentTargets, type, topicIds, description } = req.body;
+    if (!name || !dir) {
+      res.status(400).json({ error: 'Required: name, dir' });
+      return;
+    }
+    ctx.canonicalState.setProject({ name, dir, gitRemote, deploymentTargets, type, topicIds, description });
+    res.json({ saved: true, name });
+  });
+
+  router.get('/state/summary', (_req, res) => {
+    if (!ctx.canonicalState) {
+      res.status(501).json({ error: 'CanonicalState not initialized' });
+      return;
+    }
+    res.type('text/plain').send(ctx.canonicalState.getCompactSummary());
   });
 
   // ── CI Health ─────────────────────────────────────────────────────

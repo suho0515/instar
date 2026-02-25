@@ -111,7 +111,7 @@ describe('Fresh install: instar init <project-name>', () => {
     expect(fs.existsSync(jobsPath)).toBe(true);
 
     const jobs = JSON.parse(fs.readFileSync(jobsPath, 'utf-8'));
-    expect(jobs.length).toBe(10);
+    expect(jobs.length).toBe(12);
 
     const slugs = jobs.map((j: any) => j.slug);
     expect(slugs).toContain('health-check');
@@ -124,6 +124,8 @@ describe('Fresh install: instar init <project-name>', () => {
     expect(slugs).toContain('evolution-review');
     expect(slugs).toContain('insight-harvest');
     expect(slugs).toContain('commitment-check');
+    expect(slugs).toContain('project-map-refresh');
+    expect(slugs).toContain('coherence-audit');
   });
 
   it('installs behavioral hooks', () => {

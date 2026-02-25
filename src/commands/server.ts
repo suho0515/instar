@@ -48,6 +48,8 @@ import { MachineIdentityManager } from '../core/MachineIdentity.js';
 import { GitSyncManager } from '../core/GitSync.js';
 import { ProjectMapper } from '../core/ProjectMapper.js';
 import { CoherenceGate } from '../core/CoherenceGate.js';
+import { ContextHierarchy } from '../core/ContextHierarchy.js';
+import { CanonicalState } from '../core/CanonicalState.js';
 import type { Message } from '../core/types.js';
 // setup.ts uses @inquirer/prompts which requires Node 20.12+
 // Dynamic import to avoid breaking the server on older Node versions
@@ -1327,7 +1329,25 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Load any persisted topic-project bindings
     coherenceGate.loadTopicBindings();
 
-    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem });
+    // Context Hierarchy — tiered context loading for session efficiency
+    const contextHierarchy = new ContextHierarchy({
+      stateDir: config.stateDir,
+      projectDir: config.projectDir,
+      projectName: config.projectName,
+    });
+    const ctxResult = contextHierarchy.initialize();
+    if (ctxResult.created.length > 0) {
+      console.log(pc.green(`  Context hierarchy: ${ctxResult.created.length} segments created`));
+    }
+
+    // Canonical State — registry-first state management
+    const canonicalState = new CanonicalState({ stateDir: config.stateDir });
+    const stateResult = canonicalState.initialize(config.projectName, config.projectDir);
+    if (stateResult.created.length > 0) {
+      console.log(pc.green(`  Canonical state: ${stateResult.created.length} registries created`));
+    }
+
+    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate, contextHierarchy, canonicalState, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem });
     await server.start();
 
     // Start tunnel AFTER server is listening
