@@ -15,6 +15,7 @@
 import { EventEmitter } from 'events';
 import type { IntelligenceProvider, IntelligenceOptions } from '../core/types.js';
 import type { StateManager } from '../core/StateManager.js';
+import { DegradationReporter } from './DegradationReporter.js';
 import type {
   StallTriageConfig,
   TreatmentAction,
@@ -377,6 +378,13 @@ export class StallTriageNurse extends EventEmitter {
       return this.parseDiagnosis(rawResponse);
     } catch (err) {
       console.warn(`[StallTriageNurse] LLM diagnosis failed, using heuristic:`, err);
+      DegradationReporter.getInstance().report({
+        feature: 'StallTriageNurse.diagnosis',
+        primary: 'LLM-powered diagnosis of session stall root cause',
+        fallback: 'Regex-based heuristic on terminal output',
+        reason: `LLM diagnosis failed: ${err instanceof Error ? err.message : String(err)}`,
+        impact: 'Stall recovery uses less accurate heuristic — may apply wrong treatment.',
+      });
 
       // Heuristic fallback — smarter than always defaulting to nudge.
       // Check terminal output for clues about what's wrong.

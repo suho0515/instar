@@ -13,6 +13,7 @@
  */
 
 import fs from 'node:fs';
+import { DegradationReporter } from './DegradationReporter.js';
 import path from 'node:path';
 import type { QuotaState, JobPriority, JobSchedulerConfig } from '../core/types.js';
 
@@ -251,8 +252,15 @@ export class QuotaTracker {
 
       return data;
     } catch (err) {
-      // Network failure, timeout, etc. — fail open
+      // Network failure, timeout, etc. — fail open but REPORT it
       console.warn(`[quota] Remote quota check failed: ${err instanceof Error ? err.message : err}`);
+      DegradationReporter.getInstance().report({
+        feature: 'QuotaTracker.remoteCheck',
+        primary: 'Real-time quota monitoring via remote API',
+        fallback: 'Fail open — assuming no quota limits (may overspend)',
+        reason: `Remote quota check failed: ${err instanceof Error ? err.message : String(err)}`,
+        impact: 'Quota limits not enforced. Agent may spawn sessions that exceed API limits.',
+      });
       return null;
     }
   }

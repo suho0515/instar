@@ -54,6 +54,7 @@ import { CanonicalState } from '../core/CanonicalState.js';
 import { ExternalOperationGate, AUTONOMY_PROFILES } from '../core/ExternalOperationGate.js';
 import { MessageSentinel } from '../core/MessageSentinel.js';
 import { AdaptiveTrust } from '../core/AdaptiveTrust.js';
+import { DegradationReporter } from '../monitoring/DegradationReporter.js';
 import type { Message, IntelligenceProvider } from '../core/types.js';
 // setup.ts uses @inquirer/prompts which requires Node 20.12+
 // Dynamic import to avoid breaking the server on older Node versions
@@ -110,6 +111,7 @@ async function spawnSessionForTopic(
   let contextContent: string = '';
 
   // Prefer TopicMemory (SQLite-backed, with summaries) over raw JSONL scan
+  let usedFallback = false;
   if (topicMemory?.isReady()) {
     try {
       contextContent = topicMemory.formatContextForSession(topicId, 30);
@@ -118,8 +120,9 @@ async function spawnSessionForTopic(
     }
   }
 
-  // Fallback to JSONL-based history
+  // Fallback to JSONL-based history — this means TopicMemory is broken
   if (!contextContent) {
+    usedFallback = true;
     try {
       const history = telegram.getTopicHistory(topicId, 20);
       if (history.length > 0) {
@@ -141,6 +144,19 @@ async function spawnSessionForTopic(
     } catch (err) {
       console.error(`[telegram→session] Failed to fetch thread history:`, err);
     }
+  }
+
+  // Report degradation if fallback was used and TopicMemory should have been available
+  if (usedFallback && topicMemory !== undefined) {
+    DegradationReporter.getInstance().report({
+      feature: 'TopicMemory.formatContextForSession',
+      primary: 'SQLite-backed context with summaries and search',
+      fallback: 'JSONL-based last 20 messages (no summaries, no search)',
+      reason: topicMemory.isReady()
+        ? `TopicMemory returned empty context for topic ${topicId} (possible data gap)`
+        : `TopicMemory database not open (init failure)`,
+      impact: `Session for topic ${topicId} started with degraded context — no summaries, limited history.`,
+    });
   }
 
   // Build the bootstrap message with inline context.
@@ -706,6 +722,15 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Set up file logging for observability
     setupServerLog(config.stateDir);
 
+    // Initialize DegradationReporter early — before any feature that might fall back.
+    // Downstream systems (feedback, telegram) are connected once the server is fully up.
+    const degradationReporter = DegradationReporter.getInstance();
+    degradationReporter.configure({
+      stateDir: config.stateDir,
+      agentName: config.projectName,
+      instarVersion: config.version ?? '0.0.0',
+    });
+
     // Clean up stale Telegram temp files on startup
     cleanupTelegramTempFiles();
 
@@ -970,11 +995,20 @@ export async function startServer(options: StartOptions): Promise<void> {
           }
         };
       } catch (err) {
-        console.error(`  TopicMemory init failed (non-critical): ${err instanceof Error ? err.message : err}`);
+        const reason = err instanceof Error ? err.message : String(err);
         // Reset to undefined so the JSONL fallback is used for session context
         // and API routes return clear 503 "not initialized" errors instead of
         // silently returning empty data from a broken instance.
         topicMemory = undefined;
+
+        // Report degradation — this is a bug, not "non-critical"
+        degradationReporter.report({
+          feature: 'TopicMemory',
+          primary: 'SQLite-backed conversational memory with summaries and FTS5 search',
+          fallback: 'JSONL-based last 20 messages (no summaries, no search)',
+          reason: `TopicMemory init failed: ${reason}`,
+          impact: 'Sessions start without conversation summaries. Search unavailable. Context limited to last 20 raw messages.',
+        });
       }
 
       // Wire up topic → session routing and session management callbacks
@@ -1472,6 +1506,17 @@ export async function startServer(options: StartOptions): Promise<void> {
 
     const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate, contextHierarchy, canonicalState, operationGate, sentinel, adaptiveTrust, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem });
     await server.start();
+
+    // Connect DegradationReporter downstream systems now that everything is initialized.
+    // Any degradation events queued during startup will drain to feedback + telegram.
+    {
+      const alertTopicId = state.get<number>('agent-attention-topic') ?? null;
+      degradationReporter.connectDownstream({
+        feedbackSubmitter: feedback ? (item) => feedback!.submit(item) : undefined,
+        telegramSender: telegram ? (topicId, text) => telegram!.sendToTopic(topicId, text) : undefined,
+        alertTopicId,
+      });
+    }
 
     // Start tunnel AFTER server is listening
     if (tunnel) {

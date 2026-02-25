@@ -18,6 +18,7 @@ import type { InstarConfig } from '../core/types.js';
 import { rateLimiter, signViewPath } from './middleware.js';
 import type { WriteOperation, WriteToken } from '../core/StateWriteAuthority.js';
 import { validateWriteToken, canPerformOperation } from '../core/StateWriteAuthority.js';
+import { DegradationReporter } from '../monitoring/DegradationReporter.js';
 import type { TelegramAdapter } from '../messaging/TelegramAdapter.js';
 import type { RelationshipManager } from '../core/RelationshipManager.js';
 import type { FeedbackManager } from '../core/FeedbackManager.js';
@@ -102,12 +103,14 @@ export function createRoutes(ctx: RouteContext): Router {
       }
     }
 
-    const isDegraded = sessionExhausted || totalFailures >= 5;
+    const degradations = DegradationReporter.getInstance().getEvents();
+    const isDegraded = sessionExhausted || totalFailures >= 5 || degradations.length > 0;
 
     const base: Record<string, unknown> = {
       status: isDegraded ? 'degraded' : 'ok',
       uptime: uptimeMs,
       uptimeHuman: formatUptime(uptimeMs),
+      degradations: degradations.length,
     };
 
     // Include detailed info only for authenticated callers.
@@ -163,6 +166,21 @@ export function createRoutes(ctx: RouteContext): Router {
       }
     }
     res.json(base);
+  });
+
+  /**
+   * Get all feature degradation events.
+   * A degradation means a feature fallback activated — the primary path failed.
+   * This is always a bug that needs investigation.
+   */
+  router.get('/health/degradations', (_req, res) => {
+    const reporter = DegradationReporter.getInstance();
+    const events = reporter.getEvents();
+    res.json({
+      total: events.length,
+      unreported: reporter.getUnreportedEvents().length,
+      events,
+    });
   });
 
   // ── Agents ─────────────────────────────────────────────────────

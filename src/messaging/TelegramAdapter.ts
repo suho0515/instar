@@ -12,6 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import type { MessagingAdapter, Message, OutgoingMessage, UserChannel } from '../core/types.js';
+import { DegradationReporter } from '../monitoring/DegradationReporter.js';
 
 export interface TelegramConfig {
   /** Bot token from @BotFather */
@@ -437,12 +438,24 @@ export class TelegramAdapter implements MessagingAdapter {
           console.log(`[telegram] Recreated Lifeline topic: ${topic.topicId}`);
           return topic.topicId;
         } catch (recreateErr) {
-          console.error(`[telegram] Failed to recreate Lifeline topic: ${recreateErr}`);
+          DegradationReporter.getInstance().report({
+            feature: 'Telegram.Lifeline',
+            primary: 'Verified lifeline topic for emergency agent communication',
+            fallback: 'No lifeline topic — agent unreachable in emergencies',
+            reason: `Lifeline topic deleted and recreation failed: ${recreateErr instanceof Error ? recreateErr.message : String(recreateErr)}`,
+            impact: 'Agent cannot receive emergency commands or stall recovery signals.',
+          });
           return null;
         }
       }
       // Some other error (network, etc.) — don't recreate, just warn
-      console.warn(`[telegram] Lifeline topic check failed (non-fatal): ${err}`);
+      DegradationReporter.getInstance().report({
+        feature: 'Telegram.Lifeline',
+        primary: 'Verified lifeline topic for emergency agent communication',
+        fallback: 'Using unverified (possibly stale) lifeline topic ID',
+        reason: `Lifeline topic check failed: ${err instanceof Error ? err.message : String(err)}`,
+        impact: 'Lifeline may be unreachable — messages to agent could fail silently.',
+      });
       return this.config.lifelineTopicId;
     }
   }
@@ -1387,13 +1400,28 @@ export class TelegramAdapter implements MessagingAdapter {
       this.maybeRotateLog();
     } catch (err) {
       console.error(`[telegram] Failed to append to message log: ${err}`);
+      DegradationReporter.getInstance().report({
+        feature: 'Telegram.messageLog',
+        primary: 'JSONL message log for conversation history and recovery',
+        fallback: 'Message lost from persistent log (only in memory)',
+        reason: `Failed to write message log: ${err instanceof Error ? err.message : String(err)}`,
+        impact: 'Conversation history gap — message may be missing from JSONL backup.',
+      });
     }
 
     // Notify subscribers (TopicMemory for SQLite dual-write)
     if (this.onMessageLogged) {
       try {
         this.onMessageLogged(entry);
-      } catch { /* non-critical — don't break logging pipeline */ }
+      } catch (err) {
+        DegradationReporter.getInstance().report({
+          feature: 'TopicMemory.dualWrite',
+          primary: 'SQLite dual-write of messages for search and summaries',
+          fallback: 'Message only in JSONL log (no search, no summary updates)',
+          reason: `onMessageLogged callback failed: ${err instanceof Error ? err.message : String(err)}`,
+          impact: 'Message may be missing from topic search and context summaries.',
+        });
+      }
     }
   }
 
