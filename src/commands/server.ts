@@ -139,16 +139,45 @@ async function spawnSessionForTopic(
     }
   }
 
-  // Write context to temp file for Claude to read
+  // Build the bootstrap message with inline context.
+  // CRITICAL: Context must be BEFORE the user's message and inline (not a file reference).
+  // Previous approach used a parenthetical file reference after the user's message:
+  //   "[telegram:N] Hello (Thread history at /path — read it)"
+  // This failed because Claude's attention goes to the user's greeting, generates a
+  // generic response, and never reads the file. The context instruction was structurally
+  // too weak — a skippable parenthetical, not a command.
+  //
+  // Fix: Inline the context directly, put it BEFORE the user's message, with strong
+  // continuation framing. Claude processes the context first, then responds to the
+  // user's message WITH that context loaded.
   const tmpDir = '/tmp/instar-telegram';
   fs.mkdirSync(tmpDir, { recursive: true });
 
   let bootstrapMessage: string;
 
   if (contextContent) {
+    // Also write full context to file for deeper lookup if needed
     const filepath = path.join(tmpDir, `history-${topicId}-${Date.now()}-${process.pid}.txt`);
     fs.writeFileSync(filepath, contextContent);
-    bootstrapMessage = `[telegram:${topicId}] ${msg} (Thread history and context at ${filepath} — read it for context before responding.)`;
+
+    // Truncate inline context to keep injection manageable.
+    // Summary + last ~10 messages is usually under 4KB — enough for continuity.
+    // Full history remains in the file for deeper searches.
+    const MAX_INLINE_CHARS = 4000;
+    const inlineContext = contextContent.length > MAX_INLINE_CHARS
+      ? contextContent.slice(0, MAX_INLINE_CHARS) + `\n... (full history: ${filepath})`
+      : contextContent;
+
+    bootstrapMessage = [
+      `CONTINUATION — You are resuming an EXISTING conversation. Read the context below before responding.`,
+      ``,
+      inlineContext,
+      ``,
+      `IMPORTANT: Your response MUST acknowledge and continue the conversation above. Do NOT introduce yourself or ask "how can I help" — the user has been talking to you. Pick up where the conversation left off.`,
+      ``,
+      `The user's latest message:`,
+      `[telegram:${topicId}] ${msg}`,
+    ].join('\n');
   } else {
     bootstrapMessage = `[telegram:${topicId}] ${msg}`;
   }

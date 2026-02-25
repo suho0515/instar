@@ -298,6 +298,26 @@ Strip the \`[telegram:N]\` prefix before interpreting the message. Respond natur
       result.skipped.push('CLAUDE.md: Coherence Gate section already present');
     }
 
+    // Session Continuity — ensure agents know how to handle respawn context
+    if (this.config.hasTelegram && !content.includes('Session Continuity') && !content.includes('CONTINUATION')) {
+      const section = `
+### Session Continuity (CRITICAL)
+
+When your first message starts with \`CONTINUATION\`, you are **resuming an existing conversation**. The inline context contains a summary and recent messages from the prior session. You MUST:
+
+1. **Read the context first** — it tells you what the conversation is about
+2. **Pick up where you left off** — do NOT introduce yourself or ask "how can I help?"
+3. **Reference the prior context** — show the user you know what they were discussing
+
+The user has been talking to you (possibly for days). A generic greeting like "Hey! What can I help you with?" after dozens of messages of conversation history is a critical failure — it signals you lost all context and the user has to repeat everything. The context is right there in your input. Use it.
+`;
+      content += '\n' + section;
+      patched = true;
+      result.upgraded.push('CLAUDE.md: added Session Continuity section');
+    } else if (this.config.hasTelegram && content.includes('Session Continuity')) {
+      result.skipped.push('CLAUDE.md: Session Continuity section already present');
+    }
+
     if (patched) {
       try {
         fs.writeFileSync(claudeMdPath, content);
