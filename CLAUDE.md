@@ -79,6 +79,14 @@ This toolkit is meant to be tested against real Claude Code projects. The flow:
 
 - **LLM-Supervised Execution** (`docs/LLM-SUPERVISED-EXECUTION.md`): Every critical pipeline must have at minimum a Tier 1 LLM supervisor. Jobs support a `supervision` field (`tier0`, `tier1`, `tier2`) on `JobDefinition`. Tier 1 = Haiku wrapping programmatic tools with validation after every step.
 
+- **Agent Awareness Standard**: Every feature added to Instar MUST include a corresponding update to the CLAUDE.md template (`src/scaffold/templates.ts` → `generateClaudeMd()`). An agent that doesn't know about a capability effectively doesn't have it. This means:
+  1. **API endpoints** — Add to the Capabilities section with curl examples
+  2. **Proactive triggers** — Add to Feature Proactivity ("when user does X → use this")
+  3. **Registry lookups** — Add to the "Registry First" table if it answers a state question
+  4. **Building blocks** — Add to "Building New Capabilities" if it's a tool the agent should reach for
+
+  The principle: agents interact with users conversationally, not through CLIs. If the template doesn't mention a feature, no agent will ever surface it. The template IS the agent's awareness.
+
 ## API Authentication
 
 All HTTP API endpoints (except `/health` basic check) require a Bearer token:
