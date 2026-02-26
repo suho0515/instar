@@ -872,22 +872,28 @@ async function setupCloudBackup(projectDir: string, stateDir: string, agentName:
   console.log(pc.bold('  Cloud Backup (recommended)'));
   console.log(pc.dim('  Backs up your agent data to the cloud so nothing is lost if this machine crashes.'));
 
-  let skipBackup = false;
-  try {
-    const { confirm } = await import('@inquirer/prompts');
-    const wantBackup = await confirm({
-      message: 'Set up cloud backup for this agent? (recommended)',
-      default: true,
-    });
-    if (!wantBackup) {
-      skipBackup = true;
-      console.log(pc.yellow('  Skipped. You can set this up later — your agent will ask during its first session.'));
+  const isInteractive = !!(process.stdin.isTTY && process.stdout.isTTY);
+
+  if (isInteractive) {
+    // Interactive terminal — ask the user
+    try {
+      const { confirm } = await import('@inquirer/prompts');
+      const wantBackup = await confirm({
+        message: 'Set up cloud backup for this agent? (recommended)',
+        default: true,
+      });
+      if (!wantBackup) {
+        console.log(pc.yellow('  Skipped. You can set this up later — your agent will ask during its first session.'));
+        return;
+      }
+    } catch {
+      // Prompt failed — fall through to automatic setup
+      console.log(pc.dim('  Prompt unavailable — proceeding with automatic backup setup.'));
     }
-  } catch {
-    // @inquirer/prompts not available — skip silently
-    return;
+  } else {
+    // Non-interactive (agent-spawned, piped, CI) — default to YES since it's recommended
+    console.log(pc.dim('  Non-interactive mode — setting up local backup automatically.'));
   }
-  if (skipBackup) return;
 
   // Step 1: Ensure git is available
   let gitPath = detectGitPath();
@@ -935,6 +941,13 @@ async function setupCloudBackup(projectDir: string, stateDir: string, agentName:
   }
 
   if (!ghAuthed) {
+    // GitHub auth requires interactive terminal (browser OAuth flow)
+    if (!isInteractive) {
+      console.log(pc.dim('  GitHub auth requires an interactive terminal — skipping remote setup.'));
+      console.log(pc.dim('  Your agent will help complete this during the first session.'));
+      return;
+    }
+
     console.log();
     console.log(pc.bold('  GitHub Account'));
     console.log(pc.dim('  You need a free GitHub account to store your backup in the cloud.'));
