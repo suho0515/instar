@@ -61,6 +61,7 @@ export class PostUpdateMigrator {
     this.migrateScripts(result);
     this.migrateSettings(result);
     this.migrateConfig(result);
+    this.migrateGitignore(result);
 
     return result;
   }
@@ -632,6 +633,52 @@ The user has been talking to you (possibly for days). A generic greeting like "H
       } catch (err) {
         result.errors.push(`config.json write: ${err instanceof Error ? err.message : String(err)}`);
       }
+    }
+  }
+
+  /**
+   * Fix gitignore entries that shouldn't exclude shared state.
+   * Removes relationships/ from gitignore so multi-machine agents share awareness.
+   */
+  private migrateGitignore(result: MigrationResult): void {
+    // Fix project-level .gitignore
+    const projectGitignore = path.join(this.config.projectDir, '.gitignore');
+    this.removeGitignoreEntry(projectGitignore, '.instar/relationships/', result, 'project .gitignore');
+
+    // Fix .instar-level .gitignore (GitStateManager's internal git tracking)
+    const instarGitignore = path.join(this.config.stateDir, '.gitignore');
+    this.removeGitignoreEntry(instarGitignore, 'relationships/', result, '.instar/.gitignore');
+  }
+
+  private removeGitignoreEntry(gitignorePath: string, entry: string, result: MigrationResult, label: string): void {
+    if (!fs.existsSync(gitignorePath)) {
+      return;
+    }
+
+    try {
+      const content = fs.readFileSync(gitignorePath, 'utf-8');
+      if (!content.includes(entry)) {
+        return;
+      }
+
+      // Remove the entry and any associated comment line above it
+      const lines = content.split('\n');
+      const filtered = lines.filter((line, i) => {
+        if (line.trim() === entry) return false;
+        // Remove comment line directly above the entry if it mentions "relationships" or "PII" or "Privacy"
+        if (i < lines.length - 1 && lines[i + 1]?.trim() === entry &&
+            line.startsWith('#') && /relationship|PII|Privacy/i.test(line)) {
+          return false;
+        }
+        return true;
+      });
+
+      // Clean up double blank lines left behind
+      const cleaned = filtered.join('\n').replace(/\n{3,}/g, '\n\n');
+      fs.writeFileSync(gitignorePath, cleaned);
+      result.upgraded.push(`${label}: un-ignored ${entry} (shared state for multi-machine)`);
+    } catch (err) {
+      result.errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

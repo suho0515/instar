@@ -108,8 +108,9 @@ describe('GitStateManager', () => {
 
       const gitignore = fs.readFileSync(path.join(stateDir, '.gitignore'), 'utf-8');
       expect(gitignore).toContain('config.json');
-      expect(gitignore).toContain('relationships/');
       expect(gitignore).toContain('backups/');
+      // relationships/ is NOT gitignored — it's shared state for multi-machine
+      expect(gitignore).not.toContain('relationships/');
     });
 
     it('creates initial commit', () => {

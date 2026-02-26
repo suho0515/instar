@@ -38,9 +38,6 @@ logs/
 # Secrets -- NEVER tracked
 config.json
 
-# Privacy: Contains third-party PII — excluded from remote push by default
-relationships/
-
 # Derived data -- reconstructable
 memory.db
 memory.db-wal
