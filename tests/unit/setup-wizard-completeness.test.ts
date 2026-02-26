@@ -10,14 +10,14 @@
  *
  * The code worked. The tests passed. The feature was broken.
  *
- * Root cause: Instar has TWO setup paths:
- *   1. setup.ts — programmatic CLI (was updated)
- *   2. setup-wizard/skill.md — AI-driven conversational wizard (was NOT updated)
+ * Root cause (v0.9.39 resolution): Instar had TWO setup paths — a
+ * programmatic CLI and an AI-driven wizard. They could silently diverge.
+ * We eliminated the programmatic path entirely (Claude Code is a hard
+ * requirement for Instar anyway). Now there's ONE path: the wizard.
  *
- * This test ensures that when new features are added to setup.ts,
- * corresponding references exist in the wizard skill. If you add a
- * feature to setup.ts and this test fails, you need to update
- * .claude/skills/setup-wizard/skill.md too.
+ * This test ensures the wizard skill covers all required features.
+ * When adding a new feature that affects setup, add it to
+ * requiredFeatures below and update the wizard skill to match.
  */
 
 import { describe, it, expect } from 'vitest';
@@ -25,38 +25,58 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const skillPath = path.join(process.cwd(), '.claude/skills/setup-wizard/skill.md');
-const setupPath = path.join(process.cwd(), 'src/commands/setup.ts');
 
-// Only run if both files exist (they should in all normal builds)
+// Only run if the skill file exists (it should in all normal builds)
 const skillExists = fs.existsSync(skillPath);
-const setupExists = fs.existsSync(setupPath);
 
 describe('Setup Wizard Completeness', () => {
   it('setup-wizard skill.md exists', () => {
     expect(skillExists).toBe(true);
   });
 
-  it('setup.ts exists', () => {
-    expect(setupExists).toBe(true);
-  });
-
-  // Skip remaining tests if files don't exist
-  if (!skillExists || !setupExists) return;
+  // Skip remaining tests if skill doesn't exist
+  if (!skillExists) return;
 
   const skill = fs.readFileSync(skillPath, 'utf-8');
-  const setup = fs.readFileSync(setupPath, 'utf-8');
+
+  // ── Required Features ─────────────────────────────────────────
+  // When adding a new feature that affects the setup experience,
+  // add it here. If the test fails, update the wizard skill.
+
+  const requiredFeatures: Array<{ name: string; keywords: string[]; reason: string }> = [
+    {
+      name: 'SecretManager',
+      keywords: ['SecretManager', 'secret'],
+      reason: 'Secret management must be offered during setup before Telegram',
+    },
+    {
+      name: 'Bitwarden option',
+      keywords: ['bitwarden'],
+      reason: 'Users must be offered Bitwarden as a secret storage option',
+    },
+    {
+      name: 'Local encrypted store option',
+      keywords: ['local encrypted store'],
+      reason: 'Users must be offered local encrypted storage as a secret storage option',
+    },
+    // Future: add more as features are added
+    // { name: 'SomeNewFeature', keywords: ['feature-keyword'], reason: 'Why this must be in the wizard' },
+  ];
+
+  describe('required features are referenced', () => {
+    for (const { name, keywords, reason } of requiredFeatures) {
+      it(`wizard references ${name} (${reason})`, () => {
+        const found = keywords.some(kw =>
+          skill.toLowerCase().includes(kw.toLowerCase())
+        );
+        expect(found).toBe(true);
+      });
+    }
+  });
 
   // ── Core Feature References ──────────────────────────────────
 
   describe('secret management', () => {
-    it('setup.ts imports SecretManager', () => {
-      expect(setup).toContain('SecretManager');
-    });
-
-    it('wizard skill references secret management', () => {
-      expect(skill.toLowerCase()).toContain('secret');
-    });
-
     it('wizard skill mentions SecretManager by name', () => {
       expect(skill).toContain('SecretManager');
     });
@@ -67,14 +87,6 @@ describe('Setup Wizard Completeness', () => {
       expect(secretIndex).toBeGreaterThan(-1);
       expect(telegramIndex).toBeGreaterThan(-1);
       expect(secretIndex).toBeLessThan(telegramIndex);
-    });
-
-    it('wizard offers Bitwarden as an option', () => {
-      expect(skill.toLowerCase()).toContain('bitwarden');
-    });
-
-    it('wizard offers local encrypted store as an option', () => {
-      expect(skill.toLowerCase()).toContain('local encrypted store');
     });
 
     it('restore flow tries secret restoration before Telegram', () => {
@@ -117,41 +129,6 @@ describe('Setup Wizard Completeness', () => {
     });
   });
 
-  // ── Feature Bridging ─────────────────────────────────────────
-  // When setup.ts imports a new module, the wizard should reference it.
-
-  describe('feature bridging: setup.ts imports → wizard references', () => {
-    // Extract import statements from setup.ts
-    const importPattern = /import\s+\{([^}]+)\}\s+from\s+'[^']+'/g;
-    const imports: string[] = [];
-    let match;
-    while ((match = importPattern.exec(setup)) !== null) {
-      const names = match[1].split(',').map(s => s.trim()).filter(s => s && !s.startsWith('type '));
-      imports.push(...names);
-    }
-
-    // Key feature modules that MUST be referenced in the wizard
-    // Add to this list when new features are added to setup.ts
-    const requiredWizardReferences: Array<{ module: string; reason: string }> = [
-      {
-        module: 'SecretManager',
-        reason: 'Secret management must be offered during setup before Telegram',
-      },
-      // Future: add more as features are added to setup.ts
-      // { module: 'SomeNewFeature', reason: 'Must be configured during setup' },
-    ];
-
-    for (const { module, reason } of requiredWizardReferences) {
-      it(`setup.ts imports ${module}`, () => {
-        expect(imports).toContain(module);
-      });
-
-      it(`wizard references ${module} (${reason})`, () => {
-        expect(skill).toContain(module);
-      });
-    }
-  });
-
   // ── Telegram Skip Guard ──────────────────────────────────────
   // The wizard must check for existing valid credentials before
   // asking the user to set up Telegram from scratch.
@@ -171,6 +148,31 @@ describe('Setup Wizard Completeness', () => {
         phase3.includes('restoreTelegramConfig');
 
       expect(hasSkipLogic).toBe(true);
+    });
+  });
+
+  // ── Architecture Guard ───────────────────────────────────────
+  // Ensure setup.ts is a launcher, not a parallel implementation.
+  // This prevents the v0.9.35 incident from recurring.
+
+  describe('single setup path', () => {
+    const setupPath = path.join(process.cwd(), 'src/commands/setup.ts');
+    const setupExists = fs.existsSync(setupPath);
+
+    it('setup.ts exists', () => {
+      expect(setupExists).toBe(true);
+    });
+
+    if (!setupExists) return;
+
+    const setup = fs.readFileSync(setupPath, 'utf-8');
+
+    it('setup.ts does NOT contain @inquirer/prompts (no classic fallback)', () => {
+      expect(setup).not.toContain('@inquirer/prompts');
+    });
+
+    it('setup.ts does NOT contain runClassicSetup', () => {
+      expect(setup).not.toContain('runClassicSetup');
     });
   });
 });

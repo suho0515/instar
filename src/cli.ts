@@ -270,8 +270,7 @@ program
   .name('instar')
   .description('Persistent autonomy infrastructure for AI agents')
   .version(getInstarVersion())
-  .option('--classic', 'Use the classic inquirer-based setup wizard instead of Claude')
-  .action(async (opts) => {
+  .action(async () => {
     const [major, minor] = process.versions.node.split('.').map(Number);
     if (major < 20 || (major === 20 && minor < 12)) {
       console.error(`\n  Instar setup requires Node.js 20.12 or later.`);
@@ -280,7 +279,7 @@ program
       process.exit(1);
     }
     const { runSetup } = await import('./commands/setup.js');
-    return runSetup(opts);
+    return runSetup();
   }); // Default: run interactive setup when no subcommand given
 
 // ── Setup (explicit alias) ────────────────────────────────────────
@@ -288,8 +287,7 @@ program
 program
   .command('setup')
   .description('Interactive setup wizard (same as running `instar` with no args)')
-  .option('--classic', 'Use the classic inquirer-based setup wizard instead of Claude')
-  .action(async (opts) => {
+  .action(async () => {
     const [major, minor] = process.versions.node.split('.').map(Number);
     if (major < 20 || (major === 20 && minor < 12)) {
       console.error(`\n  Instar setup requires Node.js 20.12 or later.`);
@@ -298,7 +296,7 @@ program
       process.exit(1);
     }
     const { runSetup } = await import('./commands/setup.js');
-    return runSetup(opts);
+    return runSetup();
   });
 
 // ── Init ─────────────────────────────────────────────────────────
@@ -529,6 +527,78 @@ knowledgeCmd
   .action(async (sourceId, opts) => {
     const { knowledgeRemove } = await import('./commands/knowledge.js');
     return knowledgeRemove(sourceId, opts);
+  });
+
+// ── Semantic Memory ──────────────────────────────────────────────
+
+const semanticCmd = program
+  .command('semantic')
+  .description('Manage the semantic memory knowledge graph');
+
+semanticCmd
+  .command('search <query>')
+  .description('Search the knowledge graph')
+  .option('-d, --dir <path>', 'Project directory')
+  .option('-l, --limit <count>', 'Max results (default: 10)', (v: string) => parseInt(v, 10))
+  .option('-t, --type <type>', 'Filter by entity type (fact, person, project, tool, pattern, decision, lesson)')
+  .option('--domain <domain>', 'Filter by domain')
+  .option('--min-confidence <value>', 'Minimum confidence (0.0-1.0)')
+  .action(async (query, opts) => {
+    const { semanticSearch } = await import('./commands/semantic.js');
+    return semanticSearch(query, opts);
+  });
+
+semanticCmd
+  .command('remember')
+  .description('Add a knowledge entity to the graph')
+  .requiredOption('-t, --type <type>', 'Entity type (fact, person, project, tool, pattern, decision, lesson)')
+  .requiredOption('-n, --name <name>', 'Entity name')
+  .requiredOption('-c, --content <content>', 'Entity content')
+  .option('--confidence <value>', 'Confidence (0.0-1.0, default: 0.8)')
+  .option('--source <source>', 'Source (default: cli)')
+  .option('--tags <tags>', 'Comma-separated tags')
+  .option('--domain <domain>', 'Domain grouping')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts) => {
+    const { semanticRemember } = await import('./commands/semantic.js');
+    return semanticRemember(opts);
+  });
+
+semanticCmd
+  .command('forget <id>')
+  .description('Remove an entity and its edges')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (id, opts) => {
+    const { semanticForget } = await import('./commands/semantic.js');
+    return semanticForget(id, opts);
+  });
+
+semanticCmd
+  .command('stats')
+  .description('Show knowledge graph statistics')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts) => {
+    const { semanticStats } = await import('./commands/semantic.js');
+    return semanticStats(opts);
+  });
+
+semanticCmd
+  .command('export')
+  .description('Export all entities and edges as JSON')
+  .option('-o, --output <path>', 'Output file (defaults to stdout)')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts) => {
+    const { semanticExport } = await import('./commands/semantic.js');
+    return semanticExport(opts);
+  });
+
+semanticCmd
+  .command('decay')
+  .description('Run confidence decay on all entities')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (opts) => {
+    const { semanticDecay } = await import('./commands/semantic.js');
+    return semanticDecay(opts);
   });
 
 // ── Intent ────────────────────────────────────────────────────────
