@@ -201,9 +201,14 @@ export class UpdateChecker {
           output = await this.execAsync('instar', args, 30000);
         } catch (dirErr) {
           const dirErrMsg = dirErr instanceof Error ? dirErr.message : String(dirErr);
+          const dirErrStderr = (dirErr as Error & { stderr?: string }).stderr || '';
           if (dirErrMsg.includes('unknown option') && dirErrMsg.includes('--dir')) {
             // Old binary in PATH — retry without --dir
             output = await this.execAsync('instar', ['migrate'], 30000);
+          } else if (dirErrStderr.includes('unknown command')) {
+            // Very old binary in PATH without migrate command — skip CLI migration gracefully.
+            // The in-memory migrator still runs as a safety net on server startup.
+            output = JSON.stringify({ upgraded: [], errors: [] });
           } else {
             throw dirErr;
           }
@@ -222,6 +227,12 @@ export class UpdateChecker {
             `Read and process the guide at your next session start, or read .instar/state/pending-upgrade-guide.md now.`;
         }
       } catch (err) {
+        const errMsg = err instanceof Error ? err.message : String(err);
+        const errStderr = (err as Error & { stderr?: string }).stderr || '';
+        // If the binary doesn't support the migrate command at all (very old version),
+        // skip silently — the in-memory migrator on server startup handles it.
+        const isMissingCommand = errStderr.includes('unknown command') || errMsg.includes('unknown command');
+
         // Fallback: run in-memory migrator (better than nothing)
         try {
           const migrator = new PostUpdateMigrator(this.migratorConfig);
@@ -230,15 +241,19 @@ export class UpdateChecker {
             migrationSummary = ` Intelligence download (fallback): ${migration.upgraded.length} files upgraded (${migration.upgraded.join(', ')}).`;
           }
         } catch (fallbackErr) {
-          migrationSummary = ` Post-update migration failed: ${err instanceof Error ? err.message : String(err)}.`;
+          migrationSummary = ` Post-update migration failed: ${errMsg}.`;
         }
-        DegradationReporter.getInstance().report({
-          feature: 'UpdateChecker.postUpdateMigration',
-          primary: 'Run post-update migrations',
-          fallback: 'Migration skipped — data may not be upgraded',
-          reason: `Why: ${err instanceof Error ? err.message : String(err)}`,
-          impact: 'Agent configuration may be stale after update',
-        });
+
+        // Only fire degradation for unexpected failures — not for PATH conflicts with old binaries
+        if (!isMissingCommand) {
+          DegradationReporter.getInstance().report({
+            feature: 'UpdateChecker.postUpdateMigration',
+            primary: 'Run post-update migrations',
+            fallback: 'Migration skipped — data may not be upgraded',
+            reason: `Why: ${errMsg}`,
+            impact: 'Agent configuration may be stale after update',
+          });
+        }
       }
     }
 
@@ -430,9 +445,14 @@ export class UpdateChecker {
       const child = execFile(cmd, args, {
         encoding: 'utf-8',
         timeout: timeoutMs,
-      }, (err, stdout) => {
-        if (err) reject(err);
-        else resolve((stdout || '').trim());
+      }, (err, stdout, stderr) => {
+        if (err) {
+          // Attach stderr for richer diagnostics in error handlers
+          (err as Error & { stderr?: string }).stderr = stderr || '';
+          reject(err);
+        } else {
+          resolve((stdout || '').trim());
+        }
       });
       // Safety: ensure child doesn't leak if parent is GC'd
       child.unref?.();
