@@ -220,10 +220,11 @@ export class AutoUpdater {
 
       // Step 2: Auto-apply if configured
       if (!this.config.autoApply) {
-        // Just notify — don't apply
+        // Notify with actionable instructions — don't leave the user hanging
         await this.notify(
-          `There's a new version available (v${info.latestVersion}). I'm currently on v${info.currentVersion}. ` +
-          `Auto-updates are off, so I'll need you to apply it when you're ready.`
+          `There's a new version available (v${info.latestVersion}). I'm currently on v${info.currentVersion}.\n\n` +
+          `Auto-updates are off. Just say "update" or "apply the update" and I'll handle it. ` +
+          `Or to turn on auto-updates so this happens automatically, say "turn on auto-updates".`
         );
         return;
       }

@@ -1072,7 +1072,7 @@ export interface DispatchConfig {
 }
 
 export interface UpdateConfig {
-  /** Whether to auto-apply updates without user confirmation (default: false) */
+  /** Whether to auto-apply updates without user confirmation (default: true) */
   autoApply: boolean;
 }
 
@@ -1291,4 +1291,163 @@ export interface MemoryIndexStats {
   staleFiles: number;
   /** Whether vector search is available */
   vectorSearchAvailable: boolean;
+}
+
+// ── Semantic Memory ──────────────────────────────────────────────
+
+/**
+ * Entity types for the semantic memory store.
+ * Different knowledge needs different handling — facts decay faster
+ * than lessons, people link to projects, patterns inform decisions.
+ */
+export type EntityType = 'fact' | 'person' | 'project' | 'tool' | 'pattern' | 'decision' | 'lesson';
+
+/**
+ * Relationship types between memory entities.
+ * Enables meaningful graph traversal ("who built X?", "what depends on Y?").
+ */
+export type RelationType =
+  | 'related_to'       // Generic association
+  | 'built_by'         // Person → Project/Tool
+  | 'learned_from'     // Lesson → Session/Person
+  | 'depends_on'       // Project → Tool/API
+  | 'supersedes'       // New fact → Old fact
+  | 'contradicts'      // Fact → Fact (conflict detection)
+  | 'part_of'          // Component → System
+  | 'used_in'          // Tool → Project
+  | 'knows_about'      // Person → Topic
+  | 'caused'           // Event → Consequence
+  | 'verified_by';     // Fact → Session (re-verification)
+
+/**
+ * A knowledge entity in semantic memory.
+ * Facts, people, projects, tools, patterns, decisions, lessons — anything
+ * the agent knows, with confidence tracking and temporal metadata.
+ */
+export interface MemoryEntity {
+  id: string;
+  type: EntityType;
+  name: string;
+  /** The actual knowledge content (markdown) */
+  content: string;
+  /** How confident the agent is in this knowledge (0.0-1.0) */
+  confidence: number;
+
+  // Temporal
+  createdAt: string;
+  /** When this was last confirmed to be true */
+  lastVerified: string;
+  /** When this was last retrieved for a session */
+  lastAccessed: string;
+  /** Optional hard expiry (e.g., "API key rotates monthly") */
+  expiresAt?: string;
+
+  // Provenance
+  /** Where this came from ('session:ABC', 'observation', 'user:Justin') */
+  source: string;
+  /** Session ID that created this entity */
+  sourceSession?: string;
+
+  // Classification
+  tags: string[];
+  /** Domain grouping ('infrastructure', 'relationships', 'business') */
+  domain?: string;
+}
+
+/**
+ * A directional connection between two entities.
+ */
+export interface MemoryEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+  relation: RelationType;
+  /** Connection strength (0.0-1.0) */
+  weight: number;
+  /** Why this connection exists */
+  context?: string;
+  createdAt: string;
+}
+
+/**
+ * Entity with a computed retrieval score.
+ */
+export interface ScoredEntity extends MemoryEntity {
+  score: number;
+}
+
+/**
+ * Entity with its connected neighbors.
+ */
+export interface ConnectedEntity {
+  entity: MemoryEntity;
+  edge: MemoryEdge;
+  direction: 'outgoing' | 'incoming';
+}
+
+/**
+ * Report from confidence decay operation.
+ */
+export interface DecayReport {
+  entitiesProcessed: number;
+  entitiesDecayed: number;
+  entitiesExpired: number;
+  minConfidence: number;
+  maxConfidence: number;
+  avgConfidence: number;
+}
+
+/**
+ * Report from import operation.
+ */
+export interface ImportReport {
+  entitiesImported: number;
+  edgesImported: number;
+  entitiesSkipped: number;
+  edgesSkipped: number;
+}
+
+/**
+ * Statistics for the semantic memory store.
+ */
+export interface SemanticMemoryStats {
+  totalEntities: number;
+  totalEdges: number;
+  entityCountsByType: Record<EntityType, number>;
+  avgConfidence: number;
+  staleCount: number;
+  dbSizeBytes: number;
+}
+
+/**
+ * Configuration for semantic memory.
+ */
+export interface SemanticMemoryConfig {
+  /** Path to SQLite database file */
+  dbPath: string;
+  /** Half-life for confidence decay in days (default: 30) */
+  decayHalfLifeDays: number;
+  /** Half-life for lessons (longer-lived knowledge, default: 90) */
+  lessonDecayHalfLifeDays: number;
+  /** Minimum confidence before an entity is considered stale (default: 0.2) */
+  staleThreshold: number;
+}
+
+/**
+ * Options for semantic memory search.
+ */
+export interface SemanticSearchOptions {
+  types?: EntityType[];
+  domain?: string;
+  minConfidence?: number;
+  limit?: number;
+}
+
+/**
+ * Options for graph traversal (explore).
+ */
+export interface ExploreOptions {
+  maxDepth?: number;
+  relations?: RelationType[];
+  minWeight?: number;
 }

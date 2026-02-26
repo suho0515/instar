@@ -856,6 +856,7 @@ export function createRoutes(ctx: RouteContext): Router {
           { context: 'User says "you don\'t need to ask me about X"', action: 'Grant trust explicitly (POST /trust/grant). Trust persists across sessions.' },
           { context: 'User asks to adjust memory warning thresholds or stop memory alerts', action: 'Update thresholds (PATCH /monitoring/memory/thresholds with {warning, elevated, critical}). Check current state (GET /monitoring/memory).' },
           { context: 'User asks about Instar features, architecture, multi-user, or multi-machine setup', action: 'STOP — do NOT answer from memory. Run GET /capabilities first, then check `instar --help` for CLI commands, then GET /context/dispatch for the full context map. Answer ONLY from what these return.' },
+          { context: 'User says to update, install latest version, or apply updates', action: 'Run POST /updates/apply immediately. Do NOT explain how to update — just do it. If you want to enable auto-updates, set updates.autoApply to true in .instar/config.json.' },
         ],
       },
     });
@@ -1864,8 +1865,42 @@ export function createRoutes(ctx: RouteContext): Router {
 
   router.get('/updates/config', (_req, res) => {
     res.json({
-      autoApply: ctx.config.updates?.autoApply ?? false,
+      autoApply: ctx.config.updates?.autoApply ?? true,
     });
+  });
+
+  router.patch('/updates/config', (req, res) => {
+    const { autoApply } = req.body ?? {};
+    if (typeof autoApply !== 'boolean') {
+      res.status(400).json({ error: 'autoApply must be a boolean' });
+      return;
+    }
+
+    // Update the runtime config
+    if (!ctx.config.updates) {
+      (ctx.config as any).updates = { autoApply };
+    } else {
+      ctx.config.updates.autoApply = autoApply;
+    }
+
+    // Persist to config.json
+    const configPath = path.join(ctx.config.stateDir, 'config.json');
+    try {
+      const raw = fs.existsSync(configPath) ? JSON.parse(fs.readFileSync(configPath, 'utf-8')) : {};
+      if (!raw.updates) raw.updates = {};
+      raw.updates.autoApply = autoApply;
+      fs.writeFileSync(configPath, JSON.stringify(raw, null, 2));
+    } catch (err) {
+      res.status(500).json({ error: `Failed to persist config: ${err instanceof Error ? err.message : String(err)}` });
+      return;
+    }
+
+    // Update the AutoUpdater's live config
+    if (ctx.autoUpdater) {
+      (ctx.autoUpdater as any).config.autoApply = autoApply;
+    }
+
+    res.json({ autoApply, persisted: true });
   });
 
   router.post('/updates/apply', async (_req, res) => {
