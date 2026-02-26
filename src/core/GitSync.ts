@@ -90,6 +90,15 @@ export class GitSyncManager {
     this.debounceMs = config.debounceMs ?? 30_000;
   }
 
+  /**
+   * Check if the project directory is a git repository.
+   * Returns false if .git/ doesn't exist — prevents crashes when git sync
+   * is called on a standalone agent that hasn't opted into git backup.
+   */
+  isGitRepo(): boolean {
+    return fs.existsSync(path.join(this.projectDir, '.git'));
+  }
+
   // ── Setup ───────────────────────────────────────────────────────
 
   /**
@@ -136,6 +145,9 @@ export class GitSyncManager {
       rejectedCommits: [],
       conflicts: [],
     };
+
+    // No git repo — return clean no-op (standalone agent without git backup)
+    if (!this.isGitRepo()) return result;
 
     // 1. Pull with rebase
     try {

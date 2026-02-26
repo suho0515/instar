@@ -32,7 +32,8 @@ import os from 'node:os';
 import path from 'node:path';
 import pc from 'picocolors';
 import { randomUUID } from 'node:crypto';
-import { detectTmuxPath, detectClaudePath, ensureStateDir, standaloneAgentsDir } from '../core/Config.js';
+import { execFileSync } from 'node:child_process';
+import { detectTmuxPath, detectClaudePath, detectGitPath, detectGhPath, ensureStateDir, standaloneAgentsDir } from '../core/Config.js';
 import { ensurePrerequisites } from '../core/Prerequisites.js';
 import { allocatePort, registerAgent, validateAgentName } from '../core/AgentRegistry.js';
 import { defaultIdentity } from '../scaffold/bootstrap.js';
@@ -808,6 +809,9 @@ async function initStandaloneAgent(agentName: string, options: InitOptions): Pro
     // Non-fatal
   }
 
+  // Cloud backup setup (recommended — protects agent data from machine loss)
+  await setupCloudBackup(projectDir, stateDir, agentName);
+
   // Install behavioral guardrails (hooks + Claude settings)
   try {
     refreshHooksAndSettings(projectDir, stateDir);
@@ -845,6 +849,206 @@ async function initStandaloneAgent(agentName: string, options: InitOptions): Pro
   console.log();
   console.log(`  Auth token: ${pc.dim(authToken.slice(0, 8) + '...' + authToken.slice(-4))}`);
   console.log(`  Location: ${pc.dim(projectDir)}`);
+}
+
+// ── Cloud Backup Setup ──────────────────────────────────────────────
+
+/**
+ * Set up cloud backup for a standalone agent.
+ *
+ * Philosophy: Users expect their data to be backed up. If the machine crashes,
+ * they lose everything without this. We handle all the complexity — git, gh CLI,
+ * GitHub account — so non-technical users never need to know what git is.
+ *
+ * Flow:
+ * 1. Recommend backup (default: YES)
+ * 2. Auto-install git if missing (brew/apt)
+ * 3. Auto-install gh CLI if missing (brew/apt)
+ * 4. Walk through GitHub auth if needed
+ * 5. Create private repo automatically
+ */
+async function setupCloudBackup(projectDir: string, stateDir: string, agentName: string): Promise<void> {
+  console.log();
+  console.log(pc.bold('  Cloud Backup (recommended)'));
+  console.log(pc.dim('  Backs up your agent data to the cloud so nothing is lost if this machine crashes.'));
+
+  let skipBackup = false;
+  try {
+    const { confirm } = await import('@inquirer/prompts');
+    const wantBackup = await confirm({
+      message: 'Set up cloud backup for this agent? (recommended)',
+      default: true,
+    });
+    if (!wantBackup) {
+      skipBackup = true;
+      console.log(pc.yellow('  Skipped. You can set this up later — your agent will ask during its first session.'));
+    }
+  } catch {
+    // @inquirer/prompts not available — skip silently
+    return;
+  }
+  if (skipBackup) return;
+
+  // Step 1: Ensure git is available
+  let gitPath = detectGitPath();
+  if (!gitPath) {
+    console.log(pc.dim('  Git not found — installing...'));
+    gitPath = await autoInstallPackage('git');
+    if (!gitPath) {
+      console.log(pc.yellow('  Could not install git automatically.'));
+      console.log(pc.dim('  Install manually: https://git-scm.com/downloads'));
+      console.log(pc.dim('  Then re-run: instar init --standalone ' + agentName));
+      return;
+    }
+  }
+
+  // Step 2: Initialize git repo
+  execFileSync(gitPath, ['init'], { cwd: projectDir, stdio: 'pipe' });
+  execFileSync(gitPath, ['add', '.gitignore'], { cwd: projectDir, stdio: 'pipe' });
+
+  // Update config with gitBackup enabled
+  const configObj = JSON.parse(fs.readFileSync(path.join(stateDir, 'config.json'), 'utf-8'));
+  configObj.gitBackup = { enabled: true, autoPush: true };
+  fs.writeFileSync(path.join(stateDir, 'config.json'), JSON.stringify(configObj, null, 2));
+  console.log(`  ${pc.green('✓')} Initialized local backup`);
+
+  // Step 3: Ensure gh CLI is available
+  let ghPath = detectGhPath();
+  if (!ghPath) {
+    console.log(pc.dim('  GitHub CLI not found — installing...'));
+    ghPath = await autoInstallPackage('gh');
+    if (!ghPath) {
+      console.log(pc.yellow('  Could not install GitHub CLI automatically.'));
+      console.log(pc.dim('  Install manually: https://cli.github.com'));
+      console.log(pc.dim('  Then run: gh auth login && gh repo create instar-' + agentName + ' --private --source ' + projectDir));
+      return;
+    }
+  }
+
+  // Step 4: Check GitHub authentication
+  let ghAuthed = false;
+  try {
+    execFileSync(ghPath, ['auth', 'status'], { stdio: 'pipe' });
+    ghAuthed = true;
+  } catch {
+    // Not authenticated
+  }
+
+  if (!ghAuthed) {
+    console.log();
+    console.log(pc.bold('  GitHub Account'));
+    console.log(pc.dim('  You need a free GitHub account to store your backup in the cloud.'));
+    console.log(pc.dim('  If you don\'t have one, go to https://github.com/signup to create one.'));
+    console.log();
+
+    try {
+      const { confirm } = await import('@inquirer/prompts');
+      const readyToAuth = await confirm({
+        message: 'Ready to sign in to GitHub? (opens a browser)',
+        default: true,
+      });
+
+      if (readyToAuth) {
+        try {
+          // gh auth login with web flow — opens browser for OAuth
+          execFileSync(ghPath, ['auth', 'login', '--web', '--git-protocol', 'https'], {
+            cwd: projectDir,
+            stdio: 'inherit', // Show the auth flow to the user
+          });
+          ghAuthed = true;
+          console.log(`  ${pc.green('✓')} Signed in to GitHub`);
+        } catch {
+          console.log(pc.yellow('  GitHub sign-in was cancelled or failed.'));
+          console.log(pc.dim('  You can sign in later: gh auth login'));
+          console.log(pc.dim('  Then create your backup: gh repo create instar-' + agentName + ' --private --source ' + projectDir));
+          return;
+        }
+      } else {
+        console.log(pc.dim('  You can sign in later: gh auth login'));
+        console.log(pc.dim('  Then create your backup: gh repo create instar-' + agentName + ' --private --source ' + projectDir));
+        return;
+      }
+    } catch {
+      return;
+    }
+  }
+
+  // Step 5: Create private GitHub repo
+  try {
+    const repoName = `instar-${agentName}`;
+    execFileSync(ghPath, ['repo', 'create', repoName, '--private', '--source', projectDir], {
+      cwd: projectDir,
+      stdio: 'pipe',
+    });
+    console.log(`  ${pc.green('✓')} Created private backup repository: ${repoName}`);
+    console.log(pc.dim('  Your agent data will be automatically backed up to GitHub.'));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('already exists')) {
+      console.log(pc.dim(`  Repository instar-${agentName} already exists — connecting to it.`));
+      try {
+        // Get the user's GitHub username
+        const whoami = execFileSync(ghPath, ['api', 'user', '--jq', '.login'], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+        execFileSync(gitPath, ['remote', 'add', 'origin', `https://github.com/${whoami}/instar-${agentName}.git`], {
+          cwd: projectDir,
+          stdio: 'pipe',
+        });
+        console.log(`  ${pc.green('✓')} Connected to existing repository`);
+      } catch {
+        console.log(pc.dim('  Could not auto-connect. Run: git remote add origin https://github.com/YOUR_USERNAME/instar-' + agentName + '.git'));
+      }
+    } else {
+      console.log(pc.yellow(`  Could not create repository: ${msg.slice(0, 80)}`));
+      console.log(pc.dim('  You can create it manually: gh repo create instar-' + agentName + ' --private --source ' + projectDir));
+    }
+  }
+}
+
+/**
+ * Auto-install a package using the system package manager.
+ * Returns the path to the installed binary, or null if installation failed.
+ */
+async function autoInstallPackage(pkg: string): Promise<string | null> {
+  const platform = process.platform;
+  const arch = process.arch;
+
+  try {
+    if (platform === 'darwin') {
+      // macOS — use Homebrew
+      let brewPath: string | null = null;
+      try {
+        brewPath = execFileSync('which', ['brew'], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      } catch {
+        // No Homebrew
+      }
+
+      if (brewPath) {
+        console.log(pc.dim(`  Running: brew install ${pkg}`));
+        execFileSync(brewPath, ['install', pkg], { stdio: 'inherit' });
+        // Re-detect after install
+        const installed = execFileSync('which', [pkg], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+        if (installed) {
+          console.log(`  ${pc.green('✓')} Installed ${pkg}`);
+          return installed;
+        }
+      } else {
+        console.log(pc.dim('  Homebrew not found. Install it first: https://brew.sh'));
+      }
+    } else if (platform === 'linux') {
+      // Linux — try apt
+      console.log(pc.dim(`  Running: sudo apt install -y ${pkg}`));
+      execFileSync('sudo', ['apt', 'install', '-y', pkg], { stdio: 'inherit' });
+      const installed = execFileSync('which', [pkg], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+      if (installed) {
+        console.log(`  ${pc.green('✓')} Installed ${pkg}`);
+        return installed;
+      }
+    }
+  } catch {
+    // Installation failed
+  }
+
+  return null;
 }
 
 // ── Shared helpers ────────────────────────────────────────────────────
@@ -2116,19 +2320,15 @@ for pattern in "rm -rf \\." "git push --force" "git push -f" "git reset --hard" 
 done
 `, { mode: 0o755 });
 
-  // Grounding before messaging
-  fs.writeFileSync(path.join(hooksDir, 'grounding-before-messaging.sh'), `#!/bin/bash
-# Grounding before messaging — Security Through Identity.
-INPUT="$1"
-if echo "$INPUT" | grep -qE "(telegram-reply|send-email|send-message|POST.*/telegram/reply)"; then
-  INSTAR_DIR="\${CLAUDE_PROJECT_DIR:-.}/.instar"
-  if [ -f "$INSTAR_DIR/AGENT.md" ]; then
-    echo "Before sending this message, remember who you are."
-    echo "Re-read .instar/AGENT.md if you haven't recently."
-    echo "Security Through Identity: An agent that knows itself is harder to compromise."
-  fi
-fi
-`, { mode: 0o755 });
+  // Grounding before messaging — full pipeline with convergence check.
+  // Uses PostUpdateMigrator as single source of truth (DRY).
+  fs.writeFileSync(path.join(hooksDir, 'grounding-before-messaging.sh'), migrator.getGroundingBeforeMessagingPublic(), { mode: 0o755 });
+
+  // Convergence check script — heuristic quality gate called by grounding-before-messaging.
+  // Must be in .instar/scripts/ where grounding-before-messaging.sh expects it.
+  const instarScriptsDir = path.join(stateDir, 'scripts');
+  fs.mkdirSync(instarScriptsDir, { recursive: true });
+  fs.writeFileSync(path.join(instarScriptsDir, 'convergence-check.sh'), migrator.getConvergenceCheckPublic(), { mode: 0o755 });
 
   // Compaction recovery — shared from PostUpdateMigrator (single source of truth).
   fs.writeFileSync(path.join(hooksDir, 'compaction-recovery.sh'), migrator.getHookContent('compaction-recovery'), { mode: 0o755 });

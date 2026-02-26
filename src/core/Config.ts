@@ -34,6 +34,50 @@ export function getInstarVersion(): string {
   return '0.0.0';
 }
 
+export function detectGitPath(): string | null {
+  const candidates = [
+    '/usr/bin/git',
+    '/opt/homebrew/bin/git',  // macOS ARM (Homebrew)
+    '/usr/local/bin/git',     // macOS Intel / Linux
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  // Fallback: check PATH
+  try {
+    const result = execFileSync('which', ['git'], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch {
+    // @silent-fallback-ok — git path detection
+  }
+
+  return null;
+}
+
+export function detectGhPath(): string | null {
+  const candidates = [
+    '/opt/homebrew/bin/gh',   // macOS ARM (Homebrew)
+    '/usr/local/bin/gh',      // macOS Intel / Linux
+    '/usr/bin/gh',            // Linux system
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+
+  // Fallback: check PATH
+  try {
+    const result = execFileSync('which', ['gh'], { encoding: 'utf-8', stdio: 'pipe' }).trim();
+    if (result && fs.existsSync(result)) return result;
+  } catch {
+    // @silent-fallback-ok — gh path detection
+  }
+
+  return null;
+}
+
 export function detectTmuxPath(): string | null {
   const candidates = [
     '/opt/homebrew/bin/tmux',  // macOS ARM (Homebrew)

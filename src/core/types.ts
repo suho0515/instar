@@ -966,6 +966,15 @@ export interface InstarConfig {
   feedback?: FeedbackConfig;
   /** Dispatch (intelligence broadcast) config */
   dispatches?: DispatchConfig;
+  /** Git backup config (opt-in for standalone agents) */
+  gitBackup?: {
+    /** Whether git backup is enabled. Defaults to true if .git/ exists, false otherwise. */
+    enabled: boolean;
+    /** Git remote name (default: "origin") */
+    remote?: string;
+    /** Auto-push after commits (default: true) */
+    autoPush?: boolean;
+  };
   /** Update configuration */
   updates?: UpdateConfig;
   /** Publishing (Telegraph) config */

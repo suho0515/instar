@@ -837,8 +837,12 @@ export async function startServer(options: StartOptions): Promise<void> {
     }
 
     // Git sync for multi-machine (awake machines only — standby pulls via cron or manual)
+    // Only attempt git sync if the project directory is actually a git repo.
+    // Standalone agents don't have git repos unless the user opted into cloud backup.
     let gitSync: GitSyncManager | undefined;
-    if (coordinator.enabled && coordinator.isAwake) {
+    const isGitRepo = fs.existsSync(path.join(config.projectDir, '.git'));
+    const gitBackupEnabled = config.gitBackup?.enabled !== false;
+    if (coordinator.enabled && coordinator.isAwake && isGitRepo && gitBackupEnabled) {
       try {
         gitSync = new GitSyncManager({
           projectDir: config.projectDir,
