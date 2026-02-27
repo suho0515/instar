@@ -220,7 +220,7 @@ export class UpdateChecker {
         let migration: any;
         try {
           migration = JSON.parse(output);
-        } catch {
+        } catch { // @silent-fallback-ok — old binary returned non-JSON; graceful skip, no degradation
           migration = { upgraded: [], errors: [] };
         }
         if (migration.upgraded && migration.upgraded.length > 0) {
