@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { LiveConfig } from '../config/LiveConfig.js';
 import type { ComponentHealth } from '../core/types.js';
+import { ProcessIntegrity } from '../core/ProcessIntegrity.js';
 
 // ── Types ─────────────────────────────────────────────────────────
 
@@ -121,6 +122,7 @@ export class CoherenceMonitor extends EventEmitter {
     const checks: CoherenceCheckResult[] = [];
 
     // Run all check categories
+    checks.push(...this.checkProcessIntegrity());
     checks.push(...this.checkConfigCoherence());
     checks.push(...this.checkStateDurability());
     checks.push(...this.checkOutputSanity());
@@ -219,6 +221,38 @@ export class CoherenceMonitor extends EventEmitter {
   }
 
   // ── Check Categories ────────────────────────────────────────────
+
+  /**
+   * Check 0: Process Integrity
+   * Is this process running the code it claims to be running?
+   * Detects the "stale process" bug where npm install -g updates the binary
+   * on disk but the running process still has old code in memory.
+   */
+  private checkProcessIntegrity(): CoherenceCheckResult[] {
+    const results: CoherenceCheckResult[] = [];
+    const integrity = ProcessIntegrity.getInstance();
+
+    if (!integrity) {
+      // ProcessIntegrity not initialized — skip gracefully
+      return results;
+    }
+
+    if (integrity.versionMismatch) {
+      results.push({
+        name: 'process-version-mismatch',
+        passed: false,
+        message: `Running v${integrity.runningVersion} but disk has v${integrity.diskVersion} — restart needed`,
+      });
+    } else {
+      results.push({
+        name: 'process-version-mismatch',
+        passed: true,
+        message: `Running v${integrity.runningVersion} (matches disk)`,
+      });
+    }
+
+    return results;
+  }
 
   /**
    * Check 1: Config Coherence

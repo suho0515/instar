@@ -50,6 +50,7 @@ import type { MemoryPressureMonitor } from '../monitoring/MemoryPressureMonitor.
 import type { CoherenceMonitor } from '../monitoring/CoherenceMonitor.js';
 import type { CommitmentTracker } from '../monitoring/CommitmentTracker.js';
 import type { SemanticMemory } from '../memory/SemanticMemory.js';
+import { ProcessIntegrity } from '../core/ProcessIntegrity.js';
 
 export interface RouteContext {
   config: InstarConfig;
@@ -137,7 +138,18 @@ export function createRoutes(ctx: RouteContext): Router {
     }
     if (isAuthed) {
       const mem = process.memoryUsage();
-      base.version = ctx.config.version || '0.0.0';
+      // Use ProcessIntegrity for truthful version reporting
+      const integrity = ProcessIntegrity.getInstance();
+      if (integrity) {
+        base.version = integrity.runningVersion;
+        if (integrity.versionMismatch) {
+          base.versionMismatch = true;
+          base.diskVersion = integrity.diskVersion;
+          base.bootedAt = integrity.bootedAt;
+        }
+      } else {
+        base.version = ctx.config.version || '0.0.0';
+      }
       base.sessions = { current: sessions.length, max: maxSessions };
       base.schedulerRunning = ctx.scheduler !== null;
       base.consecutiveJobFailures = totalFailures;
@@ -745,9 +757,10 @@ export function createRoutes(ctx: RouteContext): Router {
       } catch { /* ignore */ }
     }
 
+    const setupIntegrity = ProcessIntegrity.getInstance();
     res.json({
       project: ctx.config.projectName,
-      version: ctx.config.version || '0.0.0',
+      version: setupIntegrity?.runningVersion || ctx.config.version || '0.0.0',
       port: ctx.config.port,
       identity: identityFiles,
       scripts,
@@ -1855,7 +1868,7 @@ export function createRoutes(ctx: RouteContext): Router {
         description,
         context: context || undefined,
         agentName: ctx.config.projectName,
-        instarVersion: ctx.config.version || '0.0.0',
+        instarVersion: ProcessIntegrity.getInstance()?.runningVersion || ctx.config.version || '0.0.0',
         nodeVersion: process.version,
         os: `${process.platform} ${process.arch}`,
       });
@@ -2208,7 +2221,7 @@ export function createRoutes(ctx: RouteContext): Router {
           title: `Dispatch feedback: ${dispatch?.title ?? req.params.id}`,
           description: `Dispatch ${req.params.id} was ${helpful ? 'helpful' : 'not helpful'}.${comment ? ` Comment: ${comment}` : ''}`,
           agentName: ctx.config.projectName,
-          instarVersion: ctx.config.version ?? '0.0.0',
+          instarVersion: ProcessIntegrity.getInstance()?.runningVersion || ctx.config.version || '0.0.0',
           nodeVersion: process.version,
           os: process.platform,
           context: JSON.stringify({

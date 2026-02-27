@@ -57,6 +57,8 @@ import { AdaptiveTrust } from '../core/AdaptiveTrust.js';
 import { DegradationReporter } from '../monitoring/DegradationReporter.js';
 import { LiveConfig } from '../config/LiveConfig.js';
 import { CoherenceMonitor } from '../monitoring/CoherenceMonitor.js';
+import { ProcessIntegrity } from '../core/ProcessIntegrity.js';
+import { StaleProcessGuard } from '../core/StaleProcessGuard.js';
 import { NotificationBatcher } from '../messaging/NotificationBatcher.js';
 import type { NotificationTier } from '../messaging/NotificationBatcher.js';
 import type { PipelineMessage } from '../types/pipeline.js';
@@ -731,8 +733,9 @@ function cleanupTelegramTempFiles(): void {
  */
 function getInstalledVersion(): string {
   try {
-    const pkgPath = path.resolve(new URL(import.meta.url).pathname, '../../../package.json');
-    return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version || '';
+    const pkgPath = resolvePackageJsonPath();
+    if (pkgPath) return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')).version || '';
+    return '';
   } catch (err) {
     DegradationReporter.getInstance().report({
       feature: 'server.getInstalledVersion',
@@ -743,6 +746,18 @@ function getInstalledVersion(): string {
     });
     return '';
   }
+}
+
+/**
+ * Resolve path to instar's package.json.
+ * Used by ProcessIntegrity for live disk version reads.
+ */
+function resolvePackageJsonPath(): string | null {
+  try {
+    const pkgPath = path.resolve(new URL(import.meta.url).pathname, '../../../package.json');
+    if (fs.existsSync(pkgPath)) return pkgPath;
+  } catch { /* fallback */ }
+  return null;
 }
 
 function setupServerLog(stateDir: string): void {
@@ -855,13 +870,38 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Set up file logging for observability
     setupServerLog(config.stateDir);
 
+    // ── ProcessIntegrity: freeze the running version at startup ────────
+    // This MUST happen before any version reporting. The version is captured
+    // from the code loaded into memory, NOT from disk (which changes after
+    // npm install -g). See ProcessIntegrity.ts for the full rationale.
+    const packageJsonPath = resolvePackageJsonPath();
+    const startupVersion = config.version ?? '0.0.0';
+    const processIntegrity = ProcessIntegrity.initialize(startupVersion, packageJsonPath);
+
+    // StaleProcessGuard: register version as a monitored snapshot
+    const staleGuard = new StaleProcessGuard();
+    staleGuard.registerSnapshot(
+      'instar-version',
+      startupVersion,
+      () => {
+        try {
+          if (packageJsonPath && fs.existsSync(packageJsonPath)) {
+            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf-8'));
+            return pkg.version || '0.0.0';
+          }
+        } catch { /* fallback */ }
+        return startupVersion;
+      },
+      { description: 'Instar package version', severity: 'critical' },
+    );
+
     // Initialize DegradationReporter early — before any feature that might fall back.
     // Downstream systems (feedback, telegram) are connected once the server is fully up.
     const degradationReporter = DegradationReporter.getInstance();
     degradationReporter.configure({
       stateDir: config.stateDir,
       agentName: config.projectName,
-      instarVersion: config.version ?? '0.0.0',
+      instarVersion: startupVersion,
     });
 
     // Clean up stale Telegram temp files on startup
@@ -1423,7 +1463,7 @@ export async function startServer(options: StartOptions): Promise<void> {
     if (config.feedback) {
       feedback = new FeedbackManager({
         ...config.feedback,
-        version: config.version,
+        version: startupVersion,
       });
       feedbackAnomalyDetector = new FeedbackAnomalyDetector();
       console.log(pc.green('  Feedback loop enabled (with anomaly detection)'));
@@ -1434,7 +1474,7 @@ export async function startServer(options: StartOptions): Promise<void> {
     if (config.dispatches) {
       dispatches = new DispatchManager({
         ...config.dispatches,
-        version: config.version,
+        version: startupVersion,
       });
 
       const dispatchExecutor = new DispatchExecutor(config.projectDir, sessionManager);
