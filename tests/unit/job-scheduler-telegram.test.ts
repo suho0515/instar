@@ -204,7 +204,7 @@ describe('JobScheduler Telegram notifications', () => {
         sendToTopic: vi.fn()
           .mockRejectedValueOnce(new Error('topic deleted'))
           .mockResolvedValueOnce(undefined),
-        findOrCreateForumTopic: vi.fn().mockResolvedValue({ topicId: 99, name: 'Job: Recreate Job', reused: false }),
+        findOrCreateForumTopic: vi.fn().mockResolvedValue({ topicId: 99, name: '⚙️ Job: Recreate Job', reused: false }),
       };
       scheduler.setTelegram(mockTelegram as unknown as import('../../src/messaging/TelegramAdapter.js').TelegramAdapter);
 
@@ -214,7 +214,7 @@ describe('JobScheduler Telegram notifications', () => {
       await scheduler.notifyJobComplete(session.id, session.tmuxSession);
 
       // Should have tried original topic first, then created a new one
-      expect(mockTelegram.findOrCreateForumTopic).toHaveBeenCalledWith('Job: Recreate Job', 7322096);
+      expect(mockTelegram.findOrCreateForumTopic).toHaveBeenCalledWith('⚙️ Job: Recreate Job', 13338331);
       // Second sendToTopic call should be to the new topic
       expect(mockTelegram.sendToTopic).toHaveBeenCalledTimes(2);
       expect(mockTelegram.sendToTopic).toHaveBeenLastCalledWith(99, expect.any(String));

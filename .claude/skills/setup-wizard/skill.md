@@ -604,7 +604,7 @@ Strip the `[telegram:N]` prefix before interpreting the message. Respond natural
 
 ## Phase 2.5: Secret Management — HANDLED BY SETUP.TS
 
-**DO NOT handle secret management here.** The setup launcher runs a dedicated `/secret-setup` micro-session BEFORE this wizard starts. By the time you're reading this, `~/.instar/secrets/backend.json` already exists.
+**DO NOT handle secret management here.** The setup launcher runs a dedicated `/secret-setup` micro-session BEFORE this wizard starts, offering the user either Bitwarden or a local encrypted store as their secret storage backend. By the time you're reading this, `~/.instar/secrets/backend.json` already exists.
 
 Check the prompt context for `SECRET_BACKEND_CONFIGURED`. If present:
 - Secret management is DONE — do not re-configure it

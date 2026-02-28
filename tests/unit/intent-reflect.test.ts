@@ -147,10 +147,11 @@ describe('intent reflect', () => {
       'Ship reliable software.',
     ].join('\n'));
 
-    // Create journal entries
+    // Create journal entries — use relative timestamps so they fall within default 7-day window
+    const now = Date.now();
     const entries = [
       {
-        timestamp: '2026-02-20T10:00:00.000Z',
+        timestamp: new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString(),
         sessionId: 'sess-1',
         decision: 'Used integration tests over unit tests for API layer',
         principle: 'reliability',
@@ -158,7 +159,7 @@ describe('intent reflect', () => {
         jobSlug: 'testing',
       },
       {
-        timestamp: '2026-02-21T14:00:00.000Z',
+        timestamp: new Date(now - 1 * 24 * 60 * 60 * 1000).toISOString(),
         sessionId: 'sess-2',
         decision: 'Skipped code review for hotfix',
         principle: 'speed',
