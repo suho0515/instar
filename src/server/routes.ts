@@ -53,7 +53,7 @@ import type { SemanticMemory } from '../memory/SemanticMemory.js';
 import type { SessionActivitySentinel } from '../monitoring/SessionActivitySentinel.js';
 import { ProcessIntegrity } from '../core/ProcessIntegrity.js';
 import type { MessageRouter } from '../messaging/MessageRouter.js';
-import type { MessageType, MessagePriority } from '../messaging/types.js';
+import type { MessageType, MessagePriority, MessageFilter } from '../messaging/types.js';
 import { verifyAgentToken } from '../messaging/AgentTokenManager.js';
 import type { WorkingMemoryAssembler } from '../memory/WorkingMemoryAssembler.js';
 import type { QuotaManager } from '../monitoring/QuotaManager.js';
@@ -4299,6 +4299,63 @@ export function createRoutes(ctx: RouteContext): Router {
 
   // relay-machine endpoint is now in machineRoutes.ts (protected by Machine-HMAC auth)
 
+  router.get('/messages/inbox', async (req, res) => {
+    if (!ctx.messageRouter) {
+      res.status(503).json({ error: 'Messaging not available' });
+      return;
+    }
+    try {
+      const filter: MessageFilter = {};
+      if (req.query.type) filter.type = req.query.type as MessageType;
+      if (req.query.priority) filter.priority = req.query.priority as MessagePriority;
+      if (req.query.unread === 'true') filter.unread = true;
+      if (req.query.fromAgent) filter.fromAgent = req.query.fromAgent as string;
+      if (req.query.threadId) filter.threadId = req.query.threadId as string;
+      if (req.query.limit) filter.limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+      if (req.query.offset) filter.offset = parseInt(req.query.offset as string, 10) || 0;
+      const messages = await ctx.messageRouter.getInbox(ctx.config.projectName, filter);
+      res.json({ messages, count: messages.length });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Inbox query failed' });
+    }
+  });
+
+  router.get('/messages/outbox', async (req, res) => {
+    if (!ctx.messageRouter) {
+      res.status(503).json({ error: 'Messaging not available' });
+      return;
+    }
+    try {
+      const filter: MessageFilter = {};
+      if (req.query.type) filter.type = req.query.type as MessageType;
+      if (req.query.priority) filter.priority = req.query.priority as MessagePriority;
+      if (req.query.limit) filter.limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+      if (req.query.offset) filter.offset = parseInt(req.query.offset as string, 10) || 0;
+      const messages = await ctx.messageRouter.getOutbox(ctx.config.projectName, filter);
+      res.json({ messages, count: messages.length });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Outbox query failed' });
+    }
+  });
+
+  router.get('/messages/dead-letter', async (req, res) => {
+    if (!ctx.messageRouter) {
+      res.status(503).json({ error: 'Messaging not available' });
+      return;
+    }
+    try {
+      const filter: MessageFilter = {};
+      if (req.query.type) filter.type = req.query.type as MessageType;
+      if (req.query.priority) filter.priority = req.query.priority as MessagePriority;
+      if (req.query.limit) filter.limit = Math.min(parseInt(req.query.limit as string, 10) || 50, 200);
+      if (req.query.offset) filter.offset = parseInt(req.query.offset as string, 10) || 0;
+      const messages = await ctx.messageRouter.getDeadLetters(filter);
+      res.json({ messages, count: messages.length });
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Dead-letter query failed' });
+    }
+  });
+
   router.get('/messages/stats', async (req, res) => {
     if (!ctx.messageRouter) {
       res.status(503).json({ error: 'Messaging not available' });
@@ -4309,6 +4366,30 @@ export function createRoutes(ctx: RouteContext): Router {
       res.json(stats);
     } catch (err) {
       res.status(500).json({ error: err instanceof Error ? err.message : 'Stats failed' });
+    }
+  });
+
+  // IMPORTANT: /:id must be LAST among /messages/* routes to avoid
+  // catching named paths like /messages/stats, /messages/inbox, etc.
+  router.get('/messages/:id', async (req, res) => {
+    if (!ctx.messageRouter) {
+      res.status(503).json({ error: 'Messaging not available' });
+      return;
+    }
+    try {
+      const messageId = req.params.id;
+      if (!MSG_ID_RE.test(messageId)) {
+        res.status(400).json({ error: 'Invalid message ID format' });
+        return;
+      }
+      const envelope = await ctx.messageRouter.getMessage(messageId);
+      if (!envelope) {
+        res.status(404).json({ error: 'Message not found' });
+        return;
+      }
+      res.json(envelope);
+    } catch (err) {
+      res.status(500).json({ error: err instanceof Error ? err.message : 'Message query failed' });
     }
   });
 

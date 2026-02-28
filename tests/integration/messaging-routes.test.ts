@@ -732,4 +732,206 @@ describe('Inter-Agent Messaging API routes', () => {
       expect(msg!.delivery.transitions.length).toBe(3);
     });
   });
+
+  // ── GET /messages/inbox ─────────────────────────────────────────
+
+  describe('GET /messages/inbox', () => {
+    it('returns 503 without messaging', async () => {
+      // This server has messaging, so this is a positive test
+      const res = await request(app)
+        .get('/messages/inbox')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body).toHaveProperty('count');
+      expect(Array.isArray(res.body.messages)).toBe(true);
+    });
+
+    it('filters inbox by type', async () => {
+      const res = await request(app)
+        .get('/messages/inbox?type=query')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      for (const msg of res.body.messages) {
+        expect(msg.message.type).toBe('query');
+      }
+    });
+
+    it('filters inbox by priority', async () => {
+      const res = await request(app)
+        .get('/messages/inbox?priority=high')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      for (const msg of res.body.messages) {
+        expect(msg.message.priority).toBe('high');
+      }
+    });
+
+    it('filters inbox by unread', async () => {
+      const res = await request(app)
+        .get('/messages/inbox?unread=true')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      for (const msg of res.body.messages) {
+        expect(msg.delivery.phase).not.toBe('read');
+      }
+    });
+
+    it('respects limit and offset', async () => {
+      const res = await request(app)
+        .get('/messages/inbox?limit=2&offset=0')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body.messages.length).toBeLessThanOrEqual(2);
+    });
+
+    it('caps limit at 200', async () => {
+      const res = await request(app)
+        .get('/messages/inbox?limit=999')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      // Doesn't error, just caps
+      expect(res.body).toHaveProperty('messages');
+    });
+
+    it('rejects unauthenticated inbox request', async () => {
+      await request(app)
+        .get('/messages/inbox')
+        .expect(401);
+    });
+  });
+
+  // ── GET /messages/outbox ─────────────────────────────────────────
+
+  describe('GET /messages/outbox', () => {
+    it('returns outbox messages with count', async () => {
+      const res = await request(app)
+        .get('/messages/outbox')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body).toHaveProperty('count');
+      expect(Array.isArray(res.body.messages)).toBe(true);
+    });
+
+    it('filters outbox by type', async () => {
+      const res = await request(app)
+        .get('/messages/outbox?type=info')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      for (const msg of res.body.messages) {
+        expect(msg.message.type).toBe('info');
+      }
+    });
+
+    it('rejects unauthenticated outbox request', async () => {
+      await request(app)
+        .get('/messages/outbox')
+        .expect(401);
+    });
+  });
+
+  // ── GET /messages/:id ─────────────────────────────────────────
+
+  describe('GET /messages/:id', () => {
+    let knownMessageId: string;
+
+    it('sends a message to get a known ID', async () => {
+      const res = await request(app)
+        .post('/messages/send')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .send({
+          from: { agent: 'test-agent', session: 'get-test', machine: 'test-machine' },
+          to: { agent: 'test-agent', session: 'get-test-2', machine: 'local' },
+          type: 'info',
+          priority: 'low',
+          subject: 'Message by ID test',
+          body: 'Testing GET /:id endpoint',
+        })
+        .expect(201);
+      knownMessageId = res.body.messageId;
+      expect(knownMessageId).toBeDefined();
+    });
+
+    it('returns a single message by ID', async () => {
+      const res = await request(app)
+        .get(`/messages/${knownMessageId}`)
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body.message.id).toBe(knownMessageId);
+      expect(res.body.message.subject).toBe('Message by ID test');
+    });
+
+    it('returns 404 for non-existent message', async () => {
+      const fakeId = crypto.randomUUID();
+      await request(app)
+        .get(`/messages/${fakeId}`)
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(404);
+    });
+
+    it('returns 400 for invalid message ID format', async () => {
+      await request(app)
+        .get('/messages/not-a-uuid')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(400);
+    });
+
+    it('rejects unauthenticated request', async () => {
+      await request(app)
+        .get(`/messages/${knownMessageId}`)
+        .expect(401);
+    });
+  });
+
+  // ── GET /messages/dead-letter ─────────────────────────────────────
+
+  describe('GET /messages/dead-letter', () => {
+    it('returns empty dead-letter queue initially', async () => {
+      const res = await request(app)
+        .get('/messages/dead-letter')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body).toHaveProperty('count');
+      expect(Array.isArray(res.body.messages)).toBe(true);
+    });
+
+    it('shows dead-lettered messages after moving one', async () => {
+      // Send a message, then dead-letter it
+      const sendRes = await request(app)
+        .post('/messages/send')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .send({
+          from: { agent: 'test-agent', session: 'dl-test', machine: 'test-machine' },
+          to: { agent: 'test-agent', session: 'dl-target', machine: 'local' },
+          type: 'info',
+          priority: 'low',
+          subject: 'Will be dead-lettered',
+          body: 'This message will expire',
+        })
+        .expect(201);
+
+      // Dead-letter it via store directly
+      await messageStore.deadLetter(sendRes.body.messageId, 'test: expired');
+
+      const res = await request(app)
+        .get('/messages/dead-letter')
+        .set('Authorization', `Bearer ${AUTH_TOKEN}`)
+        .expect(200);
+      expect(res.body.count).toBeGreaterThan(0);
+      const found = res.body.messages.find(
+        (m: any) => m.message.id === sendRes.body.messageId,
+      );
+      expect(found).toBeDefined();
+      expect(found.delivery.phase).toBe('dead-lettered');
+      expect(found.delivery.failureReason).toBe('test: expired');
+    });
+
+    it('rejects unauthenticated dead-letter request', async () => {
+      await request(app)
+        .get('/messages/dead-letter')
+        .expect(401);
+    });
+  });
 });

@@ -362,4 +362,115 @@ describe('MessageStore', () => {
       ).rejects.toThrow();
     });
   });
+
+  // ── queryDeadLetters ──────────────────────────────────────────
+
+  describe('queryDeadLetters', () => {
+    it('returns empty array when no dead-lettered messages', async () => {
+      const results = await store.queryDeadLetters();
+      expect(results).toEqual([]);
+    });
+
+    it('returns dead-lettered messages after deadLetter()', async () => {
+      const env = makeEnvelope({ type: 'alert', priority: 'high' });
+      env.delivery.phase = 'sent';
+      await store.save(env);
+      await store.deadLetter(env.message.id, 'TTL expired');
+
+      const results = await store.queryDeadLetters();
+      expect(results.length).toBe(1);
+      expect(results[0].message.id).toBe(env.message.id);
+      expect(results[0].delivery.phase).toBe('dead-lettered');
+      expect(results[0].delivery.failureReason).toBe('TTL expired');
+    });
+
+    it('filters by type', async () => {
+      const alert = makeEnvelope({ type: 'alert' });
+      alert.delivery.phase = 'sent';
+      await store.save(alert);
+      await store.deadLetter(alert.message.id, 'expired');
+
+      const info = makeEnvelope({ type: 'info' });
+      info.delivery.phase = 'sent';
+      await store.save(info);
+      await store.deadLetter(info.message.id, 'expired');
+
+      const results = await store.queryDeadLetters({ type: 'alert' });
+      expect(results.length).toBe(1);
+      expect(results[0].message.type).toBe('alert');
+    });
+
+    it('filters by priority', async () => {
+      const high = makeEnvelope({ priority: 'high' });
+      high.delivery.phase = 'sent';
+      await store.save(high);
+      await store.deadLetter(high.message.id, 'expired');
+
+      const low = makeEnvelope({ priority: 'low' });
+      low.delivery.phase = 'sent';
+      await store.save(low);
+      await store.deadLetter(low.message.id, 'expired');
+
+      const results = await store.queryDeadLetters({ priority: 'high' });
+      expect(results.length).toBe(1);
+      expect(results[0].message.priority).toBe('high');
+    });
+
+    it('respects limit and offset', async () => {
+      for (let i = 0; i < 5; i++) {
+        const env = makeEnvelope();
+        env.delivery.phase = 'sent';
+        await store.save(env);
+        await store.deadLetter(env.message.id, `expired-${i}`);
+      }
+
+      const page1 = await store.queryDeadLetters({ limit: 2, offset: 0 });
+      expect(page1.length).toBe(2);
+
+      const page2 = await store.queryDeadLetters({ limit: 2, offset: 2 });
+      expect(page2.length).toBe(2);
+
+      // No overlap
+      const ids1 = new Set(page1.map(m => m.message.id));
+      const ids2 = new Set(page2.map(m => m.message.id));
+      for (const id of ids2) {
+        expect(ids1.has(id)).toBe(false);
+      }
+    });
+
+    it('sorts by most recent first', async () => {
+      const older = makeEnvelope();
+      older.delivery.phase = 'sent';
+      await store.save(older);
+      await store.deadLetter(older.message.id, 'old');
+
+      // Small delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      const newer = makeEnvelope();
+      newer.delivery.phase = 'sent';
+      await store.save(newer);
+      await store.deadLetter(newer.message.id, 'new');
+
+      const results = await store.queryDeadLetters();
+      expect(results.length).toBeGreaterThanOrEqual(2);
+      // Most recent should be first
+      expect(results[0].message.id).toBe(newer.message.id);
+    });
+
+    it('skips corrupt dead-letter files', async () => {
+      const valid = makeEnvelope();
+      valid.delivery.phase = 'sent';
+      await store.save(valid);
+      await store.deadLetter(valid.message.id, 'valid');
+
+      // Write corrupt file to dead-letter dir
+      const corruptPath = path.join(tmpDir, 'dead-letter', 'corrupt.json');
+      fs.writeFileSync(corruptPath, 'not valid json {{{');
+
+      const results = await store.queryDeadLetters();
+      expect(results.length).toBe(1);
+      expect(results[0].message.id).toBe(valid.message.id);
+    });
+  });
 });

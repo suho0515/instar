@@ -918,4 +918,86 @@ describe('E2E: Multi-Agent Messaging (same machine)', () => {
       expect(found).toBeDefined();
     });
   });
+
+  // ── Phase 6: Query endpoint E2E ────────────────────────────────
+
+  describe('query endpoints — full HTTP lifecycle', () => {
+    it('GET /messages/inbox returns messages via HTTP', async () => {
+      const res = await request(agentB.app)
+        .get('/messages/inbox')
+        .set('Authorization', `Bearer ${agentB.authToken}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body).toHaveProperty('count');
+      expect(res.body.count).toBeGreaterThan(0);
+    });
+
+    it('GET /messages/outbox returns sent messages via HTTP', async () => {
+      const res = await request(agentA.app)
+        .get('/messages/outbox')
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(res.body.count).toBeGreaterThan(0);
+    });
+
+    it('GET /messages/:id returns a specific message', async () => {
+      // Send a message and retrieve it by ID
+      const sendRes = await request(agentA.app)
+        .post('/messages/send')
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .send({
+          from: { agent: agentA.name, session: 'getbyid-test', machine: 'test-machine' },
+          to: { agent: agentA.name, session: 'getbyid-target', machine: 'local' },
+          type: 'info',
+          priority: 'low',
+          subject: 'Get by ID E2E test',
+          body: 'Testing the GET /:id endpoint in E2E',
+        })
+        .expect(201);
+
+      const getRes = await request(agentA.app)
+        .get(`/messages/${sendRes.body.messageId}`)
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .expect(200);
+      expect(getRes.body.message.id).toBe(sendRes.body.messageId);
+      expect(getRes.body.message.subject).toBe('Get by ID E2E test');
+    });
+
+    it('GET /messages/:id returns 404 for non-existent message', async () => {
+      const fakeId = '00000000-0000-0000-0000-000000000000';
+      await request(agentA.app)
+        .get(`/messages/${fakeId}`)
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .expect(404);
+    });
+
+    it('GET /messages/dead-letter returns empty initially', async () => {
+      const res = await request(agentA.app)
+        .get('/messages/dead-letter')
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('messages');
+      expect(Array.isArray(res.body.messages)).toBe(true);
+    });
+
+    it('GET /messages/inbox supports filtering by type', async () => {
+      const res = await request(agentB.app)
+        .get('/messages/inbox?type=info')
+        .set('Authorization', `Bearer ${agentB.authToken}`)
+        .expect(200);
+      for (const msg of res.body.messages) {
+        expect(msg.message.type).toBe('info');
+      }
+    });
+
+    it('GET /messages/stats still works (not caught by /:id)', async () => {
+      const res = await request(agentA.app)
+        .get('/messages/stats')
+        .set('Authorization', `Bearer ${agentA.authToken}`)
+        .expect(200);
+      expect(res.body).toHaveProperty('volume');
+      expect(res.body).toHaveProperty('delivery');
+    });
+  });
 });

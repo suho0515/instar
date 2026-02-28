@@ -188,6 +188,46 @@ export class MessageStore implements IMessageStore {
     fs.unlinkSync(srcPath);
   }
 
+  async queryDeadLetters(filter?: MessageFilter): Promise<MessageEnvelope[]> {
+    const dlDir = path.join(this.basePath, 'dead-letter');
+    if (!fs.existsSync(dlDir)) return [];
+
+    const files = fs.readdirSync(dlDir).filter(f => f.endsWith('.json'));
+    let results: MessageEnvelope[] = [];
+
+    for (const file of files) {
+      try {
+        const data = fs.readFileSync(path.join(dlDir, file), 'utf-8');
+        results.push(JSON.parse(data) as MessageEnvelope);
+      } catch {
+        // @silent-fallback-ok — skip corrupted dead-letter files
+      }
+    }
+
+    // Sort by most recent first
+    results.sort((a, b) => {
+      const aTime = a.delivery.transitions.at(-1)?.at ?? a.message.createdAt;
+      const bTime = b.delivery.transitions.at(-1)?.at ?? b.message.createdAt;
+      return bTime.localeCompare(aTime);
+    });
+
+    if (filter?.type) {
+      results = results.filter(e => e.message.type === filter.type);
+    }
+    if (filter?.priority) {
+      results = results.filter(e => e.message.priority === filter.priority);
+    }
+    if (filter?.fromAgent) {
+      results = results.filter(e => e.message.from.agent === filter.fromAgent);
+    }
+    if (filter?.limit) {
+      const offset = filter.offset ?? 0;
+      results = results.slice(offset, offset + filter.limit);
+    }
+
+    return results;
+  }
+
   async exists(messageId: string): Promise<boolean> {
     return fs.existsSync(this.messageFilePath(messageId));
   }

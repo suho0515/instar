@@ -33,6 +33,7 @@ import type {
   IMessageRouter,
   AgentMessage,
   MessageEnvelope,
+  MessageFilter,
   MessageType,
   MessagePriority,
   SendMessageOptions,
@@ -234,6 +235,22 @@ export class MessageRouter implements IMessageRouter {
 
     await this.store.save(envelope);
     return true;
+  }
+
+  async getMessage(messageId: string): Promise<MessageEnvelope | null> {
+    return this.store.get(messageId);
+  }
+
+  async getInbox(agentName: string, filter?: MessageFilter): Promise<MessageEnvelope[]> {
+    return this.store.queryInbox(agentName, filter);
+  }
+
+  async getOutbox(agentName: string, filter?: MessageFilter): Promise<MessageEnvelope[]> {
+    return this.store.queryOutbox(agentName, filter);
+  }
+
+  async getDeadLetters(filter?: MessageFilter): Promise<MessageEnvelope[]> {
+    return this.store.queryDeadLetters(filter);
   }
 
   async getStats(): Promise<MessagingStats> {

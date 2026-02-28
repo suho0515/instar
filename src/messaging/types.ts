@@ -428,6 +428,9 @@ export interface IMessageStore {
   /** Move a message to the dead-letter queue */
   deadLetter(messageId: string, reason: string): Promise<void>;
 
+  /** Query dead-lettered messages with optional filters */
+  queryDeadLetters(filter?: MessageFilter): Promise<MessageEnvelope[]>;
+
   /** Check if a message ID exists in the store */
   exists(messageId: string): Promise<boolean>;
 
@@ -500,6 +503,18 @@ export interface IMessageRouter {
 
   /** Relay an envelope from another agent or machine */
   relay(envelope: MessageEnvelope, source: 'agent' | 'machine'): Promise<boolean>;
+
+  /** Get a single message by ID */
+  getMessage(messageId: string): Promise<MessageEnvelope | null>;
+
+  /** Query inbox messages for an agent */
+  getInbox(agentName: string, filter?: MessageFilter): Promise<MessageEnvelope[]>;
+
+  /** Query outbox messages for an agent */
+  getOutbox(agentName: string, filter?: MessageFilter): Promise<MessageEnvelope[]>;
+
+  /** Query dead-lettered messages */
+  getDeadLetters(filter?: MessageFilter): Promise<MessageEnvelope[]>;
 
   /** Get messaging statistics */
   getStats(): Promise<MessagingStats>;
