@@ -1,11 +1,12 @@
 # PROP: Mature Memory Architecture for Instar
 
-> **Version**: 2.0
+> **Version**: 3.0
 > **Date**: 2026-02-28
-> **Status**: Phase 1-2 complete (115 tests). Phase 3 revised — awaiting review.
+> **Status**: Phase 1-2 complete (115 tests). v3.0 — cross-review fixes + hybrid vector search.
 > **Author**: Dawn (Inside-Dawn, builder instance)
 > **Instar Version**: 0.9.17 (baseline)
 > **Target Version**: 0.10.x
+> **Cross-Review**: 8.5/10 avg (GPT 5.2, Gemini 3 Pro, Grok 4) — all findings addressed in this revision.
 
 ---
 
@@ -104,11 +105,15 @@ interface MemoryEntity {
   type: EntityType;              // 'fact' | 'person' | 'project' | 'tool' | 'pattern' | 'decision' | 'lesson'
   name: string;                  // Human-readable label
   content: string;               // The actual knowledge (markdown)
-  confidence: number;            // 0.0 - 1.0 (how sure are we?)
+  confidence: number;            // 0.0 - 1.0 (BASE confidence — not pre-decayed. See Confidence Decay.)
+  sensitivity: Sensitivity;      // Data classification for redaction/export control
+  decayHalfLife: number;         // Days until confidence halves (default 30; per-entity override)
+  version: number;               // Incremented on every update (optimistic concurrency)
+  accessCount: number;           // Incremented on recall/search inclusion
 
   // Temporal
   createdAt: string;             // When first recorded
-  lastVerified: string;          // When last confirmed true
+  lastVerified: string;          // When last confirmed true (ONLY updated by verify())
   lastAccessed: string;          // When last retrieved for a session
   expiresAt?: string;            // Optional hard expiry (e.g., "API key rotates monthly")
 
@@ -122,7 +127,20 @@ interface MemoryEntity {
 }
 
 type EntityType = 'fact' | 'person' | 'project' | 'tool' | 'pattern' | 'decision' | 'lesson';
+type Sensitivity = 'public' | 'internal' | 'sensitive';
 ```
+
+**Default `decayHalfLife` by entity type:**
+
+| Entity Type | Default Half-Life | Rationale |
+|------------|------------------|-----------|
+| `fact` | 30 days | Facts go stale; need re-verification |
+| `person` | 90 days | People don't change as fast |
+| `project` | 60 days | Projects evolve moderately |
+| `tool` | 30 days | Tool knowledge goes stale (version changes) |
+| `pattern` | 90 days | Hard-won patterns persist |
+| `decision` | 60 days | Decisions are contextual but not ephemeral |
+| `lesson` | 90 days | Lessons are the most durable knowledge |
 
 #### Relationship Model
 
@@ -153,13 +171,35 @@ type RelationType =
 
 #### SQLite Schema
 
+**Database initialization** (mandatory for all connections):
+
 ```sql
+PRAGMA journal_mode=WAL;         -- Write-Ahead Logging for concurrent read/write
+PRAGMA busy_timeout=5000;        -- Wait up to 5s for locks instead of failing immediately
+PRAGMA foreign_keys=ON;          -- Enforce referential integrity
+```
+
+> **Why WAL mode**: The Session Activity Sentinel (background) and Agent (foreground) write to the same SQLite file. Without WAL, concurrent writes cause `SQLITE_BUSY` errors. WAL allows readers and one writer to operate concurrently. (Cross-review: flagged by all 3 models as P0.)
+
+```sql
+-- Schema version tracking for future migrations
+CREATE TABLE schema_version (
+  version INTEGER NOT NULL,
+  applied_at TEXT NOT NULL,
+  description TEXT
+);
+INSERT INTO schema_version VALUES (1, datetime('now'), 'Initial schema');
+
 CREATE TABLE entities (
   id TEXT PRIMARY KEY,
   type TEXT NOT NULL,
   name TEXT NOT NULL,
   content TEXT NOT NULL,
   confidence REAL NOT NULL DEFAULT 0.8,
+  sensitivity TEXT NOT NULL DEFAULT 'internal',  -- 'public' | 'internal' | 'sensitive'
+  decay_half_life INTEGER NOT NULL DEFAULT 30,   -- Days; overridable per entity
+  version INTEGER NOT NULL DEFAULT 1,            -- Incremented on every update
+  access_count INTEGER NOT NULL DEFAULT 0,       -- Incremented on recall/search inclusion
   created_at TEXT NOT NULL,
   last_verified TEXT NOT NULL,
   last_accessed TEXT NOT NULL,
@@ -167,10 +207,7 @@ CREATE TABLE entities (
   source TEXT NOT NULL,
   source_session TEXT,
   domain TEXT,
-  tags TEXT NOT NULL DEFAULT '[]',  -- JSON array
-
-  -- Computed: effective_weight = confidence * recency_decay
-  -- Used for retrieval ranking
+  tags TEXT NOT NULL DEFAULT '[]'  -- JSON array
 );
 
 CREATE TABLE edges (
@@ -180,12 +217,13 @@ CREATE TABLE edges (
   relation TEXT NOT NULL,
   weight REAL NOT NULL DEFAULT 0.5,
   context TEXT,
+  version INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL,
 
   UNIQUE(from_id, to_id, relation)
 );
 
--- Full-text search over entity content
+-- Full-text search over entity content (external content table)
 CREATE VIRTUAL TABLE entities_fts USING fts5(
   name, content, tags,
   content=entities,
@@ -193,14 +231,62 @@ CREATE VIRTUAL TABLE entities_fts USING fts5(
   tokenize='porter unicode61'
 );
 
--- Index for efficient type + domain queries
+-- FTS5 sync triggers (REQUIRED for external content tables)
+-- Without these, the FTS index will be stale/empty after entity updates.
+CREATE TRIGGER entities_fts_insert AFTER INSERT ON entities BEGIN
+  INSERT INTO entities_fts(rowid, name, content, tags)
+  VALUES (new.rowid, new.name, new.content, new.tags);
+END;
+
+CREATE TRIGGER entities_fts_delete AFTER DELETE ON entities BEGIN
+  INSERT INTO entities_fts(entities_fts, rowid, name, content, tags)
+  VALUES ('delete', old.rowid, old.name, old.content, old.tags);
+END;
+
+CREATE TRIGGER entities_fts_update AFTER UPDATE ON entities BEGIN
+  INSERT INTO entities_fts(entities_fts, rowid, name, content, tags)
+  VALUES ('delete', old.rowid, old.name, old.content, old.tags);
+  INSERT INTO entities_fts(rowid, name, content, tags)
+  VALUES (new.rowid, new.name, new.content, new.tags);
+END;
+
+-- Audit log for entity changes (tracks who/what modified)
+CREATE TABLE entity_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  entity_id TEXT NOT NULL,
+  action TEXT NOT NULL,            -- 'create' | 'update' | 'verify' | 'decay' | 'forget'
+  old_version INTEGER,
+  new_version INTEGER,
+  changed_fields TEXT,             -- JSON array of field names
+  source TEXT,                     -- What triggered the change ('session:X', 'sentinel', 'decay_job')
+  created_at TEXT NOT NULL
+);
+
+-- Index for efficient queries
 CREATE INDEX idx_entities_type ON entities(type);
 CREATE INDEX idx_entities_domain ON entities(domain);
 CREATE INDEX idx_entities_confidence ON entities(confidence);
+CREATE INDEX idx_entities_sensitivity ON entities(sensitivity);
 CREATE INDEX idx_edges_from ON edges(from_id);
 CREATE INDEX idx_edges_to ON edges(to_id);
 CREATE INDEX idx_edges_relation ON edges(relation);
+CREATE INDEX idx_audit_entity ON entity_audit(entity_id);
 ```
+
+#### Vector Search Schema (Phase 5 — sqlite-vec)
+
+When hybrid search is enabled (Phase 5), the following table is added via the `sqlite-vec` extension:
+
+```sql
+-- Vector embeddings for semantic similarity search
+-- Requires: sqlite-vec extension loaded via sqliteVec.load(db)
+CREATE VIRTUAL TABLE entity_embeddings USING vec0(
+  entity_id TEXT PRIMARY KEY,
+  embedding float[384]             -- 384-dim for all-MiniLM-L6-v2 (configurable)
+);
+```
+
+This sits alongside FTS5, enabling hybrid retrieval: keyword match (FTS5) + semantic similarity (vector KNN) combined in the scoring formula. See [Phase 5: Hybrid Search](#phase-5-hybrid-search-fts5--vector-v0105) for details.
 
 #### Core Operations
 
@@ -208,13 +294,25 @@ CREATE INDEX idx_edges_relation ON edges(relation);
 class SemanticMemory {
   // ── Create & Update ──
 
-  /** Record a new fact, lesson, pattern, etc. */
-  remember(entity: Omit<MemoryEntity, 'id' | 'createdAt' | 'lastAccessed'>): string;
+  /**
+   * Record a new fact, lesson, pattern, etc.
+   *
+   * DEDUPLICATION: Before inserting, searches for existing entities with
+   * matching name (case-insensitive exact match or Levenshtein distance ≤ 2).
+   * If a match is found:
+   *   - Same type: merge (update content, refresh confidence, bump version)
+   *   - Different type: link via 'related_to' edge, create new entity
+   * Returns existing entity ID on merge, new entity ID on create.
+   *
+   * REDACTION: Content is passed through the Sanitizer before storage.
+   * Patterns matching secrets (API keys, tokens, passwords) are stripped.
+   */
+  remember(entity: Omit<MemoryEntity, 'id' | 'createdAt' | 'lastAccessed' | 'version' | 'accessCount'>): string;
 
   /** Connect two entities */
   connect(fromId: string, toId: string, relation: RelationType, context?: string): string;
 
-  /** Update confidence after verification */
+  /** Update confidence after verification. Only method that updates lastVerified. */
   verify(id: string, newConfidence?: number): void;
 
   /** Mark an entity as superseded by a newer one */
@@ -222,22 +320,48 @@ class SemanticMemory {
 
   // ── Retrieval ──
 
-  /** Search by text relevance (FTS5 + confidence + recency) */
+  /**
+   * Search by text relevance with optional query expansion.
+   *
+   * Pipeline:
+   * 1. Sanitize query for FTS5 special characters
+   * 2. (If enabled) LLM query expansion: generate 3-5 synonym/related terms
+   * 3. FTS5 keyword search with expanded query
+   * 4. (If Phase 5 enabled) Vector KNN search for semantic similarity
+   * 5. Multi-signal scoring (see Retrieval Scoring)
+   * 6. Filter by type/domain/confidence
+   * 7. Increment access_count for returned entities
+   *
+   * Entities with sensitivity='sensitive' are excluded from results
+   * unless options.includeSensitive is true.
+   */
   search(query: string, options?: {
     types?: EntityType[];
     domain?: string;
     minConfidence?: number;
     limit?: number;
+    expandQuery?: boolean;        // LLM synonym expansion (default: false)
+    includeSensitive?: boolean;   // Include sensitive entities (default: false)
   }): ScoredEntity[];
 
-  /** Get an entity and its connections (1-hop neighborhood) */
-  recall(id: string): { entity: MemoryEntity; connections: ConnectedEntity[] };
+  /**
+   * Get an entity and its connections (1-hop neighborhood).
+   * Returns BOTH inbound and outbound edges by default.
+   * Increments access_count for the primary entity.
+   */
+  recall(id: string, options?: {
+    direction?: 'both' | 'outbound' | 'inbound';  // Default: 'both'
+  }): { entity: MemoryEntity; connections: ConnectedEntity[] };
 
-  /** Find entities related to a topic (graph traversal) */
+  /**
+   * Find entities related to a topic (graph traversal).
+   * Traverses BOTH directions by default, respects edge weights.
+   */
   explore(startId: string, options?: {
     maxDepth?: number;    // Default: 2
     relations?: RelationType[];
     minWeight?: number;
+    direction?: 'both' | 'outbound' | 'inbound';
   }): MemoryEntity[];
 
   /** Get context for a session — the "working memory loader" */
@@ -248,19 +372,40 @@ class SemanticMemory {
 
   // ── Maintenance ──
 
-  /** Apply confidence decay to all entities */
-  decayAll(halfLifeDays?: number): DecayReport;
+  /**
+   * Apply confidence decay to all entities.
+   * Uses STORED base confidence + per-entity decayHalfLife.
+   * Effective confidence is computed AT QUERY TIME only.
+   * This method does NOT modify stored confidence — it is for
+   * housekeeping only (finding entities that have decayed below threshold).
+   *
+   * See "Confidence Decay" section for the full model.
+   */
+  decayAll(): DecayReport;
 
   /** Find low-confidence or expired entities */
   findStale(options?: { maxConfidence?: number; olderThan?: string }): MemoryEntity[];
 
-  /** Remove an entity and its edges */
+  /**
+   * Remove an entity and its edges.
+   * Uses soft-delete (tombstone) for 'person' and 'decision' entities.
+   * Hard-deletes 'fact' and 'tool' entities.
+   * Always logs to entity_audit table.
+   */
   forget(id: string, reason: string): void;
 
-  /** Export to JSON (for backup, git state, portability) */
-  export(): { entities: MemoryEntity[]; edges: MemoryEdge[] };
+  /**
+   * Export to JSON (for backup, git state, portability).
+   * REDACTION: Entities with sensitivity='sensitive' are excluded
+   * unless options.includeSensitive is true.
+   */
+  export(options?: { includeSensitive?: boolean }): { entities: MemoryEntity[]; edges: MemoryEdge[] };
 
-  /** Import from JSON (migration, restore) */
+  /**
+   * Import from JSON (migration, restore).
+   * Uses entity version numbers to detect conflicts.
+   * Conflict resolution: higher version wins; ties → merge.
+   */
   import(data: { entities: MemoryEntity[]; edges: MemoryEdge[] }): ImportReport;
 
   /** Statistics */
@@ -270,36 +415,61 @@ class SemanticMemory {
 
 #### Retrieval Scoring
 
-The key innovation: **multi-signal ranking** that combines text relevance, confidence, and recency.
+The key innovation: **multi-signal ranking** that combines text relevance, confidence, recency, and access frequency.
 
 ```
-score = (fts5_rank * 0.4) + (confidence * 0.3) + (recency_decay * 0.2) + (access_frequency * 0.1)
+score = (text_score * 0.4) + (effective_confidence * 0.3) + (access_score * 0.1) + (vector_score * 0.2)
 
 where:
-  fts5_rank     = BM25 text relevance score (normalized 0-1)
-  confidence    = entity.confidence (0-1)
-  recency_decay = exp(-0.693 * days_since_verified / half_life_days)
-  access_freq   = min(1.0, access_count / 10)  // Frequently accessed = more relevant
+  text_score          = 1 / (1 + abs(bm25_rank))     -- FTS5 BM25 normalization (0-1)
+  effective_confidence = confidence * exp(-0.693 * days_since_verified / decay_half_life)
+  access_score        = min(1.0, access_count / 10)   -- Frequently accessed = more relevant
+  vector_score        = cosine_similarity              -- 0 if Phase 5 not enabled
+```
+
+> **BM25 normalization**: SQLite FTS5's `bm25()` returns negative values where *lower* (more negative) is *better*. The `1 / (1 + abs(rank))` transformation maps this to 0-1 where higher is better. (Cross-review: GPT caught that the original "normalized 0-1" was incorrect for FTS5.)
+
+> **Effective confidence**: Computed AT QUERY TIME from stored base confidence + per-entity `decayHalfLife`. The stored `confidence` field is NEVER pre-decayed. This avoids the double-decay bug where storing decayed confidence AND computing decay at query time would cause confidence to collapse exponentially faster than intended. (Cross-review: GPT caught this P0 issue.)
+
+> **Vector score**: When Phase 5 (Hybrid Search) is enabled, cosine similarity from sqlite-vec contributes 0.2 of the total score. When disabled, this weight is redistributed to text_score (0.5) and effective_confidence (0.3).
+
+**Weights without vector search (Phase 1-4):**
+```
+score = (text_score * 0.5) + (effective_confidence * 0.3) + (access_score * 0.1) + (recency_bonus * 0.1)
+
+where:
+  recency_bonus = exp(-0.693 * days_since_verified / decay_half_life)
 ```
 
 This means:
 - A verified fact from yesterday ranks higher than an unverified claim from last month
 - A frequently-accessed entity ranks higher than a rarely-used one
-- Text relevance is still the primary signal, but it's modulated by quality indicators
+- Text relevance is the primary signal, but it's modulated by quality indicators
+- With vector search enabled, "how do I ship code?" matches "Deployment Protocols" even without keyword overlap
 
 #### Confidence Decay
 
-Every 24 hours (or on-demand), `decayAll()` reduces confidence:
+**Model**: Confidence is stored as a BASE value. Effective confidence is computed at QUERY TIME. The stored `confidence` field is never pre-decayed.
 
 ```
-new_confidence = confidence * exp(-0.693 * days_since_verified / half_life_days)
+effective_confidence = confidence * exp(-0.693 * days_since_verified / entity.decayHalfLife)
 ```
 
-Default half-life: **30 days**. A fact not re-verified in 30 days drops to 50% confidence. In 60 days, 25%. In 90 days, 12.5%.
+**Key invariants** (cross-review: GPT identified double-decay risk):
+1. `confidence` stores the BASE confidence set at creation or last `verify()` call
+2. `lastVerified` is ONLY updated by `verify()` — never by decay, search, or any other operation
+3. Effective confidence is computed at query time using the formula above
+4. `decayAll()` does NOT modify `confidence` — it only identifies entities that have decayed below a threshold for cleanup/notification
+
+**Per-entity half-life** (cross-review: Grok recommendation):
+Each entity has its own `decayHalfLife` (in days), defaulting by entity type (see table above). A `fact` with decayHalfLife=30 not re-verified in 30 days has effective confidence at 50%. In 60 days, 25%. In 90 days, 12.5%.
 
 **Why this matters**: An agent that learned "the API endpoint is at /v1/users" 90 days ago and never re-verified it should treat that knowledge with appropriate skepticism. The decay doesn't delete the fact — it makes it rank lower in retrieval, so fresh verified knowledge surfaces first.
 
-**Exemptions**: Entities with `expiresAt: null` and `type: 'lesson'` have a longer half-life (90 days). Hard-won lessons should persist longer than factual observations.
+**Override examples**:
+- Core architectural pattern → `decayHalfLife: 180` (changes rarely)
+- Debug workaround → `decayHalfLife: 7` (likely temporary)
+- Person's role at company → `decayHalfLife: 90` (stable-ish)
 
 ### Phase 2: Episodic Memory + Session Activity Sentinel
 
@@ -421,6 +591,21 @@ class SessionActivitySentinel {
 2. **Session completion** (`sessionComplete` event): Sentinel creates final activity digest + session synthesis
 3. **On-demand** (API/CLI): Manual digest trigger for debugging or catch-up
 
+**Concurrency & Idempotency** (cross-review: all 3 models flagged as P0):
+
+- **Locking**: Sentinel uses `BEGIN IMMEDIATE` transactions when writing digests, ensuring atomic writes. The WAL mode configured at database initialization allows the Agent to continue reading while the Sentinel writes.
+- **Idempotency**: Each digest is keyed by `hash(sessionId + startedAt + endedAt)`. If a digest with the same key already exists, the write is skipped. This prevents duplicate digests from overlapping scans or manual triggers racing with scheduled scans.
+- **Dormant session gating**: Sentinel skips sessions where `last_activity_timestamp <= last_digest_timestamp`. This prevents burning tokens re-scanning inactive sessions. (Cross-review: Gemini flagged cost control.)
+- **Minimum activity threshold**: A digest is only created if the activity unit contains ≥5 Telegram messages OR ≥10 minutes of session output. This prevents noisy trivial digests.
+
+**LLM failure handling** (cross-review: Grok recommendation):
+
+If the LLM call fails during digestion (API timeout, rate limit, etc.):
+1. Raw activity content is saved to `state/episodes/pending/{sessionId}/{timestamp}.json`
+2. The sentinel state records the failed attempt
+3. Next scan retry processes pending raw content before scanning for new activity
+4. After 3 failed retries, the raw content is archived and a warning is logged
+
 #### Dual-Source Activity Partitioning
 
 The ActivityPartitioner reads from two sources to build a unified activity timeline:
@@ -524,11 +709,20 @@ interface WorkingMemoryAssembly {
 
 **Assembly strategy**:
 1. Parse the session trigger (message, job prompt) to identify topics
-2. Query SemanticMemory for relevant entities
+2. Query SemanticMemory for relevant entities (with optional query expansion)
 3. Check for related people (person entities connected to topic entities)
 4. Load episode digests for continuity
 5. Budget tokens across sources (identity: 200, knowledge: 800, episodes: 400, relationships: 300, topic: 300)
 6. Return formatted context for session-start hook injection
+
+**Render strategy within token budgets** (cross-review: Gemini gap):
+
+When a source returns more entities than fit in its token budget:
+- **Top 3**: Full content (name + content + confidence + connections summary)
+- **Next 7**: Compact (name + first sentence of content + confidence)
+- **Remainder**: Name-only list ("Also related: X, Y, Z")
+
+This ensures the most relevant knowledge gets full detail while maintaining breadth of awareness. Token budgets may be dynamically adjusted in future versions based on source availability (e.g., if no relationships are relevant, that budget shifts to knowledge).
 
 ### Phase 4: Migration from Current Systems
 
@@ -560,7 +754,18 @@ Once SemanticMemory proves reliable:
 - New sessions prefer SemanticMemory for retrieval
 - MEMORY.md becomes a human-readable export (still generated, no longer primary)
 - MemoryIndex deprecated in favor of SemanticMemory's built-in FTS5
-- Relationships continue in their own format but gain edges in SemanticMemory
+
+**Canonical source declaration** (cross-review: GPT flagged ambiguity):
+
+| Data Type | Canonical Source | Mirror/Export |
+|-----------|-----------------|---------------|
+| People/Relationships | Relationships JSON | → `person` entities + `knows_about` edges in SemanticMemory |
+| Facts/Knowledge | SemanticMemory | → MEMORY.md (generated) |
+| Decisions | SemanticMemory | → DecisionJournal (legacy, read-only) |
+| Conversation history | TopicMemory | → `learned_from` edges referencing topic IDs |
+| Quick facts | CanonicalState JSON | → `fact` entities (confidence=0.95) |
+
+People remain canonical in Relationships JSON because they have rich structured fields (interaction history, themes, significance) that don't map cleanly to entity content. SemanticMemory mirrors them as `person` entities with edges, enabling graph traversal. Updates flow: Relationships JSON → SemanticMemory sync (not the reverse).
 
 #### Step 4: MEMORY.md as Generated Artifact
 
@@ -635,7 +840,33 @@ MEMORY.md transitions from "source of truth" to "generated snapshot":
 - Token-budgeted assembly from all memory layers
 - Seamless integration with existing hook system
 
-### Phase 5: MEMORY.md Generation & Cutover (v0.10.4)
+### Phase 5: Hybrid Search — FTS5 + Vector (v0.10.4)
+**Effort**: 2-3 sessions
+**Files**:
+- `src/memory/VectorSearch.ts` — sqlite-vec integration, embedding generation, KNN queries
+- `src/memory/EmbeddingProvider.ts` — Local embedding via @huggingface/transformers (ONNX)
+- Enhancement to `src/memory/SemanticMemory.ts` — Hybrid scoring (FTS5 + vector)
+- `tests/unit/vector-search.test.ts` — Embedding generation, KNN accuracy, hybrid scoring
+- `tests/integration/hybrid-search.test.ts` — Full pipeline: query → expand → FTS5 + vector → ranked results
+- `tests/e2e/hybrid-search-lifecycle.test.ts` — Production path verification
+
+**Deliverables**:
+- Local embedding generation using Transformers.js (all-MiniLM-L6-v2, 384-dim)
+- sqlite-vec virtual table alongside existing FTS5 index
+- Hybrid retrieval: FTS5 keyword match + vector cosine similarity
+- Automatic embedding generation on entity create/update
+- Batch embedding for existing entities (migration job)
+- LLM query expansion as a bridge (synonym generation before FTS5)
+- Zero external API dependencies — all embeddings computed locally
+
+**Technical details**:
+- **npm packages**: `sqlite-vec` (loads as SQLite extension via `better-sqlite3`), `@huggingface/transformers` (ONNX runtime)
+- **Model**: `all-MiniLM-L6-v2` (384-dim, ~80MB, fast inference) — configurable via agent settings
+- **Embedding on write**: Every `remember()` and entity update generates an embedding and upserts into `entity_embeddings`
+- **Hybrid query**: FTS5 results (top 50) and vector KNN results (top 50) are merged via the scoring formula, with FTS5 providing keyword precision and vectors providing semantic recall
+- **Graceful degradation**: If sqlite-vec fails to load (platform incompatibility), falls back to FTS5-only search with a logged warning. Vector search is an enhancement, not a hard dependency.
+
+### Phase 6: MEMORY.md Generation & Cutover (v0.10.5)
 **Effort**: 1 session
 **Files**:
 - `src/memory/MemoryExporter.ts` — Generates MEMORY.md from SemanticMemory
@@ -727,49 +958,115 @@ instar memory sentinel           # Show sentinel status and pending sessions
 
 ---
 
+## Sensitive Data Handling
+
+> Cross-review: All 3 models flagged the absence of security/privacy controls as a critical gap.
+
+**Problem**: Session logs and Telegram messages contain arbitrary content — including potential API keys, tokens, passwords, PII, and proprietary information. Without redaction, SemanticMemory becomes a high-risk data sink that could persist and export secrets.
+
+### Redaction Pipeline
+
+Content passes through the `Sanitizer` before being stored in any entity's `content` field:
+
+```typescript
+class Sanitizer {
+  /** Strip secrets from content before storage */
+  sanitize(content: string): string;
+
+  /** Patterns matched (applied in order):
+   *  1. API keys: sk-..., ghp_..., xoxb-..., AKIA..., Bearer ...
+   *  2. Tokens: JWT patterns (eyJ...), OAuth tokens
+   *  3. Passwords: password=, passwd=, secret= followed by values
+   *  4. Private keys: -----BEGIN ... PRIVATE KEY-----
+   *  5. Connection strings: postgresql://, mongodb://, redis://
+   *  6. Custom patterns from agent config
+   */
+
+  /** Returns '[REDACTED:api_key]' etc. so the agent knows something was removed */
+}
+```
+
+### Entity Sensitivity Classification
+
+Every entity has a `sensitivity` field:
+
+| Level | Meaning | Behavior |
+|-------|---------|----------|
+| `public` | Safe for export, sharing, MEMORY.md | No restrictions |
+| `internal` | Default. Safe within the agent's own systems | Excluded from JSON exports unless explicitly requested |
+| `sensitive` | Contains PII, proprietary info, or personal context | Excluded from search results by default; excluded from all exports |
+
+### API Endpoint Authentication
+
+All `/memory/*` endpoints require a Bearer token (`INTERNAL_API_KEY`). This is already the pattern used by Instar's internal job API. While Instar runs locally (reducing network attack surface), the auth requirement prevents accidental exposure if the server port is forwarded or the machine is shared.
+
+### Export/Import Protections
+
+- `export()` excludes `sensitive` entities by default
+- `import()` validates entity versions and logs all imported entities to the audit table
+- JSON exports include a checksum for integrity verification
+
+---
+
 ## Risks and Mitigations
 
 | Risk | Impact | Mitigation |
 |------|--------|-----------|
-| SQLite corruption | Memory loss | JSON export every 24h (backup), JSONL source of truth for messages |
-| Migration data loss | Knowledge not transferred | Dual-write period, validation report after migration |
-| Performance at scale | Slow session starts | Token budgets, indexed queries, lazy loading |
+| SQLite corruption | Memory loss | WAL mode + JSON export every 24h (backup), JSONL source of truth for messages |
+| SQLite concurrency (SQLITE_BUSY) | Write failures between Sentinel + Agent | WAL mode, busy_timeout=5000ms, BEGIN IMMEDIATE for Sentinel writes |
+| Migration data loss | Knowledge not transferred | Dual-write period, validation report after migration, MEMORY.md diff comparison |
+| Performance at scale | Slow session starts | Token budgets, indexed queries, lazy loading, cached embeddings |
 | Over-engineering | Complexity without value | Start with Phase 1 only; validate before proceeding |
 | Backward compatibility | Existing agents break | MEMORY.md continues to work; new features are additive |
-| Confidence decay too aggressive | Useful knowledge forgotten | Configurable half-life, lessons exempt from fast decay |
-| Entity bloat | Too many low-quality entities | memory-hygiene guardian job prunes stale entities |
-| Sentinel LLM cost | Frequent digestion burns API tokens | Haiku tier for digestion; configurable scan interval; skip sessions with minimal activity |
+| Confidence decay too aggressive | Useful knowledge forgotten | Per-entity decayHalfLife (configurable), query-time-only decay |
+| Double-decay bug | Confidence collapses exponentially | Stored base confidence + query-time decay ONLY; decayAll() doesn't modify confidence |
+| Entity bloat / duplication | Split confidence, degraded retrieval | Dedup check in remember() + memory-hygiene guardian prunes stale entities |
+| Secrets persisted in memory | Credential exposure via export/search | Sanitizer pipeline on ingestion; sensitivity classification; export redaction |
+| Sentinel LLM cost | Frequent digestion burns API tokens | Haiku tier for digestion; configurable scan interval; skip dormant sessions |
+| Sentinel LLM failure | Digests lost during API downtime | Pending queue with retry (3 attempts); raw content archived on failure |
 | tmux buffer overflow | Long sessions lose early output | Sentinel digests continuously so early activity is captured before buffer scrolls |
-| Noisy activity partitioning | Too many trivial mini-digests | Minimum activity threshold (e.g., 5+ Telegram messages or 10+ min of session output) before creating a digest |
-| Digest quality varies | LLM summaries may miss key insights | Entity extraction as separate step from summarization; human can review via API/CLI |
+| Noisy activity partitioning | Too many trivial mini-digests | Configurable minimum activity threshold (default: 5 messages or 10 min) |
+| Digest quality varies | LLM summaries may miss key insights | Entity extraction as separate step; human review via API/CLI |
 | Sentinel interferes with running session | Reading tmux output disrupts active session | Read-only capture-pane (already non-disruptive); Telegram JSONL is separate file |
+| FTS5 index staleness | Search returns outdated results | Mandatory sync triggers on INSERT/UPDATE/DELETE (see schema) |
+| sqlite-vec platform incompatibility | Vector search unavailable | Graceful degradation to FTS5-only; logged warning; not a hard dependency |
+| Embedding model size | ~80MB download on first use | One-time download, cached locally; configurable model selection |
+| Schema migration failures | Database locked to old schema | schema_version table + startup migration check with rollback support |
 
 ---
 
 ## Success Criteria
 
-1. **An agent with 1000+ entities can retrieve relevant context in <100ms**
+1. **An agent with 1000+ entities can retrieve relevant context in <100ms** (WAL mode, indexed queries)
 2. **Session context quality improves** — sessions start with more relevant knowledge
 3. **Knowledge connections discoverable** — "what do I know about X?" returns X + related entities
 4. **Stale knowledge identified** — entities older than 60 days without verification are flagged
 5. **MEMORY.md stays readable** — generated version is as useful as hand-written version
 6. **Zero breaking changes** — existing agents continue working without modification
-7. **Migration is reversible** — JSON export can restore to any point
+7. **Migration is reversible** — JSON export can restore to any point; version-based conflict resolution
 8. **Long sessions don't lose learnings** — activity from hour 1 of a 6-hour session is captured, not forgotten
 9. **Digests capture both what and why** — dual-source digests include agent actions AND human intent
 10. **Sentinel overhead is negligible** — <$0.01 per digest using Haiku tier
+11. **No secrets persist in memory** — Sanitizer catches API keys, tokens, passwords before storage
+12. **Semantic search works without keyword overlap** — "how do I ship code?" finds "Deployment Protocols" (Phase 5)
+13. **Entity deduplication prevents bloat** — same fact remembered twice merges, doesn't duplicate
+14. **Concurrent Sentinel + Agent writes never conflict** — WAL mode + locking eliminates SQLITE_BUSY errors
 
 ---
 
 ## Open Questions
 
-1. **Embedding-based retrieval**: Should we add vector embeddings for semantic search? This would require an embedding model (local or API). FTS5 keyword matching is good but misses semantic similarity. Could be a Phase 6 addition.
+1. ~~**Embedding-based retrieval**~~ → **Addressed in Phase 5** (Hybrid Search via sqlite-vec + Transformers.js)
 
-2. **Cross-agent memory sharing**: Should entities be shareable between agents? The JSON export/import enables this manually, but a shared registry could enable automatic knowledge sharing.
+2. **Cross-agent memory sharing**: Should entities be shareable between agents? The JSON export/import enables this manually, but a shared registry could enable automatic knowledge sharing. What does eventual consistency look like when two agents on different machines learn the same fact?
 
-3. **Memory capacity limits**: Should there be a hard cap on entities? Or should the decay + hygiene system naturally keep the count manageable?
+3. **Memory capacity limits**: Should there be a hard cap on entities? Or should the decay + hygiene + deduplication system naturally keep the count manageable?
 
-4. **LLM-supervised entity creation**: Should entity creation always go through an LLM for quality assessment? Or is that too expensive for high-frequency fact recording?
+4. **LLM-supervised entity creation**: Should entity creation always go through an LLM for quality assessment? Or is that too expensive for high-frequency fact recording? (The extraction prompt design for episodic→semantic ingestion is critical and underspecified — needs concrete prompt templates before Phase 3 implementation.)
+
+5. **Dynamic token budgets**: The fixed allocations (identity: 200, knowledge: 800, episodes: 400, relationships: 300, topic: 300) may need to be dynamic. What happens when one source dominates (e.g., 20 highly relevant knowledge entities competing for 800 tokens)?
+
+6. **Other SQLite systems**: Instar uses SQLite in multiple places (TopicMemory, MemoryIndex, etc.). Should the sqlite-vec + embedding infrastructure be shared across all SQLite-backed systems? Audit needed for vector search upgrade potential across the codebase.
 
 ---
 
@@ -783,4 +1080,29 @@ The guardian network (implemented in commit 913b871) maintains whatever memory s
 - **guardian-pulse** → Monitors memory migration job health
 
 The guardians are the immune system. SemanticMemory is the nervous system. They complement, not replace, each other.
+
+---
+
+## Cross-Review Attribution
+
+This revision (v3.0) incorporates findings from independent reviews by GPT 5.2, Gemini 3 Pro, and Grok 4, conducted 2026-02-27. Full reviews available at `.claude/skills/crossreview/output/20260227-181548/`.
+
+**Key fixes from cross-review:**
+- P0: WAL mode + concurrency controls (all 3 models)
+- P0: FTS5 sync triggers for external content table (GPT)
+- P0: Double-decay bug prevention — query-time-only decay model (GPT)
+- P0: `access_count` column added to schema (GPT)
+- P1: Entity deduplication in `remember()` (all 3 models)
+- P1: Sensitive Data Handling section with Sanitizer pipeline (all 3 models)
+- P1: Canonical source declaration for person/relationship data (GPT)
+- P2: Per-entity `decayHalfLife` field (Grok)
+- P2: Context injection render strategy (Gemini)
+- P2: Schema versioning table (Gemini + Grok)
+- P2: LLM query expansion before FTS5 (Gemini)
+- P3: Sentinel LLM failure handling with retry queue (Grok)
+- P3: Edge directionality in query APIs (GPT)
+- P3: Entity audit log table (Grok)
+
+**New addition (v3.0):**
+- Phase 5: Hybrid Search (FTS5 + sqlite-vec vector search) — addresses the "semantic gap" consensus finding
 
