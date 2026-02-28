@@ -25,7 +25,8 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "check:upgrade-guide": "node scripts/check-upgrade-guide.js",
-    "prepublishOnly": "npm run build && npm run check:upgrade-guide"
+    "prepublishOnly": "npm run build && npm run check:upgrade-guide",
+    "prepare": "husky"
   },
   "keywords": [
     "instar",
@@ -80,6 +81,7 @@
     "@types/proper-lockfile": "^4.1.4",
     "@types/supertest": "^6.0.3",
     "@types/ws": "^8.18.1",
+    "husky": "^9.1.7",
     "supertest": "^7.2.2",
     "typescript": "^5.9.3",
     "vitest": "^2.0.0"

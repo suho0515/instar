@@ -25,6 +25,7 @@ import type {
   TriageRecord,
   TriageEvents,
   TriageDeps,
+  ProcessInfo,
 } from './StallTriageNurse.types.js';
 
 // Re-export types for convenience
@@ -37,9 +38,12 @@ export type {
   TriageRecord,
   TriageEvents,
   TriageDeps,
+  ProcessInfo,
 };
 
 // ─── Constants ──────────────────────────────────────────────
+
+const DEFAULT_POST_INTERVENTION_DELAY_MS = 3000;
 
 const DEFAULT_CONFIG: Required<StallTriageConfig> = {
   enabled: true,
@@ -51,6 +55,7 @@ const DEFAULT_CONFIG: Required<StallTriageConfig> = {
   verifyDelayMs: 10000,
   maxEscalations: 2,
   useIntelligenceProvider: true,
+  postInterventionDelayMs: DEFAULT_POST_INTERVENTION_DELAY_MS,
 };
 
 const ACTION_ESCALATION_ORDER: TreatmentAction[] = [
@@ -329,6 +334,89 @@ export class StallTriageNurse extends EventEmitter {
     }
   }
 
+  // ─── Heuristic Pre-Filter ────────────────────────────────
+
+  /**
+   * Fast pattern-based diagnosis that runs BEFORE the LLM.
+   * Returns a diagnosis if a known pattern matches, or null to fall through to LLM.
+   */
+  heuristicDiagnose(context: TriageContext): TriageDiagnosis | null {
+    const output = context.tmuxOutput;
+    if (!output) return null;
+
+    // Pattern 1: Running bash command with "(running)" indicator
+    if (/\(running\)/i.test(output) && /timeout|etime|\.py|\.sh|curl|npm|node|bash|python|pnpm/i.test(output)) {
+      return {
+        summary: 'Bash command running with (running) indicator — likely hung process',
+        action: 'unstick',
+        confidence: 'high',
+        userMessage: `Session "${context.sessionName}" has a command that appears stuck. Sending Ctrl+C to recover...`,
+      };
+    }
+
+    // Pattern 2: OAuth/browser flow waiting for user interaction
+    if (/OAuth|please click|Opening browser|click Allow|authorize|authentication.*browser/i.test(output)) {
+      return {
+        summary: 'Session waiting for browser/OAuth interaction that will never complete in headless mode',
+        action: 'unstick',
+        confidence: 'high',
+        userMessage: `Session "${context.sessionName}" is stuck waiting for a browser interaction. Interrupting and redirecting...`,
+      };
+    }
+
+    // Pattern 3: Context nearly exhausted (≤3%)
+    const contextMatch = output.match(/Context left until auto-compact:\s*([0-9]+)%/);
+    if (contextMatch) {
+      const pct = parseInt(contextMatch[1], 10);
+      if (pct <= 3) {
+        return {
+          summary: `Context nearly exhausted (${pct}%) — session needs restart to recover`,
+          action: 'restart',
+          confidence: 'high',
+          userMessage: `Session "${context.sessionName}" has run out of context space (${pct}% remaining). Restarting with fresh context...`,
+        };
+      }
+    }
+
+    // Pattern 4: Bare shell prompt (Claude has exited)
+    const shellPromptPattern = /^\$\s*$/m;
+    const bashVersionPattern = /bash-[\d.]+\$\s*$/m;
+    if (shellPromptPattern.test(output) || bashVersionPattern.test(output)) {
+      // Make sure Claude isn't actively working (tool calls in progress)
+      const claudeActivityPattern = /claude|Read\(|Write\(|Edit\(|Bash\(|Grep\(|Glob\(|⠋|⠙|⠹|⠸|⠼|⠴|⠦|⠧|⠇|⠏/;
+      if (!claudeActivityPattern.test(output)) {
+        return {
+          summary: 'Shell prompt visible — Claude process has likely exited',
+          action: 'restart',
+          confidence: 'high',
+          userMessage: `Session "${context.sessionName}" appears to have ended. Restarting it now...`,
+        };
+      }
+    }
+
+    // Pattern 5: Fatal errors
+    if (/ENOMEM|SIGKILL|out of memory|panic|fatal error/i.test(output)) {
+      return {
+        summary: 'Fatal error detected in session output',
+        action: 'restart',
+        confidence: 'high',
+        userMessage: `Session "${context.sessionName}" encountered a fatal error. Restarting...`,
+      };
+    }
+
+    // Pattern 6: "esc to interrupt" visible for 3+ minutes
+    if (/esc to interrupt/i.test(output) && context.waitMinutes >= 3) {
+      return {
+        summary: `"esc to interrupt" visible for ${context.waitMinutes}+ minutes — session stuck in tool call`,
+        action: 'interrupt',
+        confidence: 'medium',
+        userMessage: `Session "${context.sessionName}" appears stuck on a long-running operation. Interrupting it...`,
+      };
+    }
+
+    return null; // No heuristic match — fall through to LLM
+  }
+
   // ─── Private Methods ──────────────────────────────────────
 
   private gatherContext(
@@ -360,6 +448,11 @@ export class StallTriageNurse extends EventEmitter {
   }
 
   private async diagnose(context: TriageContext): Promise<TriageDiagnosis> {
+    // Layer 1: Heuristic pre-filter (fast, free, catches obvious patterns)
+    const heuristic = this.heuristicDiagnose(context);
+    if (heuristic) return heuristic;
+
+    // Layer 2: LLM diagnosis (accurate, costs money)
     try {
       const prompt = this.buildDiagnosisPrompt(context);
       let rawResponse: string;
@@ -377,17 +470,20 @@ export class StallTriageNurse extends EventEmitter {
 
       return this.parseDiagnosis(rawResponse);
     } catch (err) {
-      console.warn(`[StallTriageNurse] LLM diagnosis failed, using heuristic:`, err);
+      console.warn(`[StallTriageNurse] LLM diagnosis failed, trying process-tree fallback:`, err);
       DegradationReporter.getInstance().report({
         feature: 'StallTriageNurse.diagnosis',
         primary: 'LLM-powered diagnosis of session stall root cause',
-        fallback: 'Regex-based heuristic on terminal output',
+        fallback: 'Process-tree analysis then regex-based heuristic on terminal output',
         reason: `LLM diagnosis failed: ${err instanceof Error ? err.message : String(err)}`,
-        impact: 'Stall recovery uses less accurate heuristic — may apply wrong treatment.',
+        impact: 'Stall recovery uses process-tree or heuristic fallback — may apply wrong treatment.',
       });
 
-      // Heuristic fallback — smarter than always defaulting to nudge.
-      // Check terminal output for clues about what's wrong.
+      // Layer 3: Process-tree fallback (check actual child processes)
+      const processTreeDiagnosis = await this.processTreeFallback(context);
+      if (processTreeDiagnosis) return processTreeDiagnosis;
+
+      // Layer 4: Terminal output heuristic fallback (last resort before nudge)
       const output = context.tmuxOutput || '';
       let action: TreatmentAction = 'nudge';
       let summary = 'LLM diagnosis unavailable, using heuristic';
@@ -402,13 +498,37 @@ export class StallTriageNurse extends EventEmitter {
         summary = 'Terminal shows error/exit indicators (heuristic)';
         userMessage = `Session "${context.sessionName}" appears to have crashed. Restarting it...`;
       } else if (context.waitMinutes >= 5) {
-        // If waiting 5+ minutes with a live session, nudge is unlikely to help — go straight to interrupt
         action = 'interrupt';
         summary = `Session alive but unresponsive for ${context.waitMinutes} min (heuristic)`;
         userMessage = `Session "${context.sessionName}" has been unresponsive for ${context.waitMinutes} minutes. Trying to interrupt it...`;
       }
 
       return { summary, action, confidence: 'low', userMessage };
+    }
+  }
+
+  /**
+   * Process-tree fallback: when LLM is unavailable, check actual child processes
+   * to see if something is stuck.
+   */
+  private async processTreeFallback(context: TriageContext): Promise<TriageDiagnosis | null> {
+    if (!this.deps.getStuckProcesses) return null;
+
+    try {
+      const stuckProcesses = await this.deps.getStuckProcesses(context.sessionName);
+      if (stuckProcesses.length === 0) return null;
+
+      const stuck = stuckProcesses[0];
+      const elapsedMin = Math.round(stuck.elapsedMs / 60000);
+      return {
+        summary: `Stuck child process detected via process tree: "${stuck.command.slice(0, 80)}" (${elapsedMin}min)`,
+        action: 'unstick',
+        confidence: 'medium',
+        userMessage: `Session "${context.sessionName}" has a stuck process (running for ${elapsedMin} minutes). Sending Ctrl+C to recover...`,
+      };
+    } catch {
+      // @silent-fallback-ok — process tree analysis is best-effort
+      return null;
     }
   }
 
@@ -537,6 +657,7 @@ export class StallTriageNurse extends EventEmitter {
         await this.deps.sendToTopic(context.topicId, userMessage).catch(err => {
           console.warn(`[StallTriageNurse] sendToTopic failed:`, err);
         });
+        await this.sendPostInterventionFollowUp(context, 'interrupt');
         break;
 
       case 'unstick':
@@ -544,6 +665,7 @@ export class StallTriageNurse extends EventEmitter {
         await this.deps.sendToTopic(context.topicId, userMessage).catch(err => {
           console.warn(`[StallTriageNurse] sendToTopic failed:`, err);
         });
+        await this.sendPostInterventionFollowUp(context, 'unstick');
         break;
 
       case 'restart':
@@ -553,6 +675,25 @@ export class StallTriageNurse extends EventEmitter {
         await this.deps.respawnSession(context.sessionName, context.topicId);
         break;
     }
+  }
+
+  /**
+   * After interrupt/unstick, inject a system message into the session so the
+   * Claude instance knows what happened and can recover gracefully.
+   */
+  private async sendPostInterventionFollowUp(
+    context: TriageContext,
+    action: 'interrupt' | 'unstick',
+  ): Promise<void> {
+    await this.delay(this.config.postInterventionDelayMs);
+
+    const actionDesc = action === 'unstick'
+      ? 'The previous command was automatically interrupted (Ctrl+C) by the session recovery system because it appeared stuck.'
+      : 'The previous operation was interrupted (Escape) by the session recovery system because it appeared stuck.';
+
+    const followUp = `[system] ${actionDesc}\nThe user's pending message was: "${context.pendingMessage}"\nPlease acknowledge this to the user via Telegram and continue with an alternative approach if needed.`;
+
+    this.deps.sendInput(context.sessionName, followUp + '\n');
   }
 
   async verifyAction(action: TreatmentAction, context: TriageContext): Promise<boolean> {

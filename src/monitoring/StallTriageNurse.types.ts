@@ -21,6 +21,15 @@ export interface StallTriageConfig {
   maxEscalations?: number;
   /** Use IntelligenceProvider instead of direct API (default: true) */
   useIntelligenceProvider?: boolean;
+  /** Delay after intervention before sending follow-up message (default: 3000ms) */
+  postInterventionDelayMs?: number;
+}
+
+/** Process info from process-tree analysis */
+export interface ProcessInfo {
+  pid: number;
+  command: string;
+  elapsedMs: number;
 }
 
 export type TreatmentAction = 'status_update' | 'nudge' | 'interrupt' | 'unstick' | 'restart';
@@ -78,4 +87,6 @@ export interface TriageDeps {
   sendToTopic: (topicId: number, text: string) => Promise<any>;
   respawnSession: (sessionName: string, topicId: number) => Promise<void>;
   clearStallForTopic: (topicId: number) => void;
+  /** Optional: Get stuck child processes for a session (process-tree fallback) */
+  getStuckProcesses?: (sessionName: string) => Promise<ProcessInfo[]>;
 }

@@ -59,6 +59,7 @@ const TEST_CONFIG: Partial<StallTriageConfig> = {
   maxEscalations: 2,
   apiKey: 'test-key',
   useIntelligenceProvider: true,
+  postInterventionDelayMs: 0,
 };
 
 // ─── Tests ─────────────────────────────────────────────────

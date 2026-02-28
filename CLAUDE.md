@@ -96,6 +96,14 @@ This toolkit is meant to be tested against real Claude Code projects. The flow:
   - The Phase 1 "feature is alive" E2E test is the single most important test for any feature with API routes
   - Full spec: `docs/specs/TESTING-INTEGRITY-SPEC.md` | E2E template: `docs/E2E-TESTING-STANDARD.md`
 
+- **Zero-Failure Standard** (NON-NEGOTIABLE): The test suite MUST be green at all times. There is no such thing as a "pre-existing failure."
+  - **Every session** must leave the test suite with zero failures, regardless of what was broken when you started
+  - **"Pre-existing failure"** is not a valid label — all failures are current failures, and fixing them is your responsibility
+  - **Before pushing**: Run `npm test` and verify zero failures. The Husky pre-push hook enforces this automatically.
+  - **Before concluding work**: If you modified code, run the full suite (`npm run test:all`) and fix any failures
+  - **The principle**: This is a classic responsibility gap where no one claims failures because "someone else caused them." The standard eliminates this gap — if you see a failure, you own it
+  - **Enforcement**: Husky pre-push hook (local), GitHub Actions CI with branch protection (remote), Claude Code test-health-gate hook (session-level)
+
 - **Agent Awareness Standard**: Every feature added to Instar MUST include a corresponding update to the CLAUDE.md template (`src/scaffold/templates.ts` → `generateClaudeMd()`). An agent that doesn't know about a capability effectively doesn't have it. This means:
   1. **API endpoints** — Add to the Capabilities section with curl examples
   2. **Proactive triggers** — Add to Feature Proactivity ("when user does X → use this")

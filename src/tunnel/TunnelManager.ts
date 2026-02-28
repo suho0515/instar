@@ -208,6 +208,7 @@ export class TunnelManager extends EventEmitter {
 
       this.tunnel.on('exit', (code: number | null) => {
         if (!this._stopped) {
+          this.tunnel = null;
           this._state.url = null;
           this.saveState();
           this.emit('disconnected');
@@ -276,6 +277,7 @@ export class TunnelManager extends EventEmitter {
 
       this.tunnel.on('exit', (code: number | null) => {
         if (!this._stopped) {
+          this.tunnel = null;
           this._state.url = null;
           this.saveState();
           this.emit('disconnected');
