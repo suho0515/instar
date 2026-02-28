@@ -395,13 +395,16 @@ export class TelegramAdapter implements MessagingAdapter {
    * Send a message to a specific forum topic.
    * Returns the Telegram message ID for delivery confirmation.
    */
-  async sendToTopic(topicId: number, text: string): Promise<SendResult> {
+  async sendToTopic(topicId: number, text: string, options?: { silent?: boolean }): Promise<SendResult> {
     const params: Record<string, unknown> = {
       chat_id: this.config.chatId,
       text,
     };
     if (!isGeneralTopic(topicId)) {
       params.message_thread_id = topicId;
+    }
+    if (options?.silent) {
+      params.disable_notification = true;
     }
 
     let result: { message_id: number };
@@ -761,7 +764,9 @@ export class TelegramAdapter implements MessagingAdapter {
     }
 
     try {
-      const result = await this.sendToTopic(topicId, message);
+      // Send silently — the dashboard topic is a reference, not a push notification.
+      // The user checks it when they need the link, they don't need a buzz every restart.
+      const result = await this.sendToTopic(topicId, message, { silent: true });
 
       // Pin the message for easy access
       if (result.messageId) {
