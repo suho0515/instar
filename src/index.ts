@@ -169,6 +169,11 @@ export type {
   SectionClaim, NegotiationResponse, NegotiationSession,
   NegotiationResult, ConflictNegotiatorConfig,
 } from './core/ConflictNegotiator.js';
+export { SyncOrchestrator } from './core/SyncOrchestrator.js';
+export type {
+  SyncPhase, SyncOrchestratorConfig, OrchestratedSyncResult,
+  TaskCompletionResult, TransitionResult, SyncLock,
+} from './core/SyncOrchestrator.js';
 
 // Memory
 export { MemoryIndex } from './memory/MemoryIndex.js';
