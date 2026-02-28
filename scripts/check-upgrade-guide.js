@@ -147,6 +147,7 @@ function getLatestPublishedVersion() {
     .map(f => /^(\d+)\.(\d+)\.(\d+)\.md$/.exec(f))
     .filter(Boolean)
     .map(m => ({ str: `${m[1]}.${m[2]}.${m[3]}`, parts: [+m[1], +m[2], +m[3]] }))
+    .filter(v => v.str !== version) // Exclude current version — we want the PREVIOUS latest
     .sort((a, b) => {
       for (let i = 0; i < 3; i++) {
         if (a.parts[i] !== b.parts[i]) return a.parts[i] - b.parts[i];
