@@ -993,11 +993,14 @@ export class TelegramAdapter implements MessagingAdapter {
 
   // ── Topic-Session Registry ─────────────────────────────────
 
-  registerTopicSession(topicId: number, sessionName: string): void {
+  registerTopicSession(topicId: number, sessionName: string, topicName?: string): void {
     this.topicToSession.set(topicId, sessionName);
     this.sessionToTopic.set(sessionName, topicId);
+    if (topicName) {
+      this.topicToName.set(topicId, topicName);
+    }
     this.saveRegistry();
-    console.log(`[telegram] Registered topic ${topicId} <-> session "${sessionName}"`);
+    console.log(`[telegram] Registered topic ${topicId} <-> session "${sessionName}"${topicName ? ` (name: "${topicName}")` : ''}`);
   }
 
   unregisterTopic(topicId: number): void {

@@ -261,7 +261,7 @@ async function respawnSessionForTopic(
 
   const newSessionName = await spawnSessionForTopic(sessionManager, telegram, topicName, topicId, latestMessage, topicMemory);
 
-  telegram.registerTopicSession(topicId, newSessionName);
+  telegram.registerTopicSession(topicId, newSessionName, topicName);
   await telegram.sendToTopic(topicId, `Session respawned.`);
   console.log(`[telegram→session] Respawned "${newSessionName}" for topic ${topicId}`);
 }
@@ -562,7 +562,7 @@ function wireTelegramRouting(
             `[telegram:${topic.topicId}] New session started. (IMPORTANT: Relay all responses back via: cat <<'EOF' | .claude/scripts/telegram-reply.sh ${topic.topicId}\nYour response\nEOF)`,
             topicName,
           );
-          telegram.registerTopicSession(topic.topicId, newSession);
+          telegram.registerTopicSession(topic.topicId, newSession, topicName);
           await telegram.sendToTopic(topic.topicId, `Session created. I'm here.`);
           await telegram.sendToTopic(topicId, `New session created: "${topicName}" — check the new topic above.`);
           console.log(`[telegram] Spawned session "${newSession}" for new topic ${topic.topicId}`);
@@ -629,7 +629,7 @@ function wireTelegramRouting(
 
       // Use the shared spawn helper that includes topic history
       spawnSessionForTopic(sessionManager, telegram, spawnName, topicId, text, topicMemory).then((newSessionName) => {
-        telegram.registerTopicSession(topicId, newSessionName);
+        telegram.registerTopicSession(topicId, newSessionName, spawnName);
         telegram.sendToTopic(topicId, `Session starting up — reading your message now. One moment.`).catch(() => {});
         console.log(`[telegram→session] Auto-spawned "${newSessionName}" for topic ${topicId}`);
       }).catch((err) => {
