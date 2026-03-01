@@ -2462,6 +2462,11 @@ done
   // External operation gate — intercepts MCP tool calls to external services.
   // Uses shared template from PostUpdateMigrator for DRY maintenance.
   fs.writeFileSync(path.join(hooksDir, 'external-operation-gate.js'), migrator.getHookContent('external-operation-gate'), { mode: 0o755 });
+
+  // Claim intercept — catches false operational claims against canonical state.
+  // PostToolUse hook checks tool output; Stop hook checks direct responses.
+  fs.writeFileSync(path.join(hooksDir, 'claim-intercept.js'), migrator.getHookContent('claim-intercept'), { mode: 0o755 });
+  fs.writeFileSync(path.join(hooksDir, 'claim-intercept-response.js'), migrator.getHookContent('claim-intercept-response'), { mode: 0o755 });
 }
 
 function installHealthWatchdog(projectDir: string, port: number, projectName: string): void {
@@ -2963,7 +2968,14 @@ function installClaudeSettings(projectDir: string): void {
   }
   const postToolUse = hooks.PostToolUse as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
 
-  // Add collector to Edit, Write, Bash, Read, and Skill matchers
+  // Add collector + claim intercept to Edit, Write, Bash matchers
+  // (scope collector also added to Read and Skill)
+  const claimInterceptHook = {
+    type: 'command',
+    command: 'node .instar/hooks/claim-intercept.js',
+    timeout: 5000,
+  };
+
   for (const matcher of ['Edit', 'Write', 'Bash', 'Read', 'Skill']) {
     let entry = postToolUse.find(e => e.matcher === matcher);
     if (!entry) {
@@ -2975,6 +2987,12 @@ function installClaudeSettings(projectDir: string): void {
     if (!existingCommands.has(scopeCollectorHook.command)) {
       entry.hooks.push(scopeCollectorHook);
     }
+    // Claim intercept only on content-producing tools (not Read/Skill)
+    if (['Edit', 'Write', 'Bash'].includes(matcher)) {
+      if (!existingCommands.has(claimInterceptHook.command)) {
+        entry.hooks.push(claimInterceptHook);
+      }
+    }
   }
 
   // Stop: scope coherence checkpoint fires the zoom-out prompt
@@ -2984,11 +3002,27 @@ function installClaudeSettings(projectDir: string): void {
     timeout: 10000,
   };
 
+  // Stop: claim intercept response checks direct text for false claims
+  const claimInterceptResponseHook = {
+    type: 'command',
+    command: 'node .instar/hooks/claim-intercept-response.js',
+    timeout: 10000,
+  };
+
   if (!hooks.Stop) {
     hooks.Stop = [];
   }
   const stopHooks = hooks.Stop as Array<{ matcher?: string; hooks?: Array<{ command?: string }> }>;
-  // Check if already registered
+
+  // Register claim intercept response (before scope checkpoint — catch claims first)
+  const hasClaimIntercept = stopHooks.some(e =>
+    e.hooks?.some(h => h.command?.includes('claim-intercept-response.js')),
+  );
+  if (!hasClaimIntercept) {
+    stopHooks.unshift({ matcher: '', hooks: [claimInterceptResponseHook] });
+  }
+
+  // Register scope coherence checkpoint
   const hasCheckpoint = stopHooks.some(e =>
     e.hooks?.some(h => h.command?.includes('scope-coherence-checkpoint.js')),
   );
