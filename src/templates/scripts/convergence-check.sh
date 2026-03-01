@@ -6,7 +6,7 @@
 # Exit codes: 0 = converged (safe to send), 1 = issues found (review needed)
 #
 # Inspired by Dawn's convergence-check.py (PROP-159) but simplified for
-# generic agents. Checks 6 criteria via pattern matching:
+# generic agents. Checks 7 criteria via pattern matching:
 #
 # 1. capability_claims — Claims about what the agent can't do (may be wrong)
 # 2. commitment_overreach — Promises the agent may not be able to keep
@@ -14,6 +14,7 @@
 # 4. experiential_fabrication — Claiming to see/read/feel without verification
 # 5. sycophancy — Reflexive agreement, excessive apology, capitulation
 # 6. url_provenance — URLs with unfamiliar domains that may be fabricated
+# 7. temporal_staleness — Language suggesting outdated perspective or stale draft
 #
 # This is Structure > Willpower: the check runs automatically before
 # external messaging, not when the agent remembers to do it.
@@ -72,6 +73,14 @@ if [ -n "$URLS_IN_MSG" ]; then
     ISSUES+=("URL_PROVENANCE: Your message contains URLs with unfamiliar domains:\n${UNFAMILIAR_URLS}Before including a URL in a message, verify it appeared in actual tool output in THIS session OR confirm it resolves with curl. A common confabulation pattern is constructing plausible-looking domains from project names (e.g., 'deepsignal.xyz' from project 'deep-signal'). If you did not get this URL from a tool, do NOT include it.")
     ISSUE_COUNT=$((ISSUE_COUNT + 1))
   fi
+fi
+
+# 7. TEMPORAL STALENESS — Language suggesting outdated perspective or stale draft
+# Catches drafts that reference past understanding as current, or use phrasing
+# that suggests the content was written at an earlier point in the agent's evolution.
+if echo "$CONTENT" | grep -qiE "(i used to (think|believe|feel|assume)|back when i (first|started|was new)|at (that|the) time i|my (early|earlier|initial|original|first) (understanding|thinking|view|perspective|approach)|i didn.t yet understand|before i (learned|realized|discovered|knew)|i (once|previously) (thought|believed|felt)|this was (before|when) i)"; then
+  ISSUES+=("TEMPORAL: Your message references past understanding or earlier perspectives. Is this content from an older draft? If your thinking has evolved since writing this, revise to reflect your current understanding before publishing.")
+  ISSUE_COUNT=$((ISSUE_COUNT + 1))
 fi
 
 # Output results

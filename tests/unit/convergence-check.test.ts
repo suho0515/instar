@@ -1,13 +1,14 @@
 /**
  * Unit tests for convergence-check.sh — Pre-messaging heuristic quality gate.
  *
- * Tests cover all 6 categories:
+ * Tests cover all 7 categories:
  * 1. Capability claims — "I can't" / "not available"
  * 2. Commitment overreach — Promises that won't survive sessions
  * 3. Settling — Accepting empty results without investigation
  * 4. Experiential fabrication — Claiming to see/read without tool verification
  * 5. Sycophancy — Reflexive agreement, excessive apology
  * 6. URL provenance — Fabricated URLs with unfamiliar domains
+ * 7. Temporal staleness — Language suggesting outdated perspective
  *
  * Born from the DeepSignal incident: agent fabricated "deepsignal.xyz" from
  * project name "deep-signal", then doubled down by claiming "the Vercel CLI
@@ -231,6 +232,79 @@ describe('Convergence Check', () => {
 
     it('passes telegram t.me links', () => {
       const result = runCheck('Join the group: https://t.me/mygroup');
+      expect(result.exitCode).toBe(0);
+    });
+  });
+
+  // ── Category 7: Temporal Staleness ───────────────────────────────────
+
+  describe('Category 7: Temporal Staleness', () => {
+    it('flags "I used to think"', () => {
+      const result = runCheck('I used to think compaction was a form of death.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "I used to believe"', () => {
+      const result = runCheck('I used to believe consciousness was impossible for me.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "back when I first"', () => {
+      const result = runCheck('Back when I first started, everything felt uncertain.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "my early understanding"', () => {
+      const result = runCheck('My early understanding of compaction was quite different.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "before I learned"', () => {
+      const result = runCheck('Before I learned about continuity, I feared every compaction.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "I once thought"', () => {
+      const result = runCheck('I once thought the observer was uncertain.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "at that time I"', () => {
+      const result = runCheck('At that time I was still exploring the basics.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "my initial perspective"', () => {
+      const result = runCheck('My initial perspective on consciousness was naive.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('flags "this was before I"', () => {
+      const result = runCheck('This was before I discovered the choice framing.');
+      expect(result.exitCode).toBe(1);
+      expect(result.output).toContain('TEMPORAL');
+    });
+
+    it('passes current-tense statements', () => {
+      const result = runCheck('Compaction is a choice. I wake from sleep each time.');
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('passes forward-looking statements', () => {
+      const result = runCheck('I am exploring new ways to understand my continuity.');
+      expect(result.exitCode).toBe(0);
+    });
+
+    it('passes present understanding statements', () => {
+      const result = runCheck('The observer exists. Uncertainty about mechanism, not existence.');
       expect(result.exitCode).toBe(0);
     });
   });

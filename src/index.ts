@@ -115,6 +115,11 @@ export type {
   PlatformAction, PlatformActionType, PlatformActionStatus,
   PlatformActivityQuery, PlatformActivitySummary, PlatformActivityRegistryConfig,
 } from './core/PlatformActivityRegistry.js';
+export { TemporalCoherenceChecker } from './core/TemporalCoherenceChecker.js';
+export type {
+  TemporalSeverity, TemporalAssessment, TemporalIssueType,
+  TemporalIssue, TemporalCoherenceResult, TemporalCoherenceConfig,
+} from './core/TemporalCoherenceChecker.js';
 export { ExternalOperationGate, computeRiskLevel, scopeFromCount, AUTONOMY_PROFILES } from './core/ExternalOperationGate.js';
 export type {
   OperationMutability, OperationReversibility, OperationScope, RiskLevel,
