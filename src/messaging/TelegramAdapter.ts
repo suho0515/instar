@@ -762,8 +762,15 @@ export class TelegramAdapter implements MessagingAdapter {
   }
 
   /**
-   * Broadcast the dashboard URL to the Dashboard topic and pin it.
-   * Called after tunnel comes up or URL changes.
+   * Broadcast the dashboard URL to the Dashboard topic.
+   *
+   * Edit-in-place pattern: instead of posting a new message each restart (which
+   * creates unread badges), we edit the existing pinned message. This means the
+   * Dashboard topic never shows as "unread" — it's a quiet reference the user
+   * checks when they need the link.
+   *
+   * Fallback: if the pinned message was deleted or doesn't exist yet, we send
+   * a new one, pin it, and save its ID for future edits.
    */
   async broadcastDashboardUrl(url: string, tunnelType: 'quick' | 'named'): Promise<void> {
     const topicId = this.config.dashboardTopicId;
@@ -772,42 +779,38 @@ export class TelegramAdapter implements MessagingAdapter {
     const pin = this.config.dashboardPin || '(check your config)';
     const isNamed = tunnelType === 'named';
 
-    let message: string;
-    if (isNamed) {
-      message = [
-        '*Dashboard*',
-        '',
-        `Your permanent dashboard link:`,
-        url + '/dashboard',
-        '',
-        `PIN: \`${pin}\``,
-        '',
-        `_This link is permanent — it won't change on restart._`,
-      ].join('\n');
-    } else {
-      message = [
-        '*Dashboard*',
-        '',
-        `Your dashboard is live:`,
-        url + '/dashboard',
-        '',
-        `PIN: \`${pin}\``,
-        '',
-        `_This link changes when the server restarts._`,
-        `_For a permanent link, ask me to set up a named tunnel._`,
-      ].join('\n');
+    const message = this.formatDashboardMessage(url, pin, isNamed);
+
+    // Try to edit the existing pinned message (no new message = no unread badge)
+    const existingMessageId = this.loadDashboardMessageId();
+    if (existingMessageId) {
+      try {
+        await this.apiCall('editMessageText', {
+          chat_id: this.config.chatId,
+          message_id: existingMessageId,
+          text: message,
+          parse_mode: 'Markdown',
+        });
+        console.log(`[telegram] Edited dashboard message ${existingMessageId} in-place`);
+        return; // Success — no new message, no unread badge
+      } catch (err) {
+        // Edit failed — message was deleted, or content unchanged. Fall through to send new.
+        const errStr = String(err);
+        if (errStr.includes('message is not modified')) {
+          console.log(`[telegram] Dashboard message unchanged — skipping`);
+          return;
+        }
+        console.log(`[telegram] Dashboard message ${existingMessageId} edit failed, sending new: ${errStr}`);
+      }
     }
 
+    // Fallback: send a new message, pin it, and save for future edits
     try {
-      // Send silently — the dashboard topic is a reference, not a push notification.
-      // The user checks it when they need the link, they don't need a buzz every restart.
       const result = await this.sendToTopic(topicId, message, { silent: true });
 
-      // Pin rotation: unpin old pins in this topic, then pin the new message.
-      // This ensures there's always exactly ONE pinned message with the latest link.
       if (result.messageId) {
+        // Unpin old pins, then pin the new message
         try {
-          // Unpin all previous pins in the dashboard topic
           await this.apiCall('unpinAllForumTopicMessages', {
             chat_id: this.config.chatId,
             message_thread_id: topicId,
@@ -825,9 +828,64 @@ export class TelegramAdapter implements MessagingAdapter {
         } catch {
           // @silent-fallback-ok — pinning is nice-to-have, send succeeded
         }
+
+        // Save message ID for future edit-in-place
+        this.saveDashboardMessageId(result.messageId);
       }
     } catch (err) {
       console.error(`[telegram] Failed to broadcast dashboard URL: ${err}`);
+    }
+  }
+
+  private formatDashboardMessage(url: string, pin: string, isNamed: boolean): string {
+    if (isNamed) {
+      return [
+        '*Dashboard*',
+        '',
+        `Your permanent dashboard link:`,
+        url + '/dashboard',
+        '',
+        `PIN: \`${pin}\``,
+        '',
+        `_This link is permanent — it won't change on restart._`,
+      ].join('\n');
+    }
+    return [
+      '*Dashboard*',
+      '',
+      `Your dashboard is live:`,
+      url + '/dashboard',
+      '',
+      `PIN: \`${pin}\``,
+      '',
+      `_This link changes when the server restarts._`,
+      `_For a permanent link, ask me to set up a named tunnel._`,
+    ].join('\n');
+  }
+
+  private loadDashboardMessageId(): number | null {
+    try {
+      const statePath = path.join(this.stateDir, 'state', 'dashboard-message.json');
+      if (fs.existsSync(statePath)) {
+        const data = JSON.parse(fs.readFileSync(statePath, 'utf-8'));
+        return data.messageId ?? null;
+      }
+    } catch {
+      // @silent-fallback-ok — missing state file means first run
+    }
+    return null;
+  }
+
+  private saveDashboardMessageId(messageId: number): void {
+    try {
+      const stateSubdir = path.join(this.stateDir, 'state');
+      fs.mkdirSync(stateSubdir, { recursive: true });
+      const statePath = path.join(stateSubdir, 'dashboard-message.json');
+      const tmpPath = `${statePath}.${process.pid}.tmp`;
+      fs.writeFileSync(tmpPath, JSON.stringify({ messageId, savedAt: new Date().toISOString() }));
+      fs.renameSync(tmpPath, statePath);
+    } catch (err) {
+      console.warn(`[telegram] Failed to save dashboard message ID: ${err}`);
     }
   }
 
