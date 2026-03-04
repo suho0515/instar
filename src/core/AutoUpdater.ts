@@ -100,6 +100,9 @@ export class AutoUpdater {
   private notifiedVersionMismatch: string | null = null;
   // Restart notification dedup — only notify once per version
   private lastNotifiedRestartVersion: string | null = null;
+  // Restart cooldown — prevent rapid restart cycling (e.g., binary path mismatch)
+  private lastRestartRequestedAt: string | null = null;
+  private lastRestartRequestedVersion: string | null = null;
 
   constructor(
     updateChecker: UpdateChecker,
@@ -428,9 +431,28 @@ export class AutoUpdater {
    * After max deferral, restarts regardless with warnings.
    */
   private async gatedRestart(newVersion: string): Promise<void> {
+    // RESTART COOLDOWN: If we already requested a restart for this exact version
+    // within the last 30 minutes, don't restart again. This is the safety net
+    // for binary path mismatches (npx cache, etc.) where the loop breaker in
+    // tick() should catch the loop but the process keeps cycling.
+    if (this.lastRestartRequestedVersion === newVersion && this.lastRestartRequestedAt) {
+      const elapsed = Date.now() - new Date(this.lastRestartRequestedAt).getTime();
+      const cooldownMs = 30 * 60_000; // 30 minutes
+      if (elapsed < cooldownMs) {
+        console.log(
+          `[AutoUpdater] Restart cooldown: already requested restart for v${newVersion} ` +
+          `${Math.round(elapsed / 60_000)}m ago (cooldown: 30m). Skipping.`
+        );
+        return;
+      }
+    }
+
     // If no session manager is wired, skip gating — silent restart
     if (!this.sessionManager) {
       console.log(`[AutoUpdater] Silent restart — no session manager wired (updating to v${newVersion})`);
+      this.lastRestartRequestedAt = new Date().toISOString();
+      this.lastRestartRequestedVersion = newVersion;
+      this.saveState();
       await new Promise(r => setTimeout(r, 2000));
       this.requestRestart(newVersion);
       return;
@@ -463,7 +485,6 @@ export class AutoUpdater {
         // But only notify ONCE per version to prevent spam in restart loops.
         if (this.lastNotifiedRestartVersion !== newVersion) {
           this.lastNotifiedRestartVersion = newVersion;
-          const delaySecs = this.config.preRestartDelaySecs;
           await this.notify(
             `Just updated to v${newVersion}. Restarting to pick up the changes.`
           );
@@ -479,6 +500,16 @@ export class AutoUpdater {
         // Updates should be invisible when nobody's working.
         console.log(`[AutoUpdater] Silent restart — no active sessions (updating to v${newVersion})`);
       }
+      // CRITICAL: Save state BEFORE requesting restart. The process may exit
+      // immediately after requestRestart (ForegroundRestartWatcher picks up the
+      // signal and calls process.exit). If we don't save here, the dedup state
+      // (lastNotifiedRestartVersion, lastRestartRequestedVersion) is lost, and
+      // the notification loop repeats on next restart. This was the root cause
+      // of the v0.12.10 notification spam bug.
+      this.lastRestartRequestedAt = new Date().toISOString();
+      this.lastRestartRequestedVersion = newVersion;
+      this.saveState();
+
       await new Promise(r => setTimeout(r, 2000));
       this.requestRestart(newVersion);
       return;
@@ -599,6 +630,9 @@ export class AutoUpdater {
         // that repeated on every server restart.
         this.notifiedVersionMismatch = data.notifiedVersionMismatch ?? null;
         this.lastNotifiedRestartVersion = data.lastNotifiedRestartVersion ?? null;
+        // Restart cooldown — prevents rapid restart cycling
+        this.lastRestartRequestedAt = data.lastRestartRequestedAt ?? null;
+        this.lastRestartRequestedVersion = data.lastRestartRequestedVersion ?? null;
         // Don't restore coalescingUntil — the timer is in-memory only.
         // On restart, if there's still a pendingUpdate, the next tick()
         // will re-detect it and start a fresh coalescing timer.
@@ -623,6 +657,9 @@ export class AutoUpdater {
       // Persist dedup state — prevents notification loops across restarts
       notifiedVersionMismatch: this.notifiedVersionMismatch,
       lastNotifiedRestartVersion: this.lastNotifiedRestartVersion,
+      // Restart cooldown — prevents rapid restart cycling
+      lastRestartRequestedAt: this.lastRestartRequestedAt,
+      lastRestartRequestedVersion: this.lastRestartRequestedVersion,
       savedAt: new Date().toISOString(),
     };
 

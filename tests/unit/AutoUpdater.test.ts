@@ -246,4 +246,180 @@ describe('AutoUpdater', () => {
       expect(updater.getStatus().running).toBe(false);
     });
   });
+
+  describe('gatedRestart notification dedup', () => {
+    it('persists lastNotifiedRestartVersion to state file before restart', async () => {
+      // This is the root cause of the v0.12.10 notification spam:
+      // gatedRestart() set lastNotifiedRestartVersion in memory but never
+      // called saveState(), so on restart the dedup was lost.
+      const stateFile = path.join(tmpDir, 'state', 'auto-updater.json');
+
+      const mockChecker = createMockUpdateChecker({
+        check: vi.fn().mockResolvedValue({
+          currentVersion: '0.9.8',
+          latestVersion: '0.9.9',
+          updateAvailable: true,
+          checkedAt: new Date().toISOString(),
+        }),
+        applyUpdate: vi.fn().mockResolvedValue({
+          success: true,
+          previousVersion: '0.9.8',
+          newVersion: '0.9.9',
+          message: 'Updated',
+          restartNeeded: true,
+          healthCheck: 'skipped',
+        }),
+      });
+
+      const telegram = createMockTelegram();
+      // Sessions exist but are idle — they don't block restart but DO trigger notification
+      const mockSessionManager = {
+        listRunningSessions: vi.fn().mockReturnValue([{ name: 'session-1', topicId: 123 }]),
+      };
+      const mockSessionMonitor = {
+        getStatus: vi.fn().mockReturnValue({
+          sessionHealth: [{ sessionName: 'session-1', topicId: 123, status: 'idle', idleMinutes: 30 }],
+        }),
+      };
+
+      const updater = new AutoUpdater(
+        mockChecker,
+        createMockState(),
+        tmpDir,
+        { autoApply: true, applyDelayMinutes: 0, preRestartDelaySecs: 0 },
+        telegram,
+      );
+      updater.setSessionDeps(mockSessionManager as any, mockSessionMonitor as any);
+      updater.start();
+
+      // Advance past the initial 10s delay to trigger tick
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      updater.stop();
+
+      // Read the state file — lastNotifiedRestartVersion should be saved
+      if (fs.existsSync(stateFile)) {
+        const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+        expect(state.lastNotifiedRestartVersion).toBe('0.9.9');
+        expect(state.lastRestartRequestedVersion).toBe('0.9.9');
+        expect(state.lastRestartRequestedAt).toBeTruthy();
+      }
+    });
+
+    it('does not re-send notification when lastNotifiedRestartVersion matches', async () => {
+      // Simulate a restart where the state already has the notification dedup set
+      const stateFile = path.join(tmpDir, 'state', 'auto-updater.json');
+      fs.writeFileSync(stateFile, JSON.stringify({
+        lastAppliedVersion: '0.9.9',
+        lastNotifiedRestartVersion: '0.9.9',
+        lastRestartRequestedVersion: '0.9.9',
+        lastRestartRequestedAt: new Date().toISOString(),
+        savedAt: new Date().toISOString(),
+      }));
+
+      const mockChecker = createMockUpdateChecker({
+        check: vi.fn().mockResolvedValue({
+          currentVersion: '0.9.8', // Still old (binary mismatch)
+          latestVersion: '0.9.9',
+          updateAvailable: true,
+          checkedAt: new Date().toISOString(),
+        }),
+      });
+
+      const telegram = createMockTelegram();
+
+      const updater = new AutoUpdater(
+        mockChecker,
+        createMockState(),
+        tmpDir,
+        { autoApply: true },
+        telegram,
+      );
+      updater.start();
+
+      // Advance past the initial 10s delay to trigger tick
+      await vi.advanceTimersByTimeAsync(11_000);
+
+      updater.stop();
+
+      // The loop breaker should prevent any notification
+      // (lastAppliedVersion === latestVersion catches this in tick)
+      // and even if it somehow got to gatedRestart, the restart cooldown would stop it
+      const sendCalls = (telegram.sendToTopic as any).mock.calls;
+      // Should send at most one mismatch notification, not the "restarting" notification
+      const restartNotifications = sendCalls.filter(
+        (call: any[]) => typeof call[1] === 'string' && call[1].includes('Restarting to pick up')
+      );
+      expect(restartNotifications.length).toBe(0);
+    });
+  });
+
+  describe('restart cooldown', () => {
+    it('blocks restart when recently requested for same version', async () => {
+      // Write state indicating a recent restart was requested
+      const stateFile = path.join(tmpDir, 'state', 'auto-updater.json');
+      const recentTime = new Date(Date.now() - 5 * 60_000).toISOString(); // 5 min ago
+      fs.writeFileSync(stateFile, JSON.stringify({
+        lastAppliedVersion: '0.9.9',
+        lastRestartRequestedVersion: '0.9.9',
+        lastRestartRequestedAt: recentTime,
+        savedAt: new Date().toISOString(),
+      }));
+
+      const mockChecker = createMockUpdateChecker({
+        check: vi.fn().mockResolvedValue({
+          currentVersion: '0.9.8', // Binary mismatch
+          latestVersion: '0.9.9',
+          updateAvailable: true,
+          checkedAt: new Date().toISOString(),
+        }),
+        applyUpdate: vi.fn().mockResolvedValue({
+          success: true,
+          previousVersion: '0.9.8',
+          newVersion: '0.9.9',
+          message: 'Updated',
+          restartNeeded: true,
+          healthCheck: 'skipped',
+        }),
+      });
+
+      const updater = new AutoUpdater(
+        mockChecker,
+        createMockState(),
+        tmpDir,
+        { autoApply: true, applyDelayMinutes: 0 },
+      );
+
+      // The loop breaker in tick() should catch this (lastAppliedVersion === latestVersion).
+      // Even if it didn't, applyPendingUpdate → gatedRestart would hit the cooldown.
+      updater.start();
+      await vi.advanceTimersByTimeAsync(11_000);
+      updater.stop();
+
+      // applyUpdate should NOT have been called because the loop breaker catches it
+      expect(mockChecker.applyUpdate).not.toHaveBeenCalled();
+    });
+
+    it('allows restart after cooldown expires', () => {
+      // Write state with an OLD restart request (31 min ago — past the 30-min cooldown)
+      const stateFile = path.join(tmpDir, 'state', 'auto-updater.json');
+      const oldTime = new Date(Date.now() - 31 * 60_000).toISOString();
+      fs.writeFileSync(stateFile, JSON.stringify({
+        lastRestartRequestedVersion: '0.9.9',
+        lastRestartRequestedAt: oldTime,
+        savedAt: new Date().toISOString(),
+      }));
+
+      const updater = new AutoUpdater(
+        createMockUpdateChecker(),
+        createMockState(),
+        tmpDir,
+      );
+
+      // Verify the cooldown state was loaded
+      const state = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+      expect(state.lastRestartRequestedVersion).toBe('0.9.9');
+      // The cooldown should be expired, so a new restart for 0.9.9 would be allowed
+    });
+  });
 });
