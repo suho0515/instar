@@ -132,6 +132,10 @@ function isAutostartInstalled(projectName: string): boolean {
 let _orphanReaper: import('../monitoring/OrphanProcessReaper.js').OrphanProcessReaper | null = null;
 let _memoryMonitor: import('../monitoring/MemoryPressureMonitor.js').MemoryPressureMonitor | null = null;
 
+// Module-level reference for session resume mapping.
+// Set once in startServer() and used by spawnSessionForTopic/respawnSessionForTopic.
+let _topicResumeMap: import('../core/TopicResumeMap.js').TopicResumeMap | null = null;
+
 async function spawnSessionForTopic(
   sessionManager: SessionManager,
   telegram: TelegramAdapter,
@@ -287,7 +291,19 @@ async function spawnSessionForTopic(
     }
   }
 
-  const newSessionName = await sessionManager.spawnInteractiveSession(bootstrapMessage, sessionName, { telegramTopicId: topicId });
+  // Check for a resume UUID from a previously-killed session on this topic
+  const resumeSessionId = _topicResumeMap?.get(topicId) ?? undefined;
+  if (resumeSessionId) {
+    console.log(`[spawnSessionForTopic] Found resume UUID for topic ${topicId}: ${resumeSessionId}`);
+  }
+
+  const newSessionName = await sessionManager.spawnInteractiveSession(bootstrapMessage, sessionName, { telegramTopicId: topicId, resumeSessionId });
+
+  // Clear the resume entry after successful spawn to prevent stale reuse
+  if (resumeSessionId) {
+    _topicResumeMap?.remove(topicId);
+  }
+
   return newSessionName;
 }
 
@@ -305,6 +321,19 @@ async function respawnSessionForTopic(
   userProfile?: UserProfile,
 ): Promise<void> {
   console.log(`[telegram→session] Session "${targetSession}" needs respawn for topic ${topicId}`);
+
+  // Save the old session's Claude UUID before respawning so --resume can reattach context
+  if (_topicResumeMap) {
+    try {
+      const uuid = _topicResumeMap.findUuidForSession(targetSession);
+      if (uuid) {
+        _topicResumeMap.save(topicId, uuid, targetSession);
+        console.log(`[telegram→session] Saved resume UUID ${uuid} for topic ${topicId}`);
+      }
+    } catch (err) {
+      console.error(`[telegram→session] Failed to save resume UUID:`, err);
+    }
+  }
 
   const storedName = telegram.getTopicName(topicId);
   // Use topic name, not tmux session name — tmux names include the project prefix
@@ -346,6 +375,16 @@ function wireTelegramCallbacks(
 
   // /restart — kill session and respawn
   telegram.onRestartSession = async (sessionName: string, topicId: number): Promise<void> => {
+    // Save resume UUID before killing so the new session can --resume
+    if (_topicResumeMap) {
+      try {
+        const uuid = _topicResumeMap.findUuidForSession(sessionName);
+        if (uuid) {
+          _topicResumeMap.save(topicId, uuid, sessionName);
+        }
+      } catch { /* best effort */ }
+    }
+
     // Kill existing session
     try {
       execFileSync(detectTmuxPath()!, ['kill-session', '-t', `=${sessionName}`], { stdio: 'ignore' });
@@ -1120,6 +1159,12 @@ export async function startServer(options: StartOptions): Promise<void> {
 
     const sessionManager = new SessionManager(config.sessions, state);
 
+    // TopicResumeMap: persist Claude session UUIDs across session restarts.
+    // When a session is killed/restarted, we save its UUID so the next spawn
+    // can use --resume to reattach to the existing conversation context.
+    const { TopicResumeMap } = await import('../core/TopicResumeMap.js');
+    _topicResumeMap = new TopicResumeMap(config.stateDir, config.sessions.projectDir);
+
     // Shared intelligence provider — lightweight LLM for internal classification tasks.
     // Prefer Anthropic API (faster, no tmux) → Claude CLI fallback.
     // Components that need LLM intelligence (Sentinel, TelegramAdapter, etc.) share this.
@@ -1876,9 +1921,11 @@ export async function startServer(options: StartOptions): Promise<void> {
       port: config.port,
       onIncoherence: (report) => {
         const failedChecks = report.checks.filter(c => !c.passed && !c.corrected);
-        const summary = failedChecks.map(c => `• ${c.name}: ${c.message}`).join('\n');
+        // Put check names on the first line — the batcher's formatDigest only shows the first line
+        const checkNames = failedChecks.map(c => c.name).join(', ');
+        const details = failedChecks.map(c => `  • ${c.name}: ${c.message}`).join('\n');
         notify('SUMMARY', 'system',
-          `Coherence: ${report.failed} issue(s):\n${summary}`
+          `Coherence: ${checkNames} failed (${report.failed} issue${report.failed === 1 ? '' : 's'})\n${details}`
         );
       },
     });
@@ -2266,7 +2313,7 @@ export async function startServer(options: StartOptions): Promise<void> {
       console.log(pc.green(`  System Reviewer: ${probes.length} probes registered`));
     }
 
-    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, quotaManager, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate, contextHierarchy, canonicalState, operationGate, sentinel, adaptiveTrust, memoryMonitor, orphanReaper, coherenceMonitor, commitmentTracker, semanticMemory, activitySentinel, messageRouter, summarySentinel, spawnManager, systemReviewer, capabilityMapper, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem });
+    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, quotaManager, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate, contextHierarchy, canonicalState, operationGate, sentinel, adaptiveTrust, memoryMonitor, orphanReaper, coherenceMonitor, commitmentTracker, semanticMemory, activitySentinel, messageRouter, summarySentinel, spawnManager, systemReviewer, capabilityMapper, topicResumeMap: _topicResumeMap ?? undefined, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem });
     await server.start();
 
     // Connect DegradationReporter downstream systems now that everything is initialized.

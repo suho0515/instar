@@ -79,6 +79,8 @@ export class OrphanProcessReaper extends EventEmitter {
   private projectPrefix: string;
   private lastReport: ReaperReport | null = null;
   private reportedExternalPids = new Set<number>(); // Don't spam about same PIDs
+  private lastExternalAlertTime = 0; // Cooldown to avoid spamming about normal VS Code/terminal processes
+  private static EXTERNAL_ALERT_COOLDOWN_MS = 24 * 60 * 60_000; // 24 hours
 
   constructor(
     config: InstarConfig,
@@ -186,22 +188,20 @@ export class OrphanProcessReaper extends EventEmitter {
       }
     }
 
-    // Send alert about external processes if any are notable
-    if (newExternalAlerts.length > 0 && alertCallback) {
-      const lines = newExternalAlerts.map(p =>
-        `  - PID ${p.pid}: ${Math.round(p.rssKB / 1024)}MB, running ${this.formatDuration(p.elapsedMs)}`
-      );
-      const msg = [
-        `⚠️ Found ${newExternalAlerts.length} long-running Claude process(es) outside Instar:`,
-        ...lines,
-        '',
-        'These may be your own VS Code / terminal sessions.',
-        'Reply "clean <PID>" to kill a specific process, or "clean all external" to kill all.',
-      ].join('\n');
+    // Send alert about external processes if any are notable.
+    // Cooldown: only alert once per 24h — external processes are usually normal
+    // (VS Code, terminal sessions) and constant alerts are noise.
+    const now = Date.now();
+    const externalAlertCooledDown = now - this.lastExternalAlertTime > OrphanProcessReaper.EXTERNAL_ALERT_COOLDOWN_MS;
+    if (newExternalAlerts.length > 0 && alertCallback && externalAlertCooledDown) {
+      const totalExternal = external.length;
+      const totalMemMB = Math.round(external.reduce((sum, p) => sum + p.rssKB, 0) / 1024);
+      const msg = `${totalExternal} external Claude process(es) detected (${totalMemMB}MB total). Likely VS Code / terminal sessions. Use API /monitoring/processes to inspect.`;
 
       try {
         await alertCallback(msg);
-        report.actionsPerformed.push(`Reported ${newExternalAlerts.length} external process(es) to user`);
+        this.lastExternalAlertTime = now;
+        report.actionsPerformed.push(`Reported ${totalExternal} external process(es) to user`);
       } catch (err) {
         console.error('[OrphanReaper] Failed to send alert:', err);
       }
