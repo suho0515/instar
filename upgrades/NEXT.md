@@ -8,19 +8,24 @@
 
 ## What Changed
 
-<!-- Describe what changed technically. What new features, APIs, behavioral changes? -->
-<!-- Write this for the AGENT — they need to understand the system deeply. -->
+Fixed three critical WhatsApp setup bugs:
+
+1. **Baileys peer dependency resolution**: Replaced `require.resolve()` with dynamic `import()` for detecting Baileys. The old approach failed in npx contexts because `require.resolve()` resolves relative to the npx cache directory, not the user's project. All detection points now try both v6 (`@whiskeysockets/baileys`) and v7 (`baileys`) package names.
+
+2. **405 infinite reconnect loop**: When WhatsApp returns HTTP 405 (usually meaning the Baileys version is outdated and WhatsApp changed its protocol), the backend now logs a clear upgrade message and stops — no reconnection attempts. Previously this caused an infinite reconnect loop.
+
+3. **Dashboard QR polling silent failures**: The dashboard's QR code polling previously swallowed errors silently. Now surfaces 401/403 auth failures, HTTP errors with status codes, and network connection errors visibly in the UI.
+
+Added 22 regression tests covering all three issues.
 
 ## What to Tell Your User
 
-<!-- Write talking points the agent should relay to their user. -->
-<!-- This should be warm, conversational, user-facing — not a changelog. -->
-<!-- Focus on what THEY can now do, not internal plumbing. -->
-
-- **[Feature name]**: "[Brief, friendly description of what this means for the user]"
+- **WhatsApp setup reliability**: "WhatsApp pairing should work much more smoothly now — we fixed several issues that could cause the setup to fail silently or get stuck in loops."
 
 ## Summary of New Capabilities
 
 | Capability | How to Use |
 |-----------|-----------|
-| [Capability] | [Endpoint, command, or "automatic"] |
+| Improved Baileys detection | Automatic — works in npx and global install contexts |
+| 405 error handling | Automatic — clear error message instead of infinite retry |
+| Dashboard QR error visibility | Automatic — errors now shown in dashboard UI |

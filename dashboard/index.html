@@ -1103,7 +1103,18 @@
       fetch('/whatsapp/qr', { headers: { 'Authorization': `Bearer ${token}` } })
         .then(r => {
           if (r.status === 503) { waConfigured = false; updateWaButton(); return null; }
-          if (!r.ok) return null;
+          if (!r.ok) {
+            // Surface auth/error state in QR panel instead of failing silently
+            const msg = document.getElementById('waQrMsg');
+            if (msg && waQrVisible) {
+              if (r.status === 401 || r.status === 403) {
+                msg.textContent = 'Authentication failed — try refreshing the page and re-entering your PIN.';
+              } else {
+                msg.textContent = 'Error fetching QR code (HTTP ' + r.status + '). Retrying...';
+              }
+            }
+            return null;
+          }
           waConfigured = true;
           return r.json();
         })
@@ -1112,7 +1123,12 @@
           updateWaButton(data);
           if (waQrVisible) renderQrPanel(data);
         })
-        .catch(() => {});
+        .catch(err => {
+          const msg = document.getElementById('waQrMsg');
+          if (msg && waQrVisible) {
+            msg.textContent = 'Connection error: ' + (err.message || 'Network failure');
+          }
+        });
     }
 
     function updateWaButton(data) {

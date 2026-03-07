@@ -8,6 +8,32 @@ import pc from 'picocolors';
 import { loadConfig } from '../core/Config.js';
 import { isEncryptedFile } from '../messaging/shared/EncryptedAuthStore.js';
 
+/**
+ * Check if Baileys is importable. Uses dynamic import() instead of require.resolve()
+ * because require.resolve() fails in npx context — it resolves relative to the
+ * npx cache directory, not the user's project. Dynamic import() correctly searches
+ * the full module resolution chain including the user's node_modules.
+ *
+ * Supports both v6 (@whiskeysockets/baileys) and v7 (baileys) package names.
+ */
+async function isBaileysInstalled(): Promise<{ installed: boolean; packageName: string | null }> {
+  // Try v6 first (current recommended)
+  try {
+    // @ts-expect-error — Baileys is a peer dependency, may not be installed
+    await import('@whiskeysockets/baileys');
+    return { installed: true, packageName: '@whiskeysockets/baileys' };
+  } catch {
+    // Try v7 package name
+    try {
+      // @ts-expect-error — Baileys v7 uses different package name
+      await import('baileys');
+      return { installed: true, packageName: 'baileys' };
+    } catch {
+      return { installed: false, packageName: null };
+    }
+  }
+}
+
 // ── instar add whatsapp ──────────────────────────────────────
 
 interface AddWhatsAppOptions {
@@ -126,9 +152,8 @@ export async function addWhatsApp(opts: AddWhatsAppOptions): Promise<void> {
     console.log();
 
     // Check if Baileys is installed
-    try {
-      require.resolve('@whiskeysockets/baileys');
-    } catch {
+    const baileysCheck = await isBaileysInstalled();
+    if (!baileysCheck.installed) {
       console.log(pc.yellow('Baileys is not installed. Install it:'));
       console.log(`  npm install @whiskeysockets/baileys`);
       console.log();
@@ -180,9 +205,8 @@ export async function channelLogin(adapter: string, opts: ChannelLoginOptions): 
   }
 
   // Check if Baileys is installed
-  try {
-    require.resolve('@whiskeysockets/baileys');
-  } catch {
+  const baileysCheck = await isBaileysInstalled();
+  if (!baileysCheck.installed) {
     console.log(pc.red('Baileys is not installed.'));
     console.log(`Run: ${pc.cyan('npm install @whiskeysockets/baileys')}`);
     process.exit(1);
@@ -289,10 +313,10 @@ export async function channelDoctor(adapter: string | undefined, opts: ChannelDo
 
       // Backend-specific checks
       if (currentBackend === 'baileys') {
-        try {
-          require.resolve('@whiskeysockets/baileys');
-          checks.push({ name: 'Baileys installed', status: 'ok', detail: 'Found' });
-        } catch {
+        const doctorBaileysCheck = await isBaileysInstalled();
+        if (doctorBaileysCheck.installed) {
+          checks.push({ name: 'Baileys installed', status: 'ok', detail: `Found (${doctorBaileysCheck.packageName})` });
+        } else {
           checks.push({ name: 'Baileys installed', status: 'fail', detail: 'Not installed. Run: npm install @whiskeysockets/baileys' });
         }
 

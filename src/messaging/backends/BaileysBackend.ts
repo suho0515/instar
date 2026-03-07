@@ -78,8 +78,13 @@ export class BaileysBackend {
   async connect(): Promise<void> {
     try {
       // Dynamic import — Baileys is a peer/optional dependency
+      // Try v6 (@whiskeysockets/baileys) first, then v7 (baileys)
       // @ts-expect-error — Baileys may not be installed; handled gracefully below
-      const baileys = await import('@whiskeysockets/baileys').catch(() => null);
+      let baileys = await import('@whiskeysockets/baileys').catch(() => null);
+      if (!baileys) {
+        // @ts-expect-error — try v7 package name
+        baileys = await import('baileys').catch(() => null);
+      }
       if (!baileys) {
         throw new Error(
           'Baileys is not installed. Run: npm install @whiskeysockets/baileys\n' +
@@ -153,6 +158,18 @@ export class BaileysBackend {
             this.adapter.setConnectionState('disconnected');
             this.handlers.onDisconnected('logged-out', false);
             console.log('[baileys] Session expired. Delete auth state and restart to re-authenticate.');
+          } else if (statusCode === 405) {
+            // Registration endpoint rejected — likely Baileys version incompatibility
+            console.error('[baileys] WhatsApp registration failed with HTTP 405 (Method Not Allowed).');
+            console.error('[baileys] This usually means the Baileys version is outdated and WhatsApp has changed its protocol.');
+            console.error('[baileys] Try upgrading: npm install @whiskeysockets/baileys@latest');
+            console.error('[baileys] Or try the new v7 package: npm install baileys@latest');
+            this.adapter.setConnectionState('disconnected');
+            this.handlers.onError(new Error(
+              'WhatsApp registration failed (HTTP 405). Baileys version may be outdated. ' +
+              'Try: npm install @whiskeysockets/baileys@latest',
+            ));
+            // Don't reconnect — 405 won't resolve by retrying
           } else {
             // Attempt reconnection
             this.scheduleReconnect();

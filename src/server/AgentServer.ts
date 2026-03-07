@@ -122,6 +122,12 @@ export class AgentServer {
 
     // PIN-based dashboard unlock — exchanges a short PIN for the auth token.
     // Placed before auth middleware so the dashboard can call it without a token.
+    // Register PIN unlock endpoint if we have both a PIN and an auth token.
+    // Both are auto-generated on server start, so this should always be true
+    // for properly initialized servers. Log a warning if either is missing.
+    if (!options.config.dashboardPin || !options.config.authToken) {
+      console.warn('[dashboard] Missing dashboardPin or authToken — PIN authentication will be unavailable.');
+    }
     if (options.config.dashboardPin && options.config.authToken) {
       const pinAttempts = new Map<string, { count: number; resetAt: number }>();
       const MAX_ATTEMPTS = 5;
