@@ -292,6 +292,11 @@ program
   .option('--user <user>', 'User name (non-interactive)')
   .option('--telegram-token <token>', 'Telegram bot token (non-interactive)')
   .option('--telegram-group <group>', 'Telegram group/chat ID (non-interactive)')
+  .option('--whatsapp-backend <backend>', 'WhatsApp backend: baileys or business-api (non-interactive)')
+  .option('--whatsapp-phone <phone>', 'WhatsApp authorized phone number (non-interactive)')
+  .option('--whatsapp-phone-number-id <id>', 'Business API phone number ID (non-interactive)')
+  .option('--whatsapp-access-token <token>', 'Business API access token (non-interactive)')
+  .option('--whatsapp-verify-token <token>', 'Business API webhook verify token (non-interactive)')
   .option('--scenario <number>', 'Scenario number 1-8 (non-interactive)')
   .action(async (opts) => {
     const [major, minor] = process.versions.node.split('.').map(Number);

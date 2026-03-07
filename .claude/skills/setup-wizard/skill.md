@@ -179,10 +179,11 @@ Present:
 > What would you like to change?
 
 1. **"Update Telegram setup"** → Jump to Phase 3
-2. **"Change agent personality"** → Jump to Phase 2c
-3. **"Add a user"** → New User Flow
-4. **"View current config"** → Display scenario and settings
-5. **"Something else"** → Free-form request
+2. **"Set up WhatsApp"** → Jump to Phase 4g
+3. **"Change agent personality"** → Jump to Phase 2c
+4. **"Add a user"** → New User Flow
+5. **"View current config"** → Display scenario and settings
+6. **"Something else"** → Free-form request
 
 ---
 
@@ -1110,6 +1111,20 @@ mkdir -p .instar/state/sessions .instar/state/jobs .instar/logs
         "pollIntervalMs": 2000,
         "stallTimeoutMinutes": 5
       }
+    },
+    {
+      "type": "whatsapp",
+      "enabled": true,
+      "config": {
+        "backend": "baileys | business-api",
+        "authorizedNumbers": ["+1XXXXXXXXXX"],
+        "requireConsent": false,
+        "businessApi": {
+          "phoneNumberId": "<from Meta Developer Console>",
+          "accessToken": "<from Meta Developer Console>",
+          "webhookVerifyToken": "<random string you choose>"
+        }
+      }
     }
   ],
   "monitoring": {
@@ -1158,6 +1173,132 @@ Then make it executable:
 ```bash
 chmod +x .claude/scripts/telegram-reply.sh
 ```
+
+### 4g. WhatsApp Setup (Optional)
+
+**WhatsApp is optional.** Unlike Telegram, WhatsApp is an additional communication channel — not the primary interface. Only offer it after Telegram is configured.
+
+Present:
+
+> **Want to add WhatsApp as a second channel?**
+>
+> WhatsApp lets you talk to your agent from your phone's default messaging app. It works alongside Telegram — you'll get cross-platform alerts if either channel disconnects.
+>
+> 1. Yes, set up WhatsApp
+> 2. Skip for now
+>
+> Type a number.
+
+If they choose to skip, move to Phase 4.5. If they want WhatsApp:
+
+#### Step 4g-1: Choose Backend
+
+Present:
+
+> WhatsApp has two connection modes:
+>
+> 1. **Personal (Baileys)** — connects through WhatsApp Web. Works on any machine, no server setup needed. Best for personal use and local development.
+> 2. **Business API** — uses Meta's official Cloud API. Requires a Meta Developer account and a publicly accessible server for webhooks. Best for production deployments.
+>
+> Which one fits your setup?
+
+**If they choose Baileys:**
+
+> Great — Baileys connects through WhatsApp Web, just like scanning a QR code.
+>
+> I need your phone number to authorize messages. Only messages from this number will be processed — everything else is ignored.
+
+Collect their phone number (plain text, NOT AskUserQuestion). Format it with country code (+1XXXXXXXXXX).
+
+Write the config:
+```bash
+node -e "
+const fs = require('fs');
+const p = '<project_dir>/.instar/config.json';
+const c = JSON.parse(fs.readFileSync(p, 'utf-8'));
+c.messaging = c.messaging || [];
+c.messaging.push({
+  type: 'whatsapp',
+  enabled: true,
+  config: {
+    backend: 'baileys',
+    authorizedNumbers: ['<PHONE_NUMBER>'],
+    requireConsent: false
+  }
+});
+fs.writeFileSync(p, JSON.stringify(c, null, 2));
+"
+```
+
+Then tell the user:
+
+> WhatsApp is configured. When you start your agent, it will show a pairing code in the logs. Open WhatsApp on your phone → Settings → Linked Devices → Link a Device, and enter the code.
+>
+> You can also pair later with: `instar whatsapp connect`
+
+**If they choose Business API:**
+
+> The Business API needs three things from your Meta Developer Console:
+> 1. **Phone Number ID** — the ID of your WhatsApp Business phone number
+> 2. **Access Token** — a permanent token from System Users
+> 3. **Webhook Verify Token** — a random string you choose (I can generate one)
+>
+> Do you have a Meta Developer account set up? If not, I can walk you through it, or you can switch to Baileys for now.
+
+If they want to proceed, collect:
+- Phone Number ID (plain text)
+- Access Token (plain text — will be stored in config)
+- Webhook Verify Token (offer to generate: `node -e "console.log(require('crypto').randomBytes(16).toString('hex'))"`)
+- Their WhatsApp phone number for authorization
+
+Check if the server has a public URL:
+
+> Does your server have a public URL? The Business API sends webhooks to your server — it needs to be reachable from the internet.
+>
+> 1. Yes, my server is public (enter URL)
+> 2. No, I'm on a local machine
+>
+> If local: "For local development, I'd recommend switching to Baileys — it works without any server setup. The Business API is designed for cloud deployments. Want to switch to Baileys instead?"
+
+Write the config:
+```bash
+node -e "
+const fs = require('fs');
+const p = '<project_dir>/.instar/config.json';
+const c = JSON.parse(fs.readFileSync(p, 'utf-8'));
+c.messaging = c.messaging || [];
+c.messaging.push({
+  type: 'whatsapp',
+  enabled: true,
+  config: {
+    backend: 'business-api',
+    authorizedNumbers: ['<PHONE_NUMBER>'],
+    requireConsent: false,
+    businessApi: {
+      phoneNumberId: '<PHONE_NUMBER_ID>',
+      accessToken: '<ACCESS_TOKEN>',
+      webhookVerifyToken: '<VERIFY_TOKEN>'
+    }
+  }
+});
+fs.writeFileSync(p, JSON.stringify(c, null, 2));
+"
+```
+
+Tell the user the webhook URL to configure in Meta Developer Console:
+
+> Configure your webhook in the Meta Developer Console:
+> - **URL**: `https://<your-server>/webhooks/whatsapp`
+> - **Verify Token**: `<VERIFY_TOKEN>`
+> - **Subscribe to**: `messages`
+
+#### Step 4g-2: Cross-Platform Alerts
+
+If both Telegram and WhatsApp are configured, mention:
+
+> Since you have both Telegram and WhatsApp, your agent will automatically alert you on one platform if the other disconnects. If WhatsApp goes down, you'll get a message on Telegram (and vice versa).
+
+No additional config needed — CrossPlatformAlerts wires automatically in `server.ts` when both adapters are present.
 
 ## Phase 4.5: Cloud Backup (Recommended)
 

@@ -778,6 +778,11 @@ interface NonInteractiveOptions {
   user?: string;
   telegramToken?: string;
   telegramGroup?: string;
+  whatsappBackend?: string;
+  whatsappPhone?: string;
+  whatsappPhoneNumberId?: string;
+  whatsappAccessToken?: string;
+  whatsappVerifyToken?: string;
   scenario?: string;
 }
 
@@ -859,6 +864,29 @@ export async function runNonInteractiveSetup(opts: NonInteractiveOptions): Promi
         pollIntervalMs: 2000,
         stallTimeoutMinutes: 5,
       },
+    });
+  }
+
+  // Add WhatsApp if provided
+  if (opts.whatsappBackend && opts.whatsappPhone) {
+    const waConfig: Record<string, unknown> = {
+      backend: opts.whatsappBackend,
+      authorizedNumbers: [opts.whatsappPhone],
+      requireConsent: false,
+    };
+
+    if (opts.whatsappBackend === 'business-api' && opts.whatsappPhoneNumberId && opts.whatsappAccessToken) {
+      waConfig.businessApi = {
+        phoneNumberId: opts.whatsappPhoneNumberId,
+        accessToken: opts.whatsappAccessToken,
+        webhookVerifyToken: opts.whatsappVerifyToken ?? '',
+      };
+    }
+
+    (config.messaging as Record<string, unknown>[]).push({
+      type: 'whatsapp',
+      enabled: true,
+      config: waConfig,
     });
   }
 
