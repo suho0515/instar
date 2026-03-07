@@ -151,6 +151,56 @@ describe('Setup Wizard Completeness', () => {
     });
   });
 
+  // ── Mandatory Messaging Gate ─────────────────────────────────
+  // Phase 3 must never be skipped due to other phases being skipped.
+  // The "All done!" message must not appear without messaging configured.
+
+  describe('Mandatory messaging gate', () => {
+    // Use the ## heading to find the actual Phase 3 section, not menu references
+    const phase3Heading = '## Phase 3: Messaging Setup';
+    const phase3Start = skill.indexOf(phase3Heading);
+
+    it('Phase 3 explicitly states skipping Bitwarden does NOT skip messaging', () => {
+      const phase4Start = skill.indexOf('## Phase 4', phase3Start);
+      const phase3 = skill.substring(phase3Start, phase4Start > -1 ? phase4Start : undefined);
+
+      expect(phase3).toContain('skipped Phase 2.5');
+      expect(phase3).toContain('does NOT mean');
+    });
+
+    it('Phase 3 states no previous skip cascades to messaging', () => {
+      const phase4Start = skill.indexOf('## Phase 4', phase3Start);
+      const phase3 = skill.substring(phase3Start, phase4Start > -1 ? phase4Start : undefined);
+
+      expect(phase3).toContain('No previous skip cascades to messaging');
+    });
+
+    it('Pre-completion checklist exists before "All done"', () => {
+      expect(skill).toContain('Pre-Completion Checklist');
+      expect(skill).toContain('MESSAGING_NOT_CONFIGURED');
+    });
+
+    it('Pre-completion checklist sends back to Phase 3 if no messaging', () => {
+      const checklistStart = skill.indexOf('Pre-Completion Checklist');
+      const tellUserStart = skill.indexOf('Tell the User', checklistStart);
+      const checklist = skill.substring(checklistStart, tellUserStart);
+
+      // Should redirect to Phase 3 in both the checklist items and the verification block
+      expect(checklist).toContain('Phase 3');
+    });
+
+    it('"no messaging configured" section does NOT declare setup complete', () => {
+      const noMsgSection = skill.substring(
+        skill.indexOf('If no messaging platform was configured'),
+      );
+      const sectionEnd = noMsgSection.indexOf('## Phase 6');
+      const section = noMsgSection.substring(0, sectionEnd);
+
+      expect(section).toContain('GO BACK');
+      expect(section).not.toContain('All done');
+    });
+  });
+
   // ── Architecture Guard ───────────────────────────────────────
   // Ensure setup.ts is a launcher, not a parallel implementation.
   // This prevents the v0.9.35 incident from recurring.

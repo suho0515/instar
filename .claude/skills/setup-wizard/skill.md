@@ -756,7 +756,13 @@ Check the prompt context for `SECRET_BACKEND_CONFIGURED`. If present:
 
 ## Phase 3: Messaging Setup — The Destination
 
+### CRITICAL GATE: Phase 3 is NEVER skipped
+
 **Messaging is NOT optional.** It is the primary interface for talking to your agent. Everything else in setup supports getting the user onto a messaging platform. Treat this as a required step, not an opt-in feature.
+
+**If the user skipped Phase 2.5 (secrets/Bitwarden):** That does NOT mean they skipped messaging. Those are independent steps. You MUST still enter Phase 3 and walk the user through messaging setup. Skipping Bitwarden means secrets are deferred — it does NOT mean the setup is over.
+
+**If any previous phase was skipped or deferred:** You MUST still enter Phase 3. No previous skip cascades to messaging. The setup is not complete until messaging is configured (or the user has explicitly refused messaging twice after hearing the consequences).
 
 ### Step 3-pre: Check if Messaging Already Configured
 
@@ -1680,7 +1686,25 @@ npx instar autostart install --dir <project_dir>
 
 This creates a macOS LaunchAgent or Linux systemd service. The agent will start automatically whenever the user logs in — nothing to remember.
 
-### Step 5d: Tell the User
+### Step 5d: Pre-Completion Checklist (MANDATORY)
+
+**Before saying "All done!", verify ALL of these:**
+
+1. **Messaging configured?** Check `.instar/config.json` — does `messaging` array have at least one entry with type "telegram" or "whatsapp"? If NO → **go back to Phase 3 NOW**. Do not proceed.
+2. **Server running?** `curl -s http://localhost:<PORT>/health` returns ok? If NO → start it.
+3. **Greeting sent?** Did the agent successfully send a message to the user on their messaging platform? If NO → send it now.
+
+```bash
+# Quick messaging check
+MSG_COUNT=$(jq '.messaging | length' .instar/config.json 2>/dev/null)
+if [ "$MSG_COUNT" = "0" ] || [ "$MSG_COUNT" = "null" ]; then
+  echo "MESSAGING_NOT_CONFIGURED"
+fi
+```
+
+If `MESSAGING_NOT_CONFIGURED` → **STOP. Go to Phase 3.** You cannot declare the setup complete without messaging.
+
+### Step 5e: Tell the User
 
 After the server is running, auto-start is installed, and the greeting is sent:
 
@@ -1696,11 +1720,15 @@ Keep it matter-of-fact, not alarming.
 
 **Do NOT present a list of CLI commands or next steps.** The setup wizard's job is done. The user's next action is opening their messaging app and replying to their agent.
 
-**If no messaging platform was configured:**
+**If no messaging platform was configured — THIS IS A BUG. GO BACK.**
 
-Start the server, then:
+Do NOT declare setup complete without messaging. Messaging is the entire point of the agent experience. If you somehow reached Step 5d without a configured messaging platform, **go back to Phase 3 immediately**. Present the messaging options again. The user may have skipped something earlier (like Bitwarden) that you misinterpreted as skipping messaging — those are independent.
 
-> "Server is running. You can talk to your agent through Claude Code sessions. When you're ready for a richer experience, just ask your agent to help set up Telegram or WhatsApp."
+The ONLY exception: the user has explicitly said "I don't want messaging" at least twice, and you've explained the consequences. In that extreme edge case:
+
+> "Server is running. You can talk to your agent through Claude Code sessions. When you're ready for messaging, just ask your agent to help set up Telegram or WhatsApp."
+
+But this should almost never happen. If the user said "skip" to something else (Bitwarden, cloud backup, etc.), that does NOT mean skip messaging.
 
 ## Phase 6: Post-Setup Feedback (Optional)
 
