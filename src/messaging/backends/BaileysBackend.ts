@@ -36,7 +36,7 @@ export interface BaileysEventHandlers {
   onPairingCode: (code: string) => void;
   onConnected: (phoneNumber: string) => void;
   onDisconnected: (reason: string, shouldReconnect: boolean) => void;
-  onMessage: (jid: string, messageId: string, text: string, senderName?: string, timestamp?: number, msgKey?: unknown) => void;
+  onMessage: (jid: string, messageId: string, text: string, senderName?: string, timestamp?: number, msgKey?: unknown, participant?: string, mentionedJids?: string[]) => void;
   onError: (error: Error) => void;
 }
 
@@ -314,6 +314,13 @@ export class BaileysBackend {
           const senderName = msg.pushName ?? undefined;
           const timestamp = msg.messageTimestamp;
 
+          // For group messages, extract the sender's JID from msg.key.participant
+          const participant = msg.key.participant ?? undefined;
+
+          // Extract @mentions from extendedTextMessage contextInfo
+          const mentionedJids: string[] =
+            msg.message.extendedTextMessage?.contextInfo?.mentionedJid ?? [];
+
           this.handlers.onMessage(
             jid,
             msg.key.id ?? `${Date.now()}`,
@@ -321,6 +328,8 @@ export class BaileysBackend {
             senderName,
             typeof timestamp === 'number' ? timestamp : undefined,
             msg.key,
+            participant,
+            mentionedJids.length > 0 ? mentionedJids : undefined,
           );
         }
       });

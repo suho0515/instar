@@ -830,4 +830,304 @@ describe('WhatsApp Message Routing E2E', () => {
       expect(adapterSrc).toContain('this.phoneNumber');
     });
   });
+
+  // ══════════════════════════════════════════════════════
+  // 11. GROUP MESSAGE HANDLING
+  // ══════════════════════════════════════════════════════
+
+  describe('Group message handling', () => {
+    const GROUP_JID = '120363187170797617@g.us';
+    const SENDER_JID = '14155552671@s.whatsapp.net';
+
+    it('ignores group messages when groups are not enabled', async () => {
+      // Default adapter has no groups config
+      const received: Message[] = [];
+      whatsapp.onMessage(async (msg) => received.push(msg));
+
+      await whatsapp.handleIncomingMessage(
+        GROUP_JID,
+        `grp-disabled-${Date.now()}`,
+        'Hello group',
+        'User',
+        undefined,
+        undefined,
+        SENDER_JID,
+      );
+
+      expect(received.length).toBe(0);
+    });
+
+    it('processes group messages when groups are enabled and authorized', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          authorizedNumbers: [],
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: [GROUP_JID],
+            defaultActivation: 'always',
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      await groupAdapter.setConnectionState('connected', '14155551234');
+
+      const received: Message[] = [];
+      groupAdapter.onMessage(async (msg) => received.push(msg));
+
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-always-${Date.now()}`,
+        'Hello from group',
+        'GroupUser',
+        undefined,
+        undefined,
+        SENDER_JID,
+      );
+
+      expect(received.length).toBe(1);
+      expect(received[0].channel.identifier).toBe(GROUP_JID);
+      expect(received[0].metadata?.isGroup).toBe(true);
+      expect(received[0].metadata?.participant).toBe(SENDER_JID);
+      await groupAdapter.stop();
+    });
+
+    it('buffers group messages for context', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: [GROUP_JID],
+            defaultActivation: 'always',
+            maxContextMessages: 5,
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      await groupAdapter.setConnectionState('connected', '14155551234');
+      groupAdapter.onMessage(async () => {});
+
+      // Send 7 messages — buffer should keep last 5
+      for (let i = 0; i < 7; i++) {
+        await groupAdapter.handleIncomingMessage(
+          GROUP_JID,
+          `grp-buf-${Date.now()}-${i}`,
+          `Message ${i}`,
+          `User${i}`,
+          undefined,
+          undefined,
+          SENDER_JID,
+        );
+      }
+
+      const buffer = groupAdapter.getGroupBuffer(GROUP_JID);
+      expect(buffer.length).toBe(5);
+      expect(buffer[0].text).toBe('Message 2'); // Oldest kept
+      expect(buffer[4].text).toBe('Message 6'); // Most recent
+      await groupAdapter.stop();
+    });
+
+    it('rejects unauthorized groups', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: ['999999999@g.us'], // Different group
+            defaultActivation: 'always',
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      groupAdapter.onMessage(async () => {});
+
+      const received: Message[] = [];
+      groupAdapter.onMessage(async (msg) => received.push(msg));
+
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-unauth-${Date.now()}`,
+        'Not authorized',
+        'User',
+        undefined,
+        undefined,
+        SENDER_JID,
+      );
+
+      expect(received.length).toBe(0);
+      await groupAdapter.stop();
+    });
+
+    it('only activates on @mention in mention mode', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: [GROUP_JID],
+            defaultActivation: 'mention',
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      await groupAdapter.setConnectionState('connected', '14155551234');
+
+      const received: Message[] = [];
+      groupAdapter.onMessage(async (msg) => received.push(msg));
+
+      // Message without mention — should not activate
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-nomention-${Date.now()}`,
+        'Hello everyone',
+        'User',
+        undefined,
+        undefined,
+        SENDER_JID,
+        [], // no mentions
+      );
+
+      expect(received.length).toBe(0);
+
+      // Message with mention of bot's phone — should activate
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-mention-${Date.now()}`,
+        '@agent what is the status?',
+        'User',
+        undefined,
+        undefined,
+        SENDER_JID,
+        ['14155551234@s.whatsapp.net'], // bot's phone mentioned
+      );
+
+      expect(received.length).toBe(1);
+      await groupAdapter.stop();
+    });
+
+    it('activates on agent name text trigger in mention mode', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: [GROUP_JID],
+            defaultActivation: 'mention',
+            agentName: 'Dude',
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      await groupAdapter.setConnectionState('connected', '14155551234');
+
+      const received: Message[] = [];
+      groupAdapter.onMessage(async (msg) => received.push(msg));
+
+      // Message starting with agent name
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-name-${Date.now()}`,
+        '@Dude what is the CI status?',
+        'User',
+        undefined,
+        undefined,
+        SENDER_JID,
+      );
+
+      expect(received.length).toBe(1);
+      await groupAdapter.stop();
+    });
+
+    it('provides recent group context in message metadata', async () => {
+      const groupAdapter = new WhatsAppAdapter(
+        {
+          backend: 'baileys',
+          requireConsent: false,
+          groups: {
+            enabled: true,
+            authorizedGroups: [GROUP_JID],
+            defaultActivation: 'always',
+          },
+        } as Record<string, unknown>,
+        project.stateDir,
+      );
+
+      await groupAdapter.start();
+      groupAdapter.setBackendCapabilities({
+        sendText: vi.fn().mockResolvedValue(undefined),
+      });
+      await groupAdapter.setConnectionState('connected', '14155551234');
+
+      const received: Message[] = [];
+      groupAdapter.onMessage(async (msg) => received.push(msg));
+
+      // Send a couple messages to build context
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-ctx-1-${Date.now()}`,
+        'First message',
+        'Alice',
+        undefined,
+        undefined,
+        '11111111111@s.whatsapp.net',
+      );
+
+      await groupAdapter.handleIncomingMessage(
+        GROUP_JID,
+        `grp-ctx-2-${Date.now()}`,
+        'Second message',
+        'Bob',
+        undefined,
+        undefined,
+        '22222222222@s.whatsapp.net',
+      );
+
+      // The latest message should include context from prior messages
+      const lastMsg = received[received.length - 1];
+      expect(lastMsg.metadata?.recentGroupContext).toContain('First message');
+      expect(lastMsg.metadata?.recentGroupContext).toContain('Alice');
+      await groupAdapter.stop();
+    });
+
+    it('BaileysBackend passes participant and mentionedJids', () => {
+      const baileysBackendSrc = fs.readFileSync(
+        path.resolve(__dirname, '../../src/messaging/backends/BaileysBackend.ts'),
+        'utf-8',
+      );
+      expect(baileysBackendSrc).toContain('msg.key.participant');
+      expect(baileysBackendSrc).toContain('mentionedJid');
+      expect(baileysBackendSrc).toContain('contextInfo');
+    });
+  });
 });

@@ -103,6 +103,26 @@ export interface WhatsAppConfig {
 
   /** Emoji to react with on message receive (ack reaction). Set false to disable. Default: '👀' */
   ackReactionEmoji?: string | false;
+
+  /** Group messaging configuration */
+  groups?: WhatsAppGroupConfig;
+}
+
+export interface WhatsAppGroupConfig {
+  /** Enable group message handling. Default: false */
+  enabled?: boolean;
+  /** Authorized group JIDs (@g.us format). Empty = allow all groups the agent is in. */
+  authorizedGroups?: string[];
+  /** Default activation mode for groups. 'mention' = only respond when @mentioned. 'always' = respond to all messages. Default: 'mention' */
+  defaultActivation?: 'mention' | 'always';
+  /** Number of recent messages to buffer per group for context. Default: 50 */
+  maxContextMessages?: number;
+  /** Per-group overrides keyed by group JID */
+  groupOverrides?: Record<string, { activation?: 'mention' | 'always' }>;
+  /** Prefix agent responses with agent name for clarity (since Baileys uses the user's identity). Default: true */
+  prefixResponses?: boolean;
+  /** Agent display name for response prefixes. Defaults to the project name. */
+  agentName?: string;
 }
 
 // ── Backend capabilities ──────────────────────────────────────
@@ -168,6 +188,10 @@ export class WhatsAppAdapter implements MessagingAdapter {
 
   // Rate limiting: userId -> timestamps[]
   private rateLimitMap = new Map<string, number[]>();
+
+  // Group message context buffers: groupJid -> CircularBuffer of recent messages
+  private groupMessageBuffers = new Map<string, Array<{ sender: string; senderName?: string; text: string; timestamp: string }>>();
+  private static readonly GROUP_BUFFER_MAX = 50;
 
   // Outbound message queue (for offline periods)
   private outboundQueue: Array<{ channelId: string; text: string }> = [];
@@ -384,12 +408,13 @@ export class WhatsAppAdapter implements MessagingAdapter {
     senderName?: string,
     timestamp?: number,
     msgKey?: unknown,
+    participant?: string,
+    mentionedJids?: string[],
   ): Promise<void> {
     // Dedup
     if (this.processedMessageIds.has(messageId)) return;
     this.processedMessageIds.add(messageId);
     if (this.processedMessageIds.size > WhatsAppAdapter.DEDUP_MAX_SIZE) {
-      // Trim oldest entries (Set preserves insertion order)
       const excess = this.processedMessageIds.size - WhatsAppAdapter.DEDUP_MAX_SIZE;
       let count = 0;
       for (const id of this.processedMessageIds) {
@@ -399,7 +424,17 @@ export class WhatsAppAdapter implements MessagingAdapter {
       }
     }
 
-    // ── UX signals: read receipt + ack reaction (fire-and-forget, before auth) ──
+    const isGroup = jid.endsWith('@g.us');
+
+    // ── Group message handling ──
+    if (isGroup) {
+      await this.handleGroupMessage(jid, messageId, text, senderName, timestamp, msgKey, participant, mentionedJids);
+      return;
+    }
+
+    // ── Direct message handling (existing logic) ──
+
+    // UX signals: read receipt (fire-and-forget, before auth)
     if (this.config.sendReadReceipts !== false && this.capabilities?.sendReadReceipt) {
       this.capabilities.sendReadReceipt(jid, messageId, msgKey).catch(() => {});
     }
@@ -432,7 +467,7 @@ export class WhatsAppAdapter implements MessagingAdapter {
 
     // Auth check
     if (!this.authGate.isAuthorized(normalizedPhone)) {
-      const result = await this.authGate.handleUnauthorized(
+      await this.authGate.handleUnauthorized(
         {
           userId: normalizedPhone,
           displayName: senderName ?? normalizedPhone,
@@ -456,7 +491,6 @@ export class WhatsAppAdapter implements MessagingAdapter {
 
     // Privacy consent check (after auth, before processing)
     if (!this.privacyConsent.hasConsent(normalizedPhone)) {
-      // Check if this is a consent response
       const consentResult = this.privacyConsent.handleConsentResponse(normalizedPhone, text);
       if (consentResult === 'granted') {
         if (this.sendFunction) {
@@ -469,14 +503,12 @@ export class WhatsAppAdapter implements MessagingAdapter {
         }
         return;
       } else if (!this.privacyConsent.isPendingConsent(normalizedPhone)) {
-        // First contact — send consent prompt
         this.privacyConsent.markPendingConsent(normalizedPhone);
         if (this.sendFunction) {
           await this.sendFunction(jid, this.privacyConsent.getConsentMessage()).catch(() => {});
         }
         return;
       } else {
-        // Pending consent but not a valid response — remind them
         if (this.sendFunction) {
           await this.sendFunction(jid, 'Please reply "yes" to agree or "no" to decline before we can continue.').catch(() => {});
         }
@@ -509,7 +541,7 @@ export class WhatsAppAdapter implements MessagingAdapter {
       platformUserId: normalizedPhone,
     });
 
-    // ── UX signals: ack reaction + typing indicator (after auth, before processing) ──
+    // UX signals: ack reaction + typing indicator (after auth, before processing)
     const ackEmoji = this.config.ackReactionEmoji;
     if (ackEmoji !== false && this.capabilities?.sendReaction) {
       this.capabilities.sendReaction(jid, messageId, ackEmoji ?? '👀', msgKey).catch(() => {});
@@ -561,6 +593,175 @@ export class WhatsAppAdapter implements MessagingAdapter {
         console.error(`[whatsapp] Message handler error: ${err}`);
       }
     }
+  }
+
+  // ── Group message handling ──────────────────────────────
+
+  /** Handle an incoming group message. */
+  private async handleGroupMessage(
+    groupJid: string,
+    messageId: string,
+    text: string,
+    senderName?: string,
+    timestamp?: number,
+    msgKey?: unknown,
+    participant?: string,
+    mentionedJids?: string[],
+  ): Promise<void> {
+    const groupConfig = this.config.groups;
+
+    // Groups must be explicitly enabled
+    if (!groupConfig?.enabled) return;
+
+    // Group authorization check
+    const authorizedGroups = groupConfig.authorizedGroups ?? [];
+    if (authorizedGroups.length > 0 && !authorizedGroups.includes(groupJid)) {
+      return; // Group not authorized — silently ignore
+    }
+
+    // Resolve sender identity from participant JID
+    const senderJid = participant ?? groupJid;
+    let senderPhone: string;
+    try {
+      const phone = jidToPhone(senderJid);
+      senderPhone = phone ? normalizePhoneNumber(phone) : senderJid;
+    } catch {
+      senderPhone = senderJid;
+    }
+
+    const ts = timestamp ? new Date(timestamp * 1000).toISOString() : new Date().toISOString();
+
+    // Buffer this message for group context (even if not activating agent)
+    const maxBuffer = groupConfig.maxContextMessages ?? WhatsAppAdapter.GROUP_BUFFER_MAX;
+    let buffer = this.groupMessageBuffers.get(groupJid);
+    if (!buffer) {
+      buffer = [];
+      this.groupMessageBuffers.set(groupJid, buffer);
+    }
+    buffer.push({ sender: senderPhone, senderName, text, timestamp: ts });
+    if (buffer.length > maxBuffer) {
+      buffer.splice(0, buffer.length - maxBuffer);
+    }
+
+    // Rate limiting on sender
+    if (!this.checkRateLimit(senderPhone)) return;
+
+    // Determine activation mode for this group
+    const activation = groupConfig.groupOverrides?.[groupJid]?.activation
+      ?? groupConfig.defaultActivation
+      ?? 'mention';
+
+    // Check if agent should activate
+    let shouldActivate = false;
+
+    if (activation === 'always') {
+      shouldActivate = true;
+    } else {
+      // 'mention' mode — check if bot was @mentioned
+      if (mentionedJids && this.phoneNumber) {
+        const botPhonePrefix = this.phoneNumber.replace(/^\\+/, '');
+        shouldActivate = mentionedJids.some(m => m.includes(botPhonePrefix));
+      }
+
+      // Also check text-based triggers (agent name at start of message)
+      if (!shouldActivate && groupConfig.agentName) {
+        const namePattern = new RegExp(`^@?${groupConfig.agentName}\\b`, 'i');
+        shouldActivate = namePattern.test(text.trim());
+      }
+    }
+
+    if (!shouldActivate) return;
+
+    // UX signals
+    if (this.config.sendReadReceipts !== false && this.capabilities?.sendReadReceipt) {
+      this.capabilities.sendReadReceipt(groupJid, messageId, msgKey).catch(() => {});
+    }
+    if (this.config.sendTypingIndicators !== false && this.capabilities?.sendTyping) {
+      this.capabilities.sendTyping(groupJid).catch(() => {});
+    }
+    const ackEmoji = this.config.ackReactionEmoji;
+    if (ackEmoji !== false && this.capabilities?.sendReaction) {
+      this.capabilities.sendReaction(groupJid, messageId, ackEmoji ?? '👀', msgKey).catch(() => {});
+    }
+
+    // Log inbound
+    this.logger.append({
+      messageId: Date.now(),
+      channelId: groupJid,
+      text,
+      fromUser: true,
+      timestamp: ts,
+      sessionName: this.registry.getSessionForChannel(groupJid),
+      senderName,
+      platformUserId: senderPhone,
+    });
+
+    await this.eventBus.emit('message:logged', {
+      messageId: Date.now(),
+      channelId: groupJid,
+      text,
+      fromUser: true,
+      timestamp: ts,
+      sessionName: this.registry.getSessionForChannel(groupJid),
+      senderName,
+      platformUserId: senderPhone,
+    });
+
+    // Build context from recent group messages
+    const recentContext = this.getGroupContext(groupJid);
+
+    // Track for stall detection
+    const sessionName = this.registry.getSessionForChannel(groupJid);
+    if (sessionName) {
+      this.stallDetector.trackMessageInjection(groupJid, sessionName, text);
+    }
+
+    // Forward to message handler
+    if (this.messageHandler) {
+      const message: Message = {
+        id: messageId,
+        content: text,
+        channel: { type: 'whatsapp', identifier: groupJid },
+        userId: senderPhone,
+        receivedAt: ts,
+        metadata: {
+          senderName,
+          platform: 'whatsapp',
+          isGroup: true,
+          groupJid,
+          participant: senderJid,
+          recentGroupContext: recentContext,
+        },
+      };
+
+      await this.eventBus.emit('message:incoming', {
+        channelId: groupJid,
+        userId: senderPhone,
+        text,
+        timestamp: ts,
+      });
+
+      try {
+        await this.messageHandler(message);
+      } catch (err) {
+        console.error(`[whatsapp] Group message handler error: ${err}`);
+      }
+    }
+  }
+
+  /** Get recent group context as formatted string for agent context. */
+  getGroupContext(groupJid: string): string {
+    const buffer = this.groupMessageBuffers.get(groupJid);
+    if (!buffer || buffer.length === 0) return '';
+
+    return buffer
+      .map(m => `[${m.senderName ?? m.sender}]: ${m.text}`)
+      .join('\n');
+  }
+
+  /** Get the group message buffer for a group (for testing/inspection). */
+  getGroupBuffer(groupJid: string): Array<{ sender: string; senderName?: string; text: string; timestamp: string }> {
+    return this.groupMessageBuffers.get(groupJid) ?? [];
   }
 
   // ── Commands ──────────────────────────────────────────

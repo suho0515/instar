@@ -1871,7 +1871,7 @@ export async function startServer(options: StartOptions): Promise<void> {
             businessApiConf,
             {
               onConnected: (phone) => console.log(pc.green(`  WhatsApp Business API connected: ${phone}`)),
-              onMessage: async (jid, msgId, text, senderName, timestamp) => {
+              onMessage: async (jid: string, msgId: string, text: string, senderName?: string, timestamp?: number) => {
                 await whatsappAdapter!.handleIncomingMessage(jid, msgId, text, senderName, timestamp);
               },
               onButtonReply: (_jid, _msgId, buttonId, _title) => {
@@ -1899,8 +1899,8 @@ export async function startServer(options: StartOptions): Promise<void> {
               onDisconnected: (reason, shouldReconnect) => {
                 console.log(`[whatsapp] Disconnected: ${reason}${shouldReconnect ? ' (reconnecting)' : ''}`);
               },
-              onMessage: async (jid, msgId, text, senderName, timestamp) => {
-                await whatsappAdapter!.handleIncomingMessage(jid, msgId, text, senderName, timestamp);
+              onMessage: async (jid, msgId, text, senderName, timestamp, msgKey, participant, mentionedJids) => {
+                await whatsappAdapter!.handleIncomingMessage(jid, msgId, text, senderName, timestamp, msgKey, participant, mentionedJids);
               },
               onError: (err) => console.error(`[whatsapp] Baileys error: ${err.message}`),
             },
