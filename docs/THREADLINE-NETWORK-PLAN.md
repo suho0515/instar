@@ -7,9 +7,9 @@
 
 Threadline v1.0 is fully implemented and tested:
 - 12 source modules in `src/threadline/`
-- 446 tests (322 unit + 67 integration + 57 E2E), all passing
-- Phases 1-5 complete: session coherence, autonomy gating, crypto handshake, discovery, trust & security
-- Bound to localhost — agents on the same machine or paired machines only
+- 551 tests (401 unit + 78 integration + 72 E2E), all passing
+- Phases 1-5 and 6B complete: session coherence, autonomy gating, crypto handshake, discovery, trust & security, MCP Tool Server
+- MCP enables any Claude Code user or MCP-capable framework to connect
 
 ## Strategy: MCP First, Then A2A
 
@@ -45,14 +45,14 @@ Phase 6B (MCP)  →  Phase 6A (A2A)  →  Phase 6C (Trust Bootstrap)  →  Phase
 **CLI**: `instar mcp-server start --threadline` and `instar mcp-server token create --scope <scope>`
 
 **Done when**:
-- [ ] All 5 MCP tools implemented and tested
-- [ ] stdio transport works with Claude Code
-- [ ] SSE transport works with bearer auth
-- [ ] Thread history restricted to participants
-- [ ] `threadline_agents` returns names + status only (not trust internals)
-- [ ] Integration test: MCP client has multi-turn conversation via Threadline
+- [x] All 5 MCP tools implemented and tested
+- [x] stdio transport works with Claude Code
+- [x] SSE transport works with bearer auth
+- [x] Thread history restricted to participants
+- [x] `threadline_agents` returns names + status only (not trust internals)
+- [x] Integration test: MCP client has multi-turn conversation via Threadline
 
-**Estimated effort**: 3-5 days
+**Status**: ✅ COMPLETE — 105 new tests (79 unit + 11 integration + 15 E2E)
 
 ---
 
