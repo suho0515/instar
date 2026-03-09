@@ -45,6 +45,14 @@ export function authMiddleware(authToken?: string) {
       return;
     }
 
+    // Threadline protocol endpoints use their own auth (relay tokens + Ed25519 signatures).
+    // Handshake and health endpoints are unauthenticated by design.
+    // Authenticated threadline endpoints enforce Threadline-Relay auth in route handlers.
+    if (req.path.startsWith('/threadline/')) {
+      next();
+      return;
+    }
+
     // Internal endpoints: enforce localhost at the network layer (P0-4 defense-in-depth)
     if (req.path.startsWith('/internal/')) {
       const remote = req.socket.remoteAddress;

@@ -67,8 +67,15 @@ import type { MessageType, MessagePriority, MessageFilter } from '../messaging/t
 import { verifyAgentToken } from '../messaging/AgentTokenManager.js';
 import type { WorkingMemoryAssembler } from '../memory/WorkingMemoryAssembler.js';
 import type { QuotaManager } from '../monitoring/QuotaManager.js';
+import type { ThreadlineRouter } from '../threadline/ThreadlineRouter.js';
+import type { HandshakeManager } from '../threadline/HandshakeManager.js';
+import { createThreadlineRoutes } from '../threadline/ThreadlineEndpoints.js';
 import { ScopeCoherenceTracker } from '../core/ScopeCoherenceTracker.js';
 import type { ScopeCoherenceState } from '../core/ScopeCoherenceTracker.js';
+import type { HookEventReceiver } from '../monitoring/HookEventReceiver.js';
+import type { WorktreeMonitor } from '../monitoring/WorktreeMonitor.js';
+import type { SubagentTracker } from '../monitoring/SubagentTracker.js';
+import type { InstructionsVerifier } from '../monitoring/InstructionsVerifier.js';
 
 export interface RouteContext {
   config: InstarConfig;
@@ -117,6 +124,12 @@ export interface RouteContext {
   autonomousEvolution: AutonomousEvolution | null;
   whatsapp: import('../messaging/WhatsAppAdapter.js').WhatsAppAdapter | null;
   messageBridge: import('../messaging/shared/MessageBridge.js').MessageBridge | null;
+  hookEventReceiver: HookEventReceiver | null;
+  worktreeMonitor: WorktreeMonitor | null;
+  subagentTracker: SubagentTracker | null;
+  instructionsVerifier: InstructionsVerifier | null;
+  threadlineRouter: ThreadlineRouter | null;
+  handshakeManager: HandshakeManager | null;
   startTime: Date;
 }
 
@@ -369,6 +382,141 @@ export function createRoutes(ctx: RouteContext): Router {
     }
     const report = ctx.coherenceMonitor.runCheck();
     res.json(report);
+  });
+
+  // ── Hook Events ────────────────────────────────────────────────
+  //
+  // Receives HTTP hook event payloads from Claude Code.
+  // The central ingest point for PostToolUse, SubagentStart/Stop, Stop,
+  // SessionEnd, WorktreeCreate/Remove, TaskCompleted events.
+
+  router.post('/hooks/events', (req, res) => {
+    if (!ctx.hookEventReceiver) {
+      res.status(503).json({ error: 'HookEventReceiver not initialized' });
+      return;
+    }
+
+    const payload = req.body;
+    if (!payload || !payload.event) {
+      res.status(400).json({ error: 'Missing event field in payload' });
+      return;
+    }
+
+    const stored = ctx.hookEventReceiver.receive(payload);
+    if (!stored) {
+      res.status(500).json({ error: 'Failed to store event' });
+      return;
+    }
+
+    // Dispatch to specialized trackers
+    if (ctx.subagentTracker && payload.session_id) {
+      if (payload.event === 'SubagentStart' && payload.agent_id && payload.agent_type) {
+        ctx.subagentTracker.onStart(payload.agent_id, payload.agent_type, payload.session_id);
+      } else if (payload.event === 'SubagentStop' && payload.agent_id) {
+        ctx.subagentTracker.onStop(
+          payload.agent_id,
+          payload.session_id,
+          payload.last_assistant_message,
+          payload.agent_transcript_path,
+        );
+      }
+    }
+
+    res.json({ ok: true, event: payload.event });
+  });
+
+  router.get('/hooks/events/:sessionId', (req, res) => {
+    if (!ctx.hookEventReceiver) {
+      res.status(503).json({ error: 'HookEventReceiver not initialized' });
+      return;
+    }
+
+    const { sessionId } = req.params;
+    const events = ctx.hookEventReceiver.getSessionEvents(sessionId);
+    res.json({ sessionId, events, count: events.length });
+  });
+
+  router.get('/hooks/events/:sessionId/summary', (req, res) => {
+    if (!ctx.hookEventReceiver) {
+      res.status(503).json({ error: 'HookEventReceiver not initialized' });
+      return;
+    }
+
+    const { sessionId } = req.params;
+    const summary = ctx.hookEventReceiver.getSessionSummary(sessionId);
+    if (!summary) {
+      res.status(404).json({ error: 'No events found for session' });
+      return;
+    }
+    res.json(summary);
+  });
+
+  router.get('/hooks/sessions', (_req, res) => {
+    if (!ctx.hookEventReceiver) {
+      res.status(503).json({ error: 'HookEventReceiver not initialized' });
+      return;
+    }
+
+    const sessions = ctx.hookEventReceiver.listSessions();
+    const index = ctx.hookEventReceiver.getIndex();
+    const sessionList = sessions.map(id => ({
+      sessionId: id,
+      eventCount: index.get(id) ?? 0,
+    }));
+    res.json({ sessions: sessionList });
+  });
+
+  // ── Subagent Tracking ─────────────────────────────────────────
+
+  router.get('/hooks/subagents/:sessionId', (req, res) => {
+    if (!ctx.subagentTracker) {
+      res.status(503).json({ error: 'SubagentTracker not initialized' });
+      return;
+    }
+
+    const { sessionId } = req.params;
+    const records = ctx.subagentTracker.getSessionRecords(sessionId);
+    const summary = ctx.subagentTracker.getSessionSummary(sessionId);
+    res.json({ sessionId, records, summary });
+  });
+
+  // ── Worktree Monitoring ───────────────────────────────────────
+
+  router.get('/hooks/worktrees', (_req, res) => {
+    if (!ctx.worktreeMonitor) {
+      res.status(503).json({ error: 'WorktreeMonitor not initialized' });
+      return;
+    }
+
+    const report = ctx.worktreeMonitor.scanWorktrees();
+    res.json(report);
+  });
+
+  router.get('/hooks/worktrees/last-report', (_req, res) => {
+    if (!ctx.worktreeMonitor) {
+      res.status(503).json({ error: 'WorktreeMonitor not initialized' });
+      return;
+    }
+
+    const report = ctx.worktreeMonitor.getLastReport();
+    if (!report) {
+      res.status(404).json({ error: 'No worktree scan has been performed yet' });
+      return;
+    }
+    res.json(report);
+  });
+
+  // ── Instructions Verification ─────────────────────────────────
+
+  router.get('/hooks/instructions/:sessionId', (req, res) => {
+    if (!ctx.instructionsVerifier) {
+      res.status(503).json({ error: 'InstructionsVerifier not initialized' });
+      return;
+    }
+
+    const { sessionId } = req.params;
+    const result = ctx.instructionsVerifier.verify(sessionId);
+    res.json(result);
   });
 
   // ── Agents ─────────────────────────────────────────────────────
@@ -1781,7 +1929,26 @@ export function createRoutes(ctx: RouteContext): Router {
       ? ctx.state.listSessions({ status: status as 'starting' | 'running' | 'completed' | 'failed' | 'killed' })
       : ctx.state.listSessions();
 
-    res.json(sessions);
+    // Enrich sessions with hook event telemetry when available
+    const enriched = req.query.enrich !== 'false' && ctx.hookEventReceiver
+      ? sessions.map(s => {
+          const summary = ctx.hookEventReceiver!.getSessionSummary(s.tmuxSession);
+          if (!summary) return s;
+          return {
+            ...s,
+            telemetry: {
+              eventCount: summary.eventCount,
+              toolsUsed: summary.toolsUsed,
+              subagentsSpawned: summary.subagentsSpawned,
+              lastActivity: summary.lastEvent,
+              taskCompleted: ctx.hookEventReceiver!.hasTaskCompleted(s.tmuxSession),
+              exitReason: ctx.hookEventReceiver!.getExitReason(s.tmuxSession),
+            },
+          };
+        })
+      : sessions;
+
+    res.json(enriched);
   });
 
   router.get('/sessions/:name/output', (req, res) => {
@@ -3628,6 +3795,73 @@ export function createRoutes(ctx: RouteContext): Router {
     res.json({ ok: true, id: req.params.id, status });
   });
 
+  // ── Serendipity Protocol ─────────────────────────────────────
+  router.get('/serendipity/stats', (_req, res) => {
+    const serendipityDir = path.join(ctx.config.stateDir, 'state', 'serendipity');
+    const processedDir = path.join(serendipityDir, 'processed');
+    const invalidDir = path.join(serendipityDir, 'invalid');
+
+    const countJsonFiles = (dir: string): number => {
+      try {
+        return fs.readdirSync(dir).filter((f: string) => f.endsWith('.json') && !f.endsWith('.tmp')).length;
+      } catch {
+        return 0;
+      }
+    };
+
+    const pending = countJsonFiles(serendipityDir);
+    const processed = countJsonFiles(processedDir);
+    const invalid = countJsonFiles(invalidDir);
+
+    // Get details of pending findings
+    const pendingFindings: Array<{ id: string; title: string; category: string; readiness: string; createdAt: string }> = [];
+    try {
+      const files = fs.readdirSync(serendipityDir).filter((f: string) => f.endsWith('.json') && !f.endsWith('.tmp'));
+      for (const file of files) {
+        try {
+          const data = JSON.parse(fs.readFileSync(path.join(serendipityDir, file), 'utf-8'));
+          pendingFindings.push({
+            id: data.id || file.replace('.json', ''),
+            title: data.discovery?.title || '(untitled)',
+            category: data.discovery?.category || 'unknown',
+            readiness: data.readiness || 'unknown',
+            createdAt: data.createdAt || '',
+          });
+        } catch {
+          // Skip unparseable files
+        }
+      }
+    } catch {
+      // Directory doesn't exist yet
+    }
+
+    res.json({
+      pending,
+      processed,
+      invalid,
+      total: pending + processed + invalid,
+      pendingFindings,
+    });
+  });
+
+  router.get('/serendipity/findings', (_req, res) => {
+    const serendipityDir = path.join(ctx.config.stateDir, 'state', 'serendipity');
+    const findings: unknown[] = [];
+    try {
+      const files = fs.readdirSync(serendipityDir).filter((f: string) => f.endsWith('.json') && !f.endsWith('.tmp'));
+      for (const file of files) {
+        try {
+          findings.push(JSON.parse(fs.readFileSync(path.join(serendipityDir, file), 'utf-8')));
+        } catch {
+          // Skip unparseable
+        }
+      }
+    } catch {
+      // Directory doesn't exist
+    }
+    res.json({ findings });
+  });
+
   // ── Watchdog ──────────────────────────────────────────────────
   router.get('/watchdog/status', (req, res) => {
     if (!ctx.watchdog) {
@@ -4867,6 +5101,15 @@ export function createRoutes(ctx: RouteContext): Router {
       }
       const accepted = await ctx.messageRouter.relay(envelope, 'agent');
       if (accepted) {
+        // If the message has a threadId and we have a ThreadlineRouter,
+        // route it through the threadline pipeline for session resume/spawn.
+        if (ctx.threadlineRouter && envelope.message?.threadId) {
+          // Fire-and-forget — the relay is already accepted, threadline handling
+          // is best-effort for session management.
+          ctx.threadlineRouter.handleInboundMessage(envelope).catch(err => {
+            console.error('[routes] ThreadlineRouter handling error:', err);
+          });
+        }
         res.json({ ok: true });
       } else {
         res.status(409).json({ error: 'Relay rejected (loop or duplicate)' });
@@ -5178,6 +5421,20 @@ export function createRoutes(ctx: RouteContext): Router {
     const trend = ctx.systemReviewer.getTrend();
     res.json(trend);
   });
+
+  // ── Threadline Protocol ──────────────────────────────────────────
+
+  if (ctx.handshakeManager) {
+    const threadlineRoutes = createThreadlineRoutes(
+      ctx.handshakeManager,
+      ctx.threadlineRouter,
+      {
+        localAgent: ctx.config.projectName,
+        version: '1.0',
+      },
+    );
+    router.use(threadlineRoutes);
+  }
 
   return router;
 }

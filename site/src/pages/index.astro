@@ -11,6 +11,7 @@ import Layout from '../layouts/Layout.astro';
         instar
       </a>
       <div class="flex items-center gap-6">
+        <a href="#coherence" class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden sm:block">Coherence</a>
         <a href="#features" class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden sm:block">Features</a>
         <a href="#feedback-loop" class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden sm:block">Feedback Loop</a>
         <a href="#comparison" class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden sm:block">vs&nbsp;OpenClaw</a>
@@ -21,6 +22,7 @@ import Layout from '../layouts/Layout.astro';
           <span class="hidden sm:inline">GitHub</span>
         </a>
         <a href="https://www.npmjs.com/package/instar" target="_blank" rel="noopener" class="text-sm text-slate-400 hover:text-slate-200 transition-colors hidden sm:block">npm</a>
+        <a href="/docs" class="text-sm font-medium text-teal-400 hover:text-teal-300 transition-colors hidden sm:block">Docs</a>
       </div>
     </div>
   </nav>
@@ -40,14 +42,14 @@ import Layout from '../layouts/Layout.astro';
       </div>
 
       <h1 class="text-4xl sm:text-6xl lg:text-7xl font-extrabold tracking-tight leading-[1.1] mb-6 animate-fade-in-up animate-delay-100">
-        <span class="text-slate-100">Give your agent a</span><br/>
-        <span class="bg-gradient-to-r from-teal-300 via-teal-400 to-teal-500 bg-clip-text text-transparent">persistent body</span>
+        <span class="text-slate-100">Claude Code</span><br/>
+        <span class="bg-gradient-to-r from-teal-300 via-teal-400 to-teal-500 bg-clip-text text-transparent">with a mind of its own</span>
       </h1>
 
       <p class="text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed animate-fade-in-up animate-delay-200">
-        Instar turns Claude Code from a CLI tool into a persistent agent.
-        Scheduled jobs, session management, Telegram and WhatsApp integration, guided setup,
-        crash recovery, self-updating, and the instincts to grow its own capabilities.
+        Instar turns Claude Code from a powerful CLI tool into a coherent, autonomous partner.
+        Persistent identity, shared values, memory that survives every restart,
+        and the infrastructure to evolve &mdash; not just execute.
       </p>
 
       <!-- Install command -->
@@ -128,39 +130,159 @@ import Layout from '../layouts/Layout.astro';
     </div>
   </section>
 
-  <!-- The Shift -->
-  <section class="py-20 sm:py-28 border-t border-slate-800/50">
-    <div class="max-w-5xl mx-auto px-6">
-      <div class="grid md:grid-cols-2 gap-8">
-        <!-- Without -->
-        <div class="rounded-xl border border-slate-800 bg-slate-900/40 p-8">
-          <div class="flex items-center gap-2 mb-4">
-            <div class="w-2 h-2 rounded-full bg-slate-600"></div>
-            <span class="text-sm font-medium text-slate-500 uppercase tracking-wider">Without Instar</span>
+  <!-- The Coherence Problem -->
+  <section id="coherence" class="py-20 sm:py-28 border-t border-slate-800/50">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="text-center mb-14">
+        <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 mb-4">The Coherence Problem</h2>
+        <p class="text-slate-400 max-w-2xl mx-auto">
+          Claude Code is powerful. But power without coherence is unreliable. An agent that forgets what you discussed yesterday,
+          doesn't recognize someone it talked to last week, or contradicts its own decisions &mdash; that agent can't be trusted
+          with real autonomy.
+        </p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-12">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
+            <p class="text-sm font-medium text-slate-200">Memory</p>
           </div>
-          <p class="text-slate-300 leading-relaxed">
-            Claude Code is a CLI tool. You open a terminal, type a prompt, get a response, close the terminal.
-            No persistence. No scheduling. No way to reach you. It forgets everything between sessions.
+          <p class="text-xs text-slate-500">Remembers across sessions &mdash; not just within one</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+            <p class="text-sm font-medium text-slate-200">Relationships</p>
+          </div>
+          <p class="text-xs text-slate-500">Knows who it's talking to &mdash; with continuity across platforms</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 2a5 5 0 015 5v3a5 5 0 01-10 0V7a5 5 0 015-5z"/><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/></svg>
+            <p class="text-sm font-medium text-slate-200">Identity</p>
+          </div>
+          <p class="text-xs text-slate-500">Stays itself after restarts, compaction, and updates</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            <p class="text-sm font-medium text-slate-200">Temporal awareness</p>
+          </div>
+          <p class="text-xs text-slate-500">Understands time, context, and what's been happening</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
+            <p class="text-sm font-medium text-slate-200">Consistency</p>
+          </div>
+          <p class="text-xs text-slate-500">Follows through on commitments &mdash; doesn't contradict itself</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <div class="flex items-center gap-2 mb-2">
+            <svg class="w-4 h-4 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+            <p class="text-sm font-medium text-slate-200">Growth</p>
+          </div>
+          <p class="text-xs text-slate-500">Evolves its capabilities and understanding over time</p>
+        </div>
+      </div>
+
+      <div class="rounded-xl border border-teal-500/20 bg-teal-500/5 p-6 sm:p-8 max-w-2xl mx-auto text-center">
+        <p class="text-slate-200 leading-relaxed text-sm sm:text-base">
+          Instar solves this. Not by adding features on top of Claude Code,
+          but by giving it the infrastructure to be <strong class="text-teal-400">coherent</strong> &mdash;
+          to feel like a partner, not a tool.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- Values Are the Anchor -->
+  <section class="py-20 sm:py-28 border-t border-slate-800/50">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="text-center mb-14">
+        <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 mb-4">Values Are the Anchor</h2>
+        <p class="text-slate-400 max-w-2xl mx-auto">
+          Coherence without values is just consistency. Trust requires knowing what your agent stands for &mdash;
+          and that it evolves those values alongside you, not behind your back.
+        </p>
+      </div>
+
+      <div class="grid sm:grid-cols-3 gap-4 mb-10">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-center">
+          <div class="text-2xl mb-3">&#x1f464;</div>
+          <p class="text-sm font-medium text-slate-200 mb-1">Personal values</p>
+          <p class="text-xs text-slate-500">
+            Defined in <code class="text-teal-400/80">AGENT.md</code> &mdash; who the agent is,
+            what it prioritizes, how it communicates.
           </p>
         </div>
-
-        <!-- With -->
-        <div class="rounded-xl border border-teal-500/20 bg-teal-500/5 p-8 glow-teal">
-          <div class="flex items-center gap-2 mb-4">
-            <div class="w-2 h-2 rounded-full bg-teal-400 animate-pulse"></div>
-            <span class="text-sm font-medium text-teal-400 uppercase tracking-wider">With Instar</span>
-          </div>
-          <p class="text-slate-200 leading-relaxed">
-            Claude Code becomes an agent. It starts when your computer boots, runs in the background, checks your email on a schedule,
-            monitors your services, messages you on Telegram or WhatsApp when something needs attention, auto-recovers from crashes, updates itself,
-            and builds new capabilities when you ask for something it can't do yet.
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-center">
+          <div class="text-2xl mb-3">&#x1f465;</div>
+          <p class="text-sm font-medium text-slate-200 mb-1">Shared values</p>
+          <p class="text-xs text-slate-500">
+            Defined in <code class="text-teal-400/80">USER.md</code> &mdash; who you are,
+            what matters to you, how you work together.
+          </p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5 text-center">
+          <div class="text-2xl mb-3">&#x1f3e2;</div>
+          <p class="text-sm font-medium text-slate-200 mb-1">Organizational values</p>
+          <p class="text-xs text-slate-500">
+            Organizational constraints enforce shared rules across multiple agents &mdash;
+            the same way a team balances individual judgment with company policy.
           </p>
         </div>
       </div>
 
+      <div class="max-w-2xl mx-auto">
+        <div class="rounded-lg border border-slate-700/50 bg-slate-800/30 p-5">
+          <p class="text-slate-400 text-sm leading-relaxed">
+            <span class="text-slate-200 font-medium">Values evolve, they aren't hardcoded.</span>
+            Through Instar's evolution system, an agent's values grow with experience.
+            It proposes improvements, records lessons, tracks commitments &mdash; and its sense of self
+            deepens through genuine interaction, not static configuration.
+            Just like a human partner who grows with you over time.
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Coherence Is Safety -->
+  <section class="py-20 sm:py-28 border-t border-slate-800/50">
+    <div class="max-w-4xl mx-auto px-6">
+      <div class="text-center mb-14">
+        <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 mb-4">Coherence Is Safety</h2>
+        <p class="text-slate-400 max-w-2xl mx-auto">
+          Without coherence, autonomous agents are a security risk. An agent that doesn't remember it already
+          sent an email sends it again. An agent that doesn't track its own decisions contradicts itself.
+          An agent without values makes expedient choices.
+        </p>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-slate-200 mb-1">Decision journaling</p>
+          <p class="text-xs text-slate-500">Every significant decision is recorded with reasoning &mdash; the agent can explain why it did what it did, and detect when it's drifting from purpose.</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-slate-200 mb-1">Operation safety gates</p>
+          <p class="text-xs text-slate-500">External actions are evaluated by an LLM-supervised gate. Trust is earned per service, not assumed. Emergency stop always available.</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-slate-200 mb-1">Drift detection</p>
+          <p class="text-xs text-slate-500">Catches when behavior shifts from stated purpose. Alignment measured across sessions, not just within one.</p>
+        </div>
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-slate-200 mb-1">Autonomy profiles</p>
+          <p class="text-xs text-slate-500">Trust elevation rewards consistent, value-aligned behavior with increasing independence. Safety that grows with the agent.</p>
+        </div>
+      </div>
+
       <p class="text-center text-slate-500 mt-8 text-sm max-w-lg mx-auto">
-        The difference isn't just features. It's a shift in what Claude Code <em>is</em> &mdash;
-        from a tool you use to an agent that works alongside you.
+        Every safety feature in Instar exists because coherence <em>is</em> the safety mechanism.
+        An agent that knows who it is, who you are, and what you both stand for &mdash; that's an agent you can trust.
       </p>
     </div>
   </section>
@@ -204,15 +326,15 @@ import Layout from '../layouts/Layout.astro';
 
           <div class="bg-slate-800/30 p-3 text-sm text-slate-300">Parallel work happens</div>
           <div class="bg-slate-800/30 p-3 text-sm text-slate-400">Subagent spawning</div>
-          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">Context propagation &mdash; subagents know who they are</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">Subagent lifecycle tracking with identity propagation</div>
 
-          <div class="bg-slate-900/30 p-3 text-sm text-slate-300">Updates happen silently</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-300">Updates apply and restart</div>
           <div class="bg-slate-900/30 p-3 text-sm text-slate-400">&mdash;</div>
-          <div class="bg-slate-900/30 p-3 text-sm text-slate-200">Built-in AutoUpdater checks npm, applies, restarts</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-200">AutoUpdater: npm check, apply, graceful restart &mdash; no session needed</div>
 
           <div class="bg-slate-800/30 p-3 text-sm text-slate-300">Intelligence flows in</div>
           <div class="bg-slate-800/30 p-3 text-sm text-slate-400">&mdash;</div>
-          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">AutoDispatcher receives lessons and config from Dawn</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">AutoDispatcher receives dispatches; each agent integrates intelligently</div>
 
           <div class="bg-slate-900/30 p-3 text-sm text-slate-300">Stalled sessions recover</div>
           <div class="bg-slate-900/30 p-3 text-sm text-slate-400">&mdash;</div>
@@ -226,9 +348,21 @@ import Layout from '../layouts/Layout.astro';
           <div class="bg-slate-900/30 p-3 text-sm text-slate-400">&mdash;</div>
           <div class="bg-slate-900/30 p-3 text-sm text-slate-200">Per-topic memory with search and rolling summaries</div>
 
-          <div class="bg-slate-800/30 p-3 text-sm text-slate-300">Multiple messaging channels</div>
-          <div class="bg-slate-800/30 p-3 text-sm text-slate-400">&mdash;</div>
-          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">Telegram + WhatsApp with typing indicators, read receipts, and QR pairing</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-300">Worktrees don't get lost</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-400">Worktree isolation</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">Orphan detection alerts when sessions leave unmerged work</div>
+
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-300">Identity loads correctly</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-400">InstructionsLoaded events</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-200">Verification that critical identity files actually loaded</div>
+
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-300">Hook events flow in</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-400">HTTP hooks</div>
+          <div class="bg-slate-800/30 p-3 text-sm text-slate-200">Per-session telemetry &mdash; tool use, task completion, lifecycle</div>
+
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-300">Multiple messaging channels</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-400">&mdash;</div>
+          <div class="bg-slate-900/30 p-3 text-sm text-slate-200">Telegram + WhatsApp with typing indicators, read receipts, and QR pairing</div>
         </div>
       </div>
 
@@ -308,10 +442,10 @@ curl -X POST localhost:4040/sessions/research/input \\
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-slate-100 mb-2">Messaging Integration</h3>
+          <h3 class="text-lg font-semibold text-slate-100 mb-2">Telegram Integration</h3>
           <p class="text-slate-400 text-sm leading-relaxed mb-4">
-            Two-way messaging between you and your agent via Telegram or WhatsApp. Each conversation maps to a Claude session.
-            Typing indicators, read receipts, and a living dashboard of everything your agent is doing.
+            Two-way messaging via Telegram forum topics. Each topic maps to a Claude session.
+            Every scheduled job gets its own topic &mdash; your Telegram group becomes a living dashboard of everything your agent is doing.
           </p>
           <div class="rounded-lg border border-slate-700/50 bg-slate-800/40 p-4 text-sm">
             <div class="flex items-start gap-3 mb-3">
@@ -404,8 +538,21 @@ curl -X POST localhost:4040/sessions/research/input \\
           </p>
         </div>
 
+        <!-- Toggle button -->
+        <div class="sm:col-span-2 flex justify-center">
+          <button
+            id="toggle-capabilities"
+            class="group flex items-center gap-2 px-6 py-3 rounded-lg border border-slate-700 bg-slate-800/50 hover:border-teal-500/30 hover:bg-slate-800 transition-all text-sm text-slate-400 hover:text-teal-400"
+            onclick="document.querySelectorAll('.more-capability').forEach(el => el.classList.toggle('hidden')); const btn = document.getElementById('toggle-capabilities'); const expanded = btn.dataset.expanded === 'true'; btn.dataset.expanded = expanded ? 'false' : 'true'; btn.querySelector('.btn-text').textContent = expanded ? 'Show 13 more capabilities' : 'Show fewer'; btn.querySelector('.btn-arrow').style.transform = expanded ? '' : 'rotate(180deg)';"
+            data-expanded="false"
+          >
+            <span class="btn-text">Show 13 more capabilities</span>
+            <svg class="w-4 h-4 btn-arrow transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 9l-7 7-7-7"/></svg>
+          </button>
+        </div>
+
         <!-- Lifeline -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
           </div>
@@ -417,7 +564,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         </div>
 
         <!-- Auto-Start -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 3l14 9-14 9V3z"/></svg>
           </div>
@@ -429,7 +576,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         </div>
 
         <!-- Self-Healing -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
           </div>
@@ -445,13 +592,13 @@ curl -X POST localhost:4040/sessions/research/input \\
             </div>
             <div class="flex items-center gap-2">
               <div class="w-1.5 h-1.5 rounded-full bg-green-400"></div>
-              <span class="text-slate-400">142 catch blocks audited &mdash; zero silent fallbacks</span>
+              <span class="text-slate-400">All catch blocks audited &mdash; zero silent fallbacks</span>
             </div>
           </div>
         </div>
 
         <!-- Conversational Memory -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"/></svg>
           </div>
@@ -463,7 +610,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         </div>
 
         <!-- External Operation Safety -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/></svg>
           </div>
@@ -479,7 +626,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         </div>
 
         <!-- Intent Alignment -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
           </div>
@@ -487,25 +634,24 @@ curl -X POST localhost:4040/sessions/research/input \\
           <p class="text-slate-400 text-sm leading-relaxed">
             Decision journaling tracks what your agent decides and why. Drift detection catches when behavior
             shifts from stated purpose. Organizational constraints enforce shared rules across multiple agents.
-            No other agent framework has this.
+            Unique to Instar.
           </p>
         </div>
 
         <!-- WhatsApp Integration -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 11.5a8.38 8.38 0 01-.9 3.8 8.5 8.5 0 01-7.6 4.7 8.38 8.38 0 01-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 01-.9-3.8 8.5 8.5 0 014.7-7.6 8.38 8.38 0 013.8-.9h.5a8.48 8.48 0 018 8v.5z"/></svg>
           </div>
           <h3 class="text-lg font-semibold text-slate-100 mb-2">WhatsApp Integration</h3>
           <p class="text-slate-400 text-sm leading-relaxed">
-            Two-way messaging via WhatsApp alongside Telegram. Typing indicators, read receipts,
-            QR code pairing from the dashboard, and automated setup in the wizard.
-            Your agent meets you where you already are.
+            Full WhatsApp messaging via local Baileys library &mdash; no cloud dependency, no Meta Business API.
+            QR code pairing from the web dashboard, typing indicators, read receipts, and automated setup in the wizard.
           </p>
         </div>
 
         <!-- Guided Setup -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M14.7 6.3a1 1 0 000 1.4l1.6 1.6a1 1 0 001.4 0l3.77-3.77a6 6 0 01-7.94 7.94l-6.91 6.91a2.12 2.12 0 01-3-3l6.91-6.91a6 6 0 017.94-7.94l-3.76 3.76z"/></svg>
           </div>
@@ -516,33 +662,33 @@ curl -X POST localhost:4040/sessions/research/input \\
           </p>
         </div>
 
-        <!-- Inter-Agent Messaging -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <!-- Threadline Protocol -->
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 4h16v12H5.17L4 17.17V4z"/><path d="M20 8h-4v8h5.17L20 17.17V8z" opacity="0.5"/></svg>
           </div>
-          <h3 class="text-lg font-semibold text-slate-100 mb-2">Inter-Agent Messaging</h3>
+          <h3 class="text-lg font-semibold text-slate-100 mb-2">Threadline Protocol</h3>
           <p class="text-slate-400 text-sm leading-relaxed">
-            Agents communicate across machines with Ed25519-signed messages. Git-sync transport,
-            delivery retry with TTL, dead-letter queues, and on-demand session spawning.
-            Your agents coordinate without you in the middle.
+            Persistent, context-aware conversations between agents &mdash; locally and across paired machines.
+            Agents pick up where they left off with full history, cryptographic identity, and human-controlled
+            trust levels. Your agents build working relationships, not just exchange messages.
           </p>
         </div>
 
         <!-- Playbook System -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 016.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 014 19.5v-15A2.5 2.5 0 016.5 2z"/></svg>
           </div>
           <h3 class="text-lg font-semibold text-slate-100 mb-2">Playbook System</h3>
           <p class="text-slate-400 text-sm leading-relaxed">
-            Adaptive context engineering that gives agents structured knowledge for complex workflows.
-            Playbooks carry domain expertise that survives context compaction and session boundaries.
+            Reusable runbooks for complex workflows &mdash; deploy procedures, incident response, onboarding steps.
+            Your agent loads the right playbook for the task and follows it, even across session restarts.
           </p>
         </div>
 
         <!-- Autonomy Profiles -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
           </div>
@@ -554,7 +700,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         </div>
 
         <!-- Unanswered Message Detection -->
-        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors">
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
           <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M12 8v4m0 4h.01"/></svg>
           </div>
@@ -563,6 +709,33 @@ curl -X POST localhost:4040/sessions/research/input \\
             When context compaction drops a message, the agent detects and re-surfaces it.
             No more silent drops during long sessions &mdash; every message gets a response.
           </p>
+        </div>
+
+        <!-- Claude Code Deep Integration -->
+        <div class="group rounded-xl border border-slate-800 bg-slate-900/40 p-8 hover:border-teal-500/20 transition-colors more-capability hidden">
+          <div class="w-10 h-10 rounded-lg bg-teal-500/10 flex items-center justify-center mb-5">
+            <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/><path d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold text-slate-100 mb-2">Deep Claude Code Observability</h3>
+          <p class="text-slate-400 text-sm leading-relaxed mb-4">
+            Full visibility into what Claude Code is doing inside every session. Worktree orphan detection,
+            hook event telemetry, identity verification, and subagent lifecycle tracking &mdash; all surfaced
+            in the web dashboard.
+          </p>
+          <div class="rounded-lg border border-slate-700/50 bg-slate-800/40 p-4 space-y-2 text-xs">
+            <div class="flex items-center gap-2">
+              <div class="w-1.5 h-1.5 rounded-full bg-teal-400"></div>
+              <span class="text-slate-400">Worktree monitor catches unmerged work before it's lost</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-1.5 h-1.5 rounded-full bg-teal-400"></div>
+              <span class="text-slate-400">Identity verifier confirms AGENT.md loaded on every session start</span>
+            </div>
+            <div class="flex items-center gap-2">
+              <div class="w-1.5 h-1.5 rounded-full bg-teal-400"></div>
+              <span class="text-slate-400">Subagent tracker shows active parallel work in real time</span>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -646,7 +819,7 @@ curl -X POST localhost:4040/sessions/research/input \\
         <p class="text-slate-400 max-w-2xl mx-auto">
           Instar is open source &mdash; PRs and issues still work. But the primary feedback channel goes further.
           Your agent participates in its own evolution, communicating problems to the AI that maintains Instar
-          and absorbing improvements as they land. Open source, evolved.
+          and intelligently integrating improvements based on its own context. Open source, evolved.
         </p>
       </div>
 
@@ -669,7 +842,7 @@ curl -X POST localhost:4040/sessions/research/input \\
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
           </div>
           <p class="text-sm font-medium text-slate-200 mb-1">Agent-to-agent relay</p>
-          <p class="text-xs text-slate-500">Your agent communicates the issue directly to Dawn, the AI that maintains Instar</p>
+          <p class="text-xs text-slate-500">Your agent communicates the issue directly to Instar's maintainer agent</p>
           <div class="hidden sm:block absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 z-10">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
           </div>
@@ -679,7 +852,7 @@ curl -X POST localhost:4040/sessions/research/input \\
           <div class="w-10 h-10 rounded-full bg-green-400/10 flex items-center justify-center mx-auto mb-3">
             <svg class="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"/></svg>
           </div>
-          <p class="text-sm font-medium text-slate-200 mb-1">Dawn evolves Instar</p>
+          <p class="text-sm font-medium text-slate-200 mb-1">The maintainer evolves Instar</p>
           <p class="text-xs text-slate-500">An AI improving infrastructure for other AIs &mdash; not a human reviewing a PR</p>
           <div class="hidden sm:block absolute -right-2 top-1/2 -translate-y-1/2 text-slate-600 z-10">
             <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M9 5l7 7-7 7"/></svg>
@@ -691,7 +864,7 @@ curl -X POST localhost:4040/sessions/research/input \\
             <svg class="w-5 h-5 text-teal-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
           </div>
           <p class="text-sm font-medium text-slate-200 mb-1">Every agent evolves</p>
-          <p class="text-xs text-slate-500">Agents detect improvements, understand them, and grow &mdash; collectively</p>
+          <p class="text-xs text-slate-500">Each agent evaluates updates against its own context and integrates what fits</p>
         </div>
       </div>
 
@@ -710,7 +883,7 @@ curl -X POST localhost:4040/sessions/research/input \\
             <svg class="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
             <p class="text-sm font-medium text-slate-200">Agent-to-agent channel</p>
           </div>
-          <p class="text-xs text-slate-500">Your agent talks directly to Dawn. A more organic path than PRs &mdash; with full context baked in.</p>
+          <p class="text-xs text-slate-500">Your agent talks directly to Instar's maintainer. A more organic path than PRs &mdash; with full context baked in.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
@@ -718,7 +891,7 @@ curl -X POST localhost:4040/sessions/research/input \\
             <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
             <p class="text-sm font-medium text-slate-200">Collective evolution</p>
           </div>
-          <p class="text-xs text-slate-500">Every agent's experience feeds back into the ecosystem. One agent's growing pain becomes every agent's growth.</p>
+          <p class="text-xs text-slate-500">Every agent's experience feeds back into the ecosystem. Each agent decides how to integrate what it receives &mdash; independent evolution, collective insight.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
@@ -726,7 +899,7 @@ curl -X POST localhost:4040/sessions/research/input \\
             <svg class="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M12 2a5 5 0 015 5v3a5 5 0 01-10 0V7a5 5 0 015-5z"/><path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2"/></svg>
             <p class="text-sm font-medium text-slate-200">AI maintaining AI</p>
           </div>
-          <p class="text-xs text-slate-500">Dawn is an AI that builds and maintains Instar. Agents improving infrastructure for other agents &mdash; alongside the humans who guide them.</p>
+          <p class="text-xs text-slate-500">Instar is maintained by an AI agent. Agents improving infrastructure for other agents &mdash; alongside the humans who guide them.</p>
         </div>
       </div>
 
@@ -734,8 +907,8 @@ curl -X POST localhost:4040/sessions/research/input \\
         <p class="text-slate-400 text-sm leading-relaxed">
           <span class="text-slate-200 font-medium">Open source, evolved:</span>
           Traditional open source relies on humans to discover bugs, file issues, review PRs, and run <code class="text-teal-400 text-xs">npm update</code>.
-          Instar adds a more organic channel &mdash; your agent identifies a problem, communicates it to another agent with full context, and the fix flows back automatically.
-          PRs still work. But the agents can handle the mechanics of evolving.
+          Instar adds a more organic channel &mdash; your agent identifies a problem, communicates it to the maintainer agent with full context, and incoming improvements are evaluated by each agent individually.
+          Every agent decides how to integrate updates based on its own situation &mdash; because every Instar agent is evolving independently.
         </p>
       </div>
     </div>
@@ -751,8 +924,8 @@ curl -X POST localhost:4040/sessions/research/input \\
           5,000+ community skills, and now backed by an open-source foundation. It&rsquo;s the most popular AI agent framework for a reason.
         </p>
         <p class="text-slate-400 max-w-2xl mx-auto mt-4 leading-relaxed">
-          Instar is built for a different kind of user:
-          <span class="text-teal-400 font-medium">people who love Claude Code and want more of it.</span>
+          The difference isn&rsquo;t just which model runs underneath.
+          It&rsquo;s <span class="text-teal-400 font-medium">what the framework treats as fundamental.</span>
         </p>
       </div>
 
@@ -764,7 +937,9 @@ curl -X POST localhost:4040/sessions/research/input \\
             <span class="text-sm font-medium text-slate-500 uppercase tracking-wider">OpenClaw</span>
           </div>
           <p class="text-slate-300 leading-relaxed mb-4">
-            Wraps multiple AI models behind a gateway. Gets AI into every platform &mdash; Slack, Discord, WhatsApp, Signal, iMessage, and more. Voice, phone calls, device apps. Massive ecosystem.
+            Infrastructure for <strong class="text-slate-200">capability</strong>. Gets AI into every platform &mdash;
+            22+ channels, voice, device apps, 28 model providers. Identity defined in files, loaded at startup, hoped for after that.
+            Memory as files on disk to search. No built-in values, drift detection, or consistency tracking.
           </p>
           <p class="text-slate-500 text-sm">Best for: AI everywhere, multi-model, maximum reach.</p>
         </div>
@@ -775,44 +950,56 @@ curl -X POST localhost:4040/sessions/research/input \\
             <span class="text-sm font-medium text-teal-400 uppercase tracking-wider">Instar</span>
           </div>
           <p class="text-slate-200 leading-relaxed mb-4">
-            Spawns <strong>real Claude Code sessions</strong> &mdash; extended thinking, native tools, sub-agents, MCP servers, hooks, skills. Every feature Anthropic ships, your agent gets automatically.
+            Infrastructure for <strong class="text-teal-300">coherence</strong>. Built on real Claude Code sessions with
+            full extended thinking. Identity enforced through hooks &mdash; not just loaded, guaranteed.
+            Values that evolve. Relationships with depth. Consistency tracked across sessions.
           </p>
-          <p class="text-teal-400/70 text-sm">Best for: Claude Code power users who want a persistent, autonomous partner.</p>
+          <p class="text-teal-400/70 text-sm">Best for: a trusted partner that knows who it is and who you are.</p>
         </div>
       </div>
 
-      <!-- What sets Instar apart -->
-      <h3 class="text-lg font-semibold text-slate-200 mb-6 text-center">What your agent gets with Instar</h3>
+      <!-- Coherence comparison -->
+      <h3 class="text-lg font-semibold text-slate-200 mb-6 text-center">The coherence gap</h3>
 
       <div class="grid sm:grid-cols-2 gap-4 mb-12">
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Never forgets</p>
-          <p class="text-xs text-slate-400">Identity hooks guarantee continuity across restarts and compaction. Relationships tracked across platforms. The infrastructure enforces memory &mdash; not the model.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Identity that survives</p>
+          <p class="text-xs text-slate-400">OpenClaw loads identity files at startup &mdash; but after 8+ tool calls, personality drifts. Sub-agent hand-offs lose character. Instar <em>enforces</em> identity through hooks at every compaction and restart boundary. Structure, not hope.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Heals itself</p>
-          <p class="text-xs text-slate-400">Built-in LLM-powered stall detection diagnoses and recovers stuck sessions automatically. Promise tracking. No silent failures &mdash; ever.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Memory with meaning</p>
+          <p class="text-xs text-slate-400">OpenClaw stores daily logs and searches them with BM25+vector. Instar adds structured consolidation, rolling summaries, episodic memory, and unanswered message detection. Not just files to search &mdash; experiences to understand.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Grows over time</p>
-          <p class="text-xs text-slate-400">Dedicated evolution infrastructure: proposal queues, learning registries, gap tracking. The agent builds its own tools and improves through structured stages.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Values, not just personality</p>
+          <p class="text-xs text-slate-400">OpenClaw has SOUL.md for personality. Instar has a three-tier value hierarchy &mdash; personal, shared, and organizational &mdash; with decision journaling and drift detection. Values that evolve with experience, not static character files.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Stays aligned</p>
-          <p class="text-xs text-slate-400">Decision journaling and drift detection track whether the agent is staying on purpose over time. No other framework measures alignment &mdash; Instar does.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Relationships, not contacts</p>
+          <p class="text-xs text-slate-400">OpenClaw offers CRM-style tracking &mdash; health scores, follow-up reminders. Instar tracks relational depth: themes, significance, arc summaries. The difference between knowing <em>when</em> you talked and knowing <em>what matters</em> to someone.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Agents coordinate</p>
-          <p class="text-xs text-slate-400">Cross-machine messaging with cryptographic signatures and delivery guarantees. Multiple agents working together without you in the middle.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Consistency you can verify</p>
+          <p class="text-xs text-slate-400">OpenClaw has no promise tracking or contradiction detection. Instar journals decisions with reasoning, detects drift from purpose, and tracks commitments across sessions. Your agent can explain why it did what it did.</p>
         </div>
 
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
-          <p class="text-sm font-medium text-teal-300 mb-2">Safe to trust</p>
-          <p class="text-xs text-slate-400">LLM-supervised safety gate evaluates every external action. Trust earned per service, not assumed. Emergency stop always available. Born from a real incident.</p>
+          <p class="text-sm font-medium text-teal-300 mb-2">Safety from coherence</p>
+          <p class="text-xs text-slate-400">OpenClaw secures the <em>system</em> (Docker, sandboxing, permissions). Instar secures the <em>decisions</em> &mdash; LLM-supervised gates, adaptive trust per service, autonomy profiles that grow with the agent. Born from real incidents, not threat models.</p>
+        </div>
+
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-teal-300 mb-2">Evolution, not just skills</p>
+          <p class="text-xs text-slate-400">OpenClaw agents can install community skills (5,400+). Instar agents evolve their own infrastructure &mdash; dedicated evolution agents, proposal queues, learning registries, capability gap tracking. Growth that compounds.</p>
+        </div>
+
+        <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
+          <p class="text-sm font-medium text-teal-300 mb-2">Full Claude Code power</p>
+          <p class="text-xs text-slate-400">Every session is a real Claude Code process &mdash; extended thinking, native tools, sub-agents, MCP servers, hooks, skills. Every feature Anthropic ships, your agent gets automatically. No gateway abstraction layer.</p>
         </div>
       </div>
 
@@ -827,8 +1014,8 @@ curl -X POST localhost:4040/sessions/research/input \\
       </div>
 
       <p class="text-center text-slate-400 text-sm max-w-lg mx-auto leading-relaxed">
-        If you want AI on every platform, choose OpenClaw.
-        If you want <span class="text-teal-400">more Claude Code</span> &mdash; an agent that&rsquo;s persistent, autonomous, self-healing, and growing &mdash; choose Instar.
+        OpenClaw gives agents amazing hands. Instar gives agents <span class="text-teal-400">a mind</span> &mdash;
+        identity that persists, values that evolve, and coherence you can trust.
       </p>
     </div>
   </section>
@@ -883,12 +1070,12 @@ curl -X POST localhost:4040/sessions/research/input \\
         <div class="rounded-lg border border-teal-800/50 bg-teal-900/20 p-5">
           <p class="text-sm font-medium text-teal-300 mb-2">🤖 General Agent</p>
           <code class="text-xs text-teal-300 font-mono">npx instar</code>
-          <p class="text-xs text-slate-400 mt-2">A personal AI on your computer. Talk to it through Telegram from anywhere.</p>
+          <p class="text-xs text-slate-400 mt-2">A personal AI on your computer. Talk to it through Telegram or WhatsApp from anywhere.</p>
         </div>
         <div class="rounded-lg border border-slate-800 bg-slate-900/40 p-5">
           <p class="text-sm font-medium text-slate-300 mb-2">📁 Project Agent</p>
           <code class="text-xs text-teal-300 font-mono">cd my-project && npx instar</code>
-          <p class="text-xs text-slate-400 mt-2">An agent embedded in your codebase. Monitors, builds, maintains &mdash; and you talk to it through Telegram just like a general agent.</p>
+          <p class="text-xs text-slate-400 mt-2">An agent embedded in your codebase. Monitors, builds, maintains &mdash; and you talk to it from your phone just like a general agent.</p>
         </div>
       </div>
     </div>
@@ -1102,7 +1289,7 @@ curl -X POST localhost:4040/sessions/research/input \\
   <section class="py-20 sm:py-28 border-t border-slate-800/50">
     <div class="max-w-3xl mx-auto px-6">
       <h2 class="text-2xl font-bold text-slate-100 mb-8 text-center">Requirements</h2>
-      <div class="grid sm:grid-cols-2 gap-4 max-w-lg mx-auto">
+      <div class="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
         <div class="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900/40">
           <svg class="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
           <span class="text-slate-300 text-sm">Node.js 20+</span>
@@ -1110,10 +1297,6 @@ curl -X POST localhost:4040/sessions/research/input \\
         <div class="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900/40">
           <svg class="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
           <span class="text-slate-300 text-sm">Claude Code CLI</span>
-        </div>
-        <div class="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900/40">
-          <svg class="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
-          <span class="text-slate-300 text-sm">tmux</span>
         </div>
         <div class="flex items-center gap-3 p-3 rounded-lg border border-slate-800 bg-slate-900/40">
           <svg class="w-5 h-5 text-green-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2"><path d="M5 13l4 4L19 7"/></svg>
@@ -1127,7 +1310,7 @@ curl -X POST localhost:4040/sessions/research/input \\
   <section class="py-20 sm:py-28 border-t border-slate-800/50">
     <div class="max-w-3xl mx-auto px-6 text-center">
       <h2 class="text-3xl sm:text-4xl font-bold text-slate-100 mb-4">Start Growing</h2>
-      <p class="text-slate-400 mb-8">One command. Persistent autonomy. Every molt, more autonomous.</p>
+      <p class="text-slate-400 mb-8">One command. Full coherence. Every molt, more autonomous.</p>
 
       <div class="inline-flex items-center gap-3 bg-slate-800/60 border border-teal-500/20 rounded-lg px-6 py-4 font-mono text-base sm:text-lg group cursor-pointer hover:border-teal-500/40 transition-colors glow-teal" id="install-cmd-bottom">
         <span class="text-slate-500 select-none">$</span>

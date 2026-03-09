@@ -50,6 +50,7 @@ export class AgentServer {
   private startTime: Date;
   private sessionManager: SessionManager;
   private state: StateManager;
+  private hookEventReceiver?: import('../monitoring/HookEventReceiver.js').HookEventReceiver;
 
   constructor(options: {
     config: InstarConfig;
@@ -101,11 +102,18 @@ export class AgentServer {
     whatsapp?: import('../messaging/WhatsAppAdapter.js').WhatsAppAdapter;
     whatsappBusinessBackend?: import('../messaging/backends/BusinessApiBackend.js').BusinessApiBackend;
     messageBridge?: import('../messaging/shared/MessageBridge.js').MessageBridge;
+    hookEventReceiver?: import('../monitoring/HookEventReceiver.js').HookEventReceiver;
+    worktreeMonitor?: import('../monitoring/WorktreeMonitor.js').WorktreeMonitor;
+    subagentTracker?: import('../monitoring/SubagentTracker.js').SubagentTracker;
+    instructionsVerifier?: import('../monitoring/InstructionsVerifier.js').InstructionsVerifier;
+    threadlineRouter?: import('../threadline/ThreadlineRouter.js').ThreadlineRouter;
+    handshakeManager?: import('../threadline/HandshakeManager.js').HandshakeManager;
   }) {
     this.config = options.config;
     this.startTime = new Date();
     this.sessionManager = options.sessionManager;
     this.state = options.state;
+    this.hookEventReceiver = options.hookEventReceiver ?? undefined;
     this.app = express();
 
     // Middleware
@@ -264,6 +272,12 @@ export class AgentServer {
       autonomousEvolution: options.autonomousEvolution ?? null,
       whatsapp: options.whatsapp ?? null,
       messageBridge: options.messageBridge ?? null,
+      hookEventReceiver: options.hookEventReceiver ?? null,
+      worktreeMonitor: options.worktreeMonitor ?? null,
+      subagentTracker: options.subagentTracker ?? null,
+      instructionsVerifier: options.instructionsVerifier ?? null,
+      threadlineRouter: options.threadlineRouter ?? null,
+      handshakeManager: options.handshakeManager ?? null,
       startTime: this.startTime,
     });
     this.app.use(routes);
@@ -305,6 +319,7 @@ export class AgentServer {
           state: this.state,
           authToken: this.config.authToken,
           instarDir: this.config.stateDir,
+          hookEventReceiver: this.hookEventReceiver,
         });
 
         resolve();

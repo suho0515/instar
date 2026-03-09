@@ -2244,6 +2244,11 @@ export async function startServer(options: StartOptions): Promise<void> {
         },
         telegram,
       );
+      // Wire dispatch decision journal for Discernment Layer (Milestone 1)
+      const { DispatchDecisionJournal } = await import('../core/DispatchDecisionJournal.js');
+      const dispatchDecisionJournal = new DispatchDecisionJournal(config.stateDir);
+      autoDispatcher.setDecisionJournal(dispatchDecisionJournal);
+
       autoDispatcher.start();
       console.log(pc.green('  Dispatch system enabled (auto-polling active)'));
     }
