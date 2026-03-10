@@ -96,10 +96,20 @@ prompt = '''${PROMPT}'''[:500]
 print(urllib.parse.quote(prompt))
 " 2>/dev/null)
 
-# Get active job slug for job-specific context
+# Get active job slug and topicId for job-specific context
 JOB_SLUG=""
+JOB_TOPIC_ID=""
 if [ -f "$INSTAR_DIR/state/active-job.json" ]; then
   JOB_SLUG=$(grep -o '"slug":"[^"]*"' "$INSTAR_DIR/state/active-job.json" 2>/dev/null | head -1 | cut -d'"' -f4)
+  JOB_TOPIC_ID=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$INSTAR_DIR/state/active-job.json'))
+    tid = d.get('topicId')
+    print(tid if tid is not None else '')
+except:
+    print('')
+" 2>/dev/null)
 fi
 
 # Build query URL
@@ -141,5 +151,15 @@ try:
 except Exception:
     sys.exit(0)
 " <<< "$WORKING_MEM" 2>/dev/null
+
+# Surface job topic ID so agents don't need to hardcode it
+if [ -n "$JOB_TOPIC_ID" ]; then
+  echo ""
+  echo "JOB TELEGRAM TOPIC: This job's Telegram topic ID is ${JOB_TOPIC_ID}."
+  echo "To send to this topic: cat <<'EOF' | .instar/scripts/telegram-reply.sh ${JOB_TOPIC_ID}"
+  echo "Your message"
+  echo "EOF"
+  echo ""
+fi
 
 exit 0

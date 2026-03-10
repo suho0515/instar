@@ -453,6 +453,7 @@ export class JobScheduler {
       triggeredBy: reason,
       startedAt: new Date().toISOString(),
       grounding: job.grounding ?? null,
+      topicId: job.topicId ?? null,
     });
 
     // Create Living Skills sentinel file if enabled (allows hook to detect opt-in)

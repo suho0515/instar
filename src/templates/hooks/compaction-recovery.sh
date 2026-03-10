@@ -67,12 +67,31 @@ fi
 # Phase E: Job-specific grounding (if a job slug is detectable)
 if [ -f "$INSTAR_DIR/state/active-job.json" ]; then
   JOB_SLUG=$(grep -o '"slug":"[^"]*"' "$INSTAR_DIR/state/active-job.json" 2>/dev/null | head -1 | cut -d'"' -f4)
-  if [ -n "$JOB_SLUG" ] && [ -f "$INSTAR_DIR/grounding/jobs/${JOB_SLUG}.md" ]; then
-    echo "--- JOB CONTEXT: ${JOB_SLUG} ---"
-    cat "$INSTAR_DIR/grounding/jobs/${JOB_SLUG}.md"
-    echo ""
-    echo "--- END JOB CONTEXT ---"
-    echo ""
+  JOB_TOPIC_ID=$(python3 -c "
+import json, sys
+try:
+    d = json.load(open('$INSTAR_DIR/state/active-job.json'))
+    tid = d.get('topicId')
+    print(tid if tid is not None else '')
+except:
+    print('')
+" 2>/dev/null)
+  if [ -n "$JOB_SLUG" ]; then
+    if [ -f "$INSTAR_DIR/grounding/jobs/${JOB_SLUG}.md" ]; then
+      echo "--- JOB CONTEXT: ${JOB_SLUG} ---"
+      cat "$INSTAR_DIR/grounding/jobs/${JOB_SLUG}.md"
+      echo ""
+      echo "--- END JOB CONTEXT ---"
+      echo ""
+    fi
+    # Surface the job's Telegram topic ID so agents don't hardcode it
+    if [ -n "$JOB_TOPIC_ID" ]; then
+      echo "JOB TELEGRAM TOPIC: This job's Telegram topic ID is ${JOB_TOPIC_ID}."
+      echo "Use: cat <<'EOF' | .instar/scripts/telegram-reply.sh ${JOB_TOPIC_ID}"
+      echo "Your message here"
+      echo "EOF"
+      echo ""
+    fi
   fi
 fi
 

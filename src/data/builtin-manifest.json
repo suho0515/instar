@@ -1,8 +1,8 @@
 {
   "$schema": "./builtin-manifest.schema.json",
   "schemaVersion": 1,
-  "generatedAt": "2026-03-10T05:25:54.670Z",
-  "instarVersion": "0.17.7",
+  "generatedAt": "2026-03-10T08:57:20.382Z",
+  "instarVersion": "0.17.8",
   "entryCount": 168,
   "entries": {
     "hook:session-start": {
@@ -887,7 +887,7 @@
       "type": "template",
       "domain": "safety",
       "sourcePath": "src/templates/hooks/compaction-recovery.sh",
-      "contentHash": "b0c3b3caeb8275ff2368bae9afddea550efcaaaf51a01466e17201e4b38d72a4",
+      "contentHash": "958bf66554bbd05e9821dd93a4cc3387c0339fe4923cc88ee4ad545df0b8406a",
       "since": "2025-01-01"
     },
     "template:dangerous-command-guard.sh": {
@@ -919,7 +919,7 @@
       "type": "template",
       "domain": "safety",
       "sourcePath": "src/templates/hooks/session-start.sh",
-      "contentHash": "8fe9e25b114c68d3bc9f2763f79a605a0ff82a1618a0c7ddf16265850e55fbda",
+      "contentHash": "407bcaa52499cfa4cd3cb00d15db6c1393f1738dca85db228751798f9706cf55",
       "since": "2025-01-01"
     },
     "template:settings-template.json": {
@@ -1295,7 +1295,7 @@
       "type": "subsystem",
       "domain": "scheduling",
       "sourcePath": "src/scheduler/JobScheduler.ts",
-      "contentHash": "8b7aae6aceee5d25a6095fa2e2d02b615f08b62f7b53e81b857369ba3c29e7f6",
+      "contentHash": "14d877d40eb3ac124e0f830d70d9a94799cb726a9b819845ec72f1adb8e172b7",
       "since": "2025-01-01"
     },
     "subsystem:project-mapper": {
