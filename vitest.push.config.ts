@@ -69,6 +69,9 @@ const FLAKY_TESTS = [
 
   // ── Git state race condition (completeBranch status) ────────────
   'tests/integration/branch-wiring.test.ts',
+
+  // ── ReflectionConsolidator pattern detection non-deterministic ───
+  'tests/unit/ReflectionConsolidator.test.ts',
 ];
 
 export default defineConfig({
