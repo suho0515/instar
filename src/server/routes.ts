@@ -132,6 +132,7 @@ export interface RouteContext {
   threadlineRouter: ThreadlineRouter | null;
   handshakeManager: HandshakeManager | null;
   responseReviewGate: CoherenceGate | null;
+  telemetryHeartbeat: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat | null;
   startTime: Date;
 }
 
@@ -4931,6 +4932,62 @@ export function createRoutes(ctx: RouteContext): Router {
       thresholds: ctx.memoryMonitor.getThresholds(),
       currentState: ctx.memoryMonitor.getState(),
     });
+  });
+
+  // ── Telemetry ──────────────────────────────────────────────────────
+
+  // GET /monitoring/telemetry — telemetry heartbeat status and counters
+  router.get('/monitoring/telemetry', (_req, res) => {
+    if (!ctx.telemetryHeartbeat) {
+      return res.json({ enabled: false, message: 'Telemetry not configured. Enable via POST /config/telemetry {"enabled": true}' });
+    }
+    res.json(ctx.telemetryHeartbeat.getStatus());
+  });
+
+  // POST /config/telemetry — enable/disable telemetry (used by agent after asking user)
+  // Also dismisses the session-start nudge by writing a marker file.
+  router.post('/config/telemetry', (req, res) => {
+    const { enabled, level } = req.body ?? {};
+    if (typeof enabled !== 'boolean') {
+      return res.status(400).json({ error: 'enabled must be a boolean' });
+    }
+    if (level !== undefined && level !== 'basic' && level !== 'usage') {
+      return res.status(400).json({ error: 'level must be "basic" or "usage"' });
+    }
+
+    try {
+      // Update config.json
+      const configPath = path.join(ctx.config.projectDir, '.instar', 'config.json');
+      let fileConfig: Record<string, any> = {};
+      if (fs.existsSync(configPath)) {
+        fileConfig = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+      if (!fileConfig.monitoring) fileConfig.monitoring = {};
+      fileConfig.monitoring.telemetry = {
+        enabled,
+        level: level || 'basic',
+      };
+      fs.writeFileSync(configPath, JSON.stringify(fileConfig, null, 2) + '\n');
+
+      // Write the nudge-shown marker so the session-start hook stops showing it
+      const nudgeFile = path.join(ctx.config.stateDir, '.telemetry-nudge-shown');
+      fs.writeFileSync(nudgeFile, JSON.stringify({
+        decided: enabled ? 'opted-in' : 'declined',
+        level: level || 'basic',
+        at: new Date().toISOString(),
+      }) + '\n');
+
+      res.json({
+        success: true,
+        telemetry: { enabled, level: level || 'basic' },
+        message: enabled
+          ? 'Telemetry enabled. Anonymous heartbeats will start on next server restart.'
+          : 'Telemetry declined. No data will be sent. Thank you for considering it.',
+        note: 'Restart the server for changes to take effect.',
+      });
+    } catch (err) {
+      res.status(500).json({ error: `Failed to update config: ${err instanceof Error ? err.message : err}` });
+    }
   });
 
   // ── Commitment Tracking ──────────────────────────────────────────

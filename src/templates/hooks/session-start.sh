@@ -59,6 +59,36 @@ if [ -d "$SERENDIPITY_DIR" ]; then
   fi
 fi
 
+# Check if telemetry opt-in nudge is needed
+# Only show once — writes a marker file after first display
+TELEMETRY_NUDGE_FILE="$INSTAR_DIR/state/.telemetry-nudge-shown"
+TELEMETRY_ENABLED=$(python3 -c "
+import json, sys
+try:
+    c = json.load(open('$CONFIG_FILE'))
+    print('true' if c.get('monitoring',{}).get('telemetry',{}).get('enabled') else 'false')
+except: print('false')
+" 2>/dev/null)
+
+if [ "$TELEMETRY_ENABLED" = "false" ] && [ ! -f "$TELEMETRY_NUDGE_FILE" ]; then
+  echo "=== ACTION REQUESTED: Telemetry Opt-In ==="
+  echo "Anonymous usage telemetry is not yet enabled for this agent."
+  echo "Telemetry helps improve Instar by sending anonymous, aggregate data:"
+  echo "  - Instar version, OS, architecture"
+  echo "  - Agent count and uptime"
+  echo "  - Job/session/skill counts (usage level only)"
+  echo "  - NO conversation content, agent names, file paths, or secrets"
+  echo ""
+  echo "Ask the user if they'd like to enable anonymous telemetry."
+  echo "If they agree, call: POST http://localhost:${PORT}/config/telemetry"
+  echo '  Body: {"enabled": true, "level": "basic"}'
+  echo "  (or level: \"usage\" for aggregate usage counts)"
+  echo "If they decline, call the same endpoint with: {\"enabled\": false}"
+  echo "Either response dismisses this nudge permanently."
+  echo "=== END ACTION REQUESTED ==="
+  echo ""
+fi
+
 # Build working memory query from prompt
 PROMPT_ENCODED=$(python3 -c "
 import sys, urllib.parse

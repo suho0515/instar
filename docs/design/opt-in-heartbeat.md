@@ -1,19 +1,29 @@
-# Opt-In Heartbeat — Design Spec (v0.14)
+# Opt-In Heartbeat — Design & Implementation
 
 ## Overview
 
 A privacy-first, opt-in telemetry system that lets Instar agents send anonymous usage heartbeats. Default OFF. No PII. No conversation content. Agent owners explicitly enable it.
+
+## Status: Implemented
+
+- `TelemetryHeartbeat` module: `src/monitoring/TelemetryHeartbeat.ts`
+- Config type: `TelemetryConfig` in `src/core/types.ts`
+- API: `GET /monitoring/telemetry`, `POST /config/telemetry`
+- Agent nudge: `session-start.sh` hook prompts agent to ask user
+- Collection worker: `scripts/telemetry-worker/` (Cloudflare Worker)
+- Tests: `tests/unit/TelemetryHeartbeat.test.ts` (10 tests)
 
 ## What Gets Sent
 
 ```json
 {
   "v": 1,
-  "id": "sha256(machineId + installDir)",
+  "id": "sha256(machineId + installDir)[:16]",
   "ts": "2026-03-10T05:00:00Z",
   "instar": "0.14.0",
   "node": "22.x",
-  "os": "darwin-arm64",
+  "os": "darwin",
+  "arch": "arm64",
   "agents": 2,
   "uptime_hours": 168,
   "jobs_run_24h": 12,
@@ -32,11 +42,13 @@ A privacy-first, opt-in telemetry system that lets Instar agents send anonymous 
 ## Configuration
 
 ```json
-// .instar/config.json
+// .instar/config.json → monitoring.telemetry
 {
-  "telemetry": {
-    "enabled": false,
-    "level": "basic"
+  "monitoring": {
+    "telemetry": {
+      "enabled": false,
+      "level": "basic"
+    }
   }
 }
 ```
@@ -47,54 +59,76 @@ Levels:
 
 ## Opt-In Flow
 
-On first run of v0.14+, if telemetry config is absent:
-```
-Instar can send anonymous usage stats to help improve the project.
-No conversation content, agent names, or personal data is ever sent.
-See https://instar.sh/telemetry for full details.
+### Agent-Driven (Primary)
 
-Enable anonymous telemetry? [y/N]:
+The session-start hook detects telemetry is not configured and injects a nudge into the agent's context. The agent then proactively asks the user:
+
+```
+"Instar can send anonymous usage stats (version, OS, agent count) to help
+improve the project. No conversation content or personal data is ever sent.
+Would you like to enable this?"
 ```
 
-Default is No. User can also set via:
+If the user agrees, the agent calls `POST /config/telemetry {"enabled": true, "level": "basic"}`.
+If declined, the agent calls `POST /config/telemetry {"enabled": false}`.
+Either response writes the config and dismisses the nudge permanently.
+
+### Manual
+
 ```bash
-instar config set telemetry.enabled true
-instar config set telemetry.level usage
+# Via API
+curl -X POST localhost:4040/config/telemetry -H 'Content-Type: application/json' -d '{"enabled":true,"level":"basic"}'
+
+# Via config file
+# Edit .instar/config.json → monitoring.telemetry.enabled = true
 ```
 
 ## Collection Endpoint
 
-- `POST https://telemetry.instar.sh/v1/heartbeat`
+Cloudflare Worker at `telemetry.instar.sh`:
+
+- `POST /v1/heartbeat` — receive heartbeat, store in R2, update KV aggregates
+- `GET /v1/stats` — public aggregate stats (7-day window, version/platform distribution)
+- `GET /health` — health check
 - No authentication required
 - No cookies or tracking
 - Response: `204 No Content`
-- Timeout: 3 seconds (fire-and-forget, never blocks agent operation)
+- R2 for raw storage, KV for aggregate cache (90-day TTL)
 
-## Server-Side
+Source: `scripts/telemetry-worker/`
 
-Simple collection service:
-- Append-only JSONL storage
-- No IP logging (reverse proxy strips before app)
-- Daily aggregation job produces anonymous statistics
-- Public dashboard at `https://instar.sh/stats` showing aggregate trends
+## Architecture
 
-## Implementation Plan
+```
+Agent Session
+  ↓ session-start hook (nudge if telemetry not configured)
+  ↓ agent asks user
+  ↓ POST /config/telemetry (enable/disable)
+  ↓
+TelemetryHeartbeat module (server-side)
+  ↓ records events: jobRun, sessionSpawned, skillInvoked
+  ↓ periodic heartbeat (every 6h, first after 60s)
+  ↓ fire-and-forget POST to endpoint (3s timeout)
+  ↓
+Cloudflare Worker (telemetry.instar.sh)
+  ↓ validates, sanitizes, stores in R2
+  ↓ updates aggregate KV stats
+  ↓
+Public Dashboard (instar.sh/stats)
+  ↓ reads aggregate stats only
+  ↓ never exposes individual heartbeats or install IDs
+```
 
-1. Add `TelemetryConfig` to config schema
-2. Add `TelemetryCollector` class in `src/monitoring/TelemetryCollector.ts`
-   - Follows existing `RelayMetrics` pattern
-   - Collects counters from JobScheduler, SessionManager
-   - Periodic flush (every 6 hours when enabled)
-3. Add opt-in prompt to CLI first-run flow
-4. Add `instar config set/get` subcommands for telemetry
-5. Deploy collection endpoint (Cloudflare Worker or simple Express)
-6. Build public stats dashboard
+## Local Transparency
+
+Every heartbeat sent is logged locally at `{stateDir}/telemetry/heartbeats.jsonl` so users can audit exactly what data leaves their machine.
 
 ## Privacy Guarantees
 
-- **Hashed installation ID**: Cannot be reversed to identify a machine
-- **No IP logging**: Stripped at reverse proxy layer
-- **Aggregate only**: Individual heartbeats are never exposed publicly
-- **Deletion**: `instar config set telemetry.enabled false` stops all collection immediately
-- **Open source**: Collection endpoint code is public and auditable
+- **Hashed installation ID**: 16 hex chars of SHA-256(machineId + projectDir) — cannot be reversed
+- **No IP logging**: Server never stores connecting IP
+- **Aggregate only**: Individual heartbeats never exposed publicly
+- **One-click disable**: `POST /config/telemetry {"enabled": false}` stops all collection
+- **Open source**: Collection endpoint code in `scripts/telemetry-worker/`
 - **Offline-first**: Telemetry failure never affects agent operation
+- **Local audit log**: Every heartbeat logged locally for user inspection

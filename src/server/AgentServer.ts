@@ -109,6 +109,7 @@ export class AgentServer {
     threadlineRouter?: import('../threadline/ThreadlineRouter.js').ThreadlineRouter;
     handshakeManager?: import('../threadline/HandshakeManager.js').HandshakeManager;
     responseReviewGate?: import('../core/CoherenceGate.js').CoherenceGate;
+    telemetryHeartbeat?: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat;
   }) {
     this.config = options.config;
     this.startTime = new Date();
@@ -280,6 +281,7 @@ export class AgentServer {
       threadlineRouter: options.threadlineRouter ?? null,
       handshakeManager: options.handshakeManager ?? null,
       responseReviewGate: options.responseReviewGate ?? null,
+      telemetryHeartbeat: options.telemetryHeartbeat ?? null,
       startTime: this.startTime,
     });
     this.app.use(routes);

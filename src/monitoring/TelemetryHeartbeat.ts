@@ -28,7 +28,7 @@ import path from 'node:path';
 import { EventEmitter } from 'node:events';
 import type { TelemetryConfig, TelemetryLevel } from '../core/types.js';
 
-const DEFAULT_ENDPOINT = 'https://telemetry.instar.sh/v1/heartbeat';
+const DEFAULT_ENDPOINT = 'https://instar-telemetry.sagemind-ai.workers.dev/v1/heartbeat';
 const DEFAULT_INTERVAL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const SEND_TIMEOUT_MS = 3000; // Fire-and-forget, never block agent operation
 const HEARTBEAT_VERSION = 1;

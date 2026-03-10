@@ -342,6 +342,8 @@ export { SubagentTracker } from './monitoring/SubagentTracker.js';
 export type { SubagentRecord, SubagentTrackerConfig } from './monitoring/SubagentTracker.js';
 export { InstructionsVerifier } from './monitoring/InstructionsVerifier.js';
 export type { InstructionLoadRecord, VerificationResult as InstructionsVerificationResult, InstructionsVerifierConfig } from './monitoring/InstructionsVerifier.js';
+export { TelemetryHeartbeat } from './monitoring/TelemetryHeartbeat.js';
+export type { TelemetryHeartbeatConfig, HeartbeatPayload } from './monitoring/TelemetryHeartbeat.js';
 export { HTTP_HOOK_TEMPLATES, buildHttpHookSettings } from './data/http-hook-templates.js';
 export type { HttpHookTemplate } from './data/http-hook-templates.js';
 export { SleepWakeDetector } from './core/SleepWakeDetector.js';
