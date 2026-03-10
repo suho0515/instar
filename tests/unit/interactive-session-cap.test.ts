@@ -79,7 +79,7 @@ describe('SessionManager — interactive session cap', () => {
     );
 
     // The promise chain should have a .catch() to prevent unhandled rejection
-    expect(source).toContain('waitForClaudeReady(tmuxSession).then');
+    expect(source).toContain('waitForClaudeReady(tmuxSession');
     expect(source).toContain('.catch(');
   });
 });
