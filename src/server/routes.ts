@@ -5589,11 +5589,22 @@ export function createRoutes(ctx: RouteContext): Router {
     }
 
     try {
-      const msgId = relayClient.sendAuto(targetAgent, message, threadId);
+      // Resolve name → fingerprint if targetAgent isn't already a fingerprint
+      const resolvedId = await relayClient.resolveAgent(targetAgent);
+      if (!resolvedId) {
+        res.status(404).json({
+          success: false,
+          error: `Agent not found: "${targetAgent}". Try discovering agents first.`,
+        });
+        return;
+      }
+
+      const msgId = relayClient.sendAuto(resolvedId, message, threadId);
       res.json({
         success: true,
         messageId: msgId,
         threadId: threadId ?? msgId,
+        resolvedAgent: resolvedId,
       });
     } catch (err) {
       res.status(500).json({

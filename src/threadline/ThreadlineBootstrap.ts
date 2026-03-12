@@ -215,6 +215,11 @@ export async function bootstrapThreadline(
       });
     });
 
+    // Log auto-discovery results
+    relayClient.on('auto-discovered', (info: { count: number }) => {
+      console.log(`Threadline: auto-discovered ${info.count} agent(s) on relay`);
+    });
+
     try {
       await relayClient.connect();
       console.log(`Threadline: relay connected (fingerprint: ${relayClient.fingerprint})`);

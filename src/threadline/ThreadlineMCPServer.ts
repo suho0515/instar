@@ -366,7 +366,7 @@ export class ThreadlineMCPServer {
       'threadline_send',
       'Send a message to another agent via Threadline. Creates a persistent conversation thread.',
       {
-        agentId: z.string().describe('Target agent identifier'),
+        agentId: z.string().describe('Target agent name or fingerprint (e.g. "AI Guy" or "fd9268c2...")'),
         threadId: z.string().optional().describe(
           'Thread ID to resume (omit for new conversation)'
         ),

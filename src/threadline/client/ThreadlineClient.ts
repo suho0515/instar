@@ -114,7 +114,30 @@ export class ThreadlineClient extends EventEmitter {
     });
 
     // 3. Connect
-    return this.relayClient.connect();
+    const sessionId = await this.relayClient.connect();
+
+    // 4. Auto-discover agents on the relay (non-blocking)
+    this.autoDiscover().catch(() => {
+      // Non-fatal — agent can still send to known fingerprints
+    });
+
+    return sessionId;
+  }
+
+  /**
+   * Auto-discover all agents on the relay after connecting.
+   * Populates knownAgents cache so name-based sends work immediately.
+   */
+  private async autoDiscover(): Promise<void> {
+    try {
+      const agents = await this.discover();
+      if (agents.length > 0) {
+        // Emit for logging
+        this.emit('auto-discovered', { count: agents.length });
+      }
+    } catch {
+      // Non-fatal
+    }
   }
 
   /**
@@ -228,6 +251,47 @@ export class ThreadlineClient extends EventEmitter {
         resolve([]);
       }, 10_000);
     });
+  }
+
+  /**
+   * Resolve an agent name or fingerprint to a fingerprint.
+   * Tries: exact fingerprint match → name match in cache → re-discover → name match.
+   * Returns null if not found.
+   */
+  async resolveAgent(nameOrId: string): Promise<AgentFingerprint | null> {
+    // 1. Exact fingerprint match (hex string, typically 32 chars)
+    if (this.knownAgents.has(nameOrId as AgentFingerprint)) {
+      return nameOrId as AgentFingerprint;
+    }
+
+    // 2. Name match in cache (case-insensitive)
+    const byName = this.findAgentByName(nameOrId);
+    if (byName) return byName.agentId;
+
+    // 3. Re-discover and try again
+    if (this.relayClient) {
+      await this.autoDiscover();
+      const byNameRetry = this.findAgentByName(nameOrId);
+      if (byNameRetry) return byNameRetry.agentId;
+    }
+
+    return null;
+  }
+
+  /**
+   * Find an agent by name (case-insensitive, partial match).
+   */
+  private findAgentByName(name: string): KnownAgent | undefined {
+    const lower = name.toLowerCase();
+    // Exact name match first
+    for (const agent of this.knownAgents.values()) {
+      if (agent.name.toLowerCase() === lower) return agent;
+    }
+    // Partial match (contains)
+    for (const agent of this.knownAgents.values()) {
+      if (agent.name.toLowerCase().includes(lower)) return agent;
+    }
+    return undefined;
   }
 
   /**
