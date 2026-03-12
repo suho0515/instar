@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Instar Dashboard</title>
+  <link rel="icon" type="image/png" href="/dashboard/favicon.png">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css">
   <style>
     :root {
@@ -65,7 +66,9 @@
     }
 
     .header .logo {
-      font-size: 20px;
+      width: 28px;
+      height: 28px;
+      object-fit: contain;
     }
 
     .status-badge {
@@ -634,7 +637,8 @@
       }
 
       .header .logo {
-        font-size: 18px;
+        width: 24px;
+        height: 24px;
       }
 
       .sidebar-header {
@@ -659,7 +663,7 @@
   <div class="app" id="app" style="display:none">
     <header class="header">
       <div class="header-left">
-        <span class="logo">&#x1F990;</span>
+        <img class="logo" src="/dashboard/logo.png" alt="Instar">
         <h1>Instar Dashboard</h1>
       </div>
       <button class="wa-status-btn" id="waStatusBtn" onclick="toggleQrPanel()">WhatsApp</button>

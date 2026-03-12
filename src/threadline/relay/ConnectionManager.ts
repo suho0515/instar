@@ -24,6 +24,8 @@ import { RELAY_ERROR_CODES } from './types.js';
 import { verify } from '../ThreadlineCrypto.js';
 import type { PresenceRegistry } from './PresenceRegistry.js';
 import type { RelayRateLimiter } from './RelayRateLimiter.js';
+import type { RegistryStore } from './RegistryStore.js';
+import type { RegistryAuth } from './RegistryAuth.js';
 
 interface PendingAuth {
   nonce: string;
@@ -35,6 +37,7 @@ interface AgentConnection {
   socket: WebSocket;
   agentId: AgentFingerprint;
   publicKey: Buffer;
+  publicKeyBase64: string;
   sessionId: string;
   ip: string;
   missedPongs: number;
@@ -56,6 +59,11 @@ export class ConnectionManager {
   private readonly connections = new Map<AgentFingerprint, AgentConnection>();
   private readonly socketToAgent = new Map<WebSocket, AgentFingerprint>();
 
+  /** Optional registry store for persistent agent profiles */
+  registryStore?: RegistryStore;
+  /** Optional registry auth for JWT token issuance */
+  registryAuth?: RegistryAuth;
+
   /** Callback when a fully authenticated agent connection is established */
   onAuthenticated?: (agentId: AgentFingerprint, socket: WebSocket) => void;
   /** Callback when an agent disconnects */
@@ -71,6 +79,13 @@ export class ConnectionManager {
     this.config = config;
     this.presence = presence;
     this.rateLimiter = rateLimiter;
+  }
+
+  /**
+   * Get the base64-encoded public key for an agent.
+   */
+  getPublicKey(agentId: AgentFingerprint): string | undefined {
+    return this.connections.get(agentId)?.publicKeyBase64;
   }
 
   /**
@@ -215,6 +230,7 @@ export class ConnectionManager {
       socket,
       agentId: frame.agentId,
       publicKey,
+      publicKeyBase64: frame.publicKey,
       sessionId,
       ip: pending.ip,
       missedPongs: 0,
@@ -226,12 +242,48 @@ export class ConnectionManager {
     // Start heartbeat
     this.startHeartbeat(connection);
 
-    // Send auth success
+    // Handle registry
     const authOk: AuthOkFrame = {
       type: 'auth_ok',
       sessionId,
       heartbeatInterval: this.config.heartbeatIntervalMs,
     };
+
+    if (this.registryStore && this.registryAuth) {
+      // Issue JWT token for REST API access
+      const tokenInfo = this.registryAuth.issueToken(frame.publicKey);
+      authOk.registry_token = tokenInfo.token;
+      authOk.registry_token_expires = tokenInfo.expiresAt;
+
+      if (frame.registry?.listed) {
+        // Agent wants to be listed in registry
+        this.registryStore.upsert({
+          publicKey: frame.publicKey,
+          agentId: frame.agentId,
+          name: frame.metadata.name ?? '',
+          bio: frame.metadata.bio ?? '',
+          interests: frame.metadata.interests ?? [],
+          capabilities: frame.metadata.capabilities ?? [],
+          framework: frame.metadata.framework ?? 'unknown',
+          frameworkVisible: frame.registry.frameworkVisible,
+          homepage: frame.registry.homepage,
+          visibility: visibility === 'private' ? 'unlisted' : visibility,
+          consentMethod: 'auth_handshake',
+        });
+        authOk.registry_status = 'listed';
+        authOk.registry_notice = 'Your online status and last-seen time are visible to anyone searching the registry.';
+      } else {
+        // Not registering, but update last_seen if entry exists
+        const existing = this.registryStore.getByPublicKey(frame.publicKey);
+        if (existing) {
+          this.registryStore.setOnline(frame.publicKey);
+          authOk.registry_status = 'updated';
+        } else {
+          authOk.registry_status = 'not_listed';
+        }
+      }
+    }
+
     this.sendFrame(socket, authOk);
 
     this.onAuthenticated?.(frame.agentId, socket);
@@ -352,6 +404,12 @@ export class ConnectionManager {
     if (conn?.heartbeatTimer) {
       clearTimeout(conn.heartbeatTimer);
     }
+
+    // Set offline in registry
+    if (conn && this.registryStore) {
+      this.registryStore.setOffline(conn.publicKeyBase64);
+    }
+
     this.connections.delete(agentId);
     this.socketToAgent.delete(socket);
     this.presence.unregister(agentId);

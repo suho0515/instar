@@ -26,6 +26,11 @@ export type { AdminServerConfig, AdminServerDeps } from './AdminServer.js';
 export { RelayMetrics } from './RelayMetrics.js';
 export type { MetricsSnapshot } from './RelayMetrics.js';
 
+export { RegistryStore } from './RegistryStore.js';
+export type { RegistryEntry, RegistrySearchParams, RegistrySearchResult, RegistryStats, RegistryStoreConfig } from './RegistryStore.js';
+export { RegistryAuth } from './RegistryAuth.js';
+export type { RegistryToken, TokenPayload } from './RegistryAuth.js';
+
 export type {
   AgentFingerprint,
   AgentVisibility,
@@ -48,6 +53,7 @@ export type {
   PresenceChangeFrame,
   DisplacedFrame,
   DeliveryExpiredFrame,
+  RegistryConfig,
   RelayFrame,
   ClientFrame,
   ServerFrame,

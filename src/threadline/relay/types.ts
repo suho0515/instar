@@ -18,6 +18,8 @@ export interface AgentMetadata {
   name: string;
   framework?: string;
   capabilities?: string[];
+  bio?: string;
+  interests?: string[];
   version?: string;
   agentCardUrl?: string;
 }
@@ -50,6 +52,14 @@ export interface AuthFrame {
   signature: string; // base64 Ed25519 signature of nonce
   metadata: AgentMetadata;
   visibility?: AgentVisibility;
+  registry?: RegistryConfig;
+}
+
+/** Agent → Relay: Registry configuration in auth handshake */
+export interface RegistryConfig {
+  listed: boolean;
+  homepage?: string;
+  frameworkVisible?: boolean;
 }
 
 /** Relay → Agent: Auth success */
@@ -57,6 +67,10 @@ export interface AuthOkFrame {
   type: 'auth_ok';
   sessionId: string;
   heartbeatInterval: number; // ms
+  registry_status?: 'listed' | 'not_listed' | 'updated';
+  registry_token?: string;
+  registry_token_expires?: string;
+  registry_notice?: string;
 }
 
 /** Relay → Agent: Auth failure */
@@ -252,6 +266,10 @@ export interface RelayServerConfig {
   a2aRateLimitConfig?: Partial<import('./A2ABridge.js').A2ABridgeRateLimitConfig>;
   offlineQueueConfig?: Partial<import('./OfflineQueue.js').OfflineQueueConfig>;
   abuseDetectorConfig?: Partial<import('./AbuseDetector.js').AbuseDetectorConfig>;
+  /** Data directory for registry SQLite database. Default: ./data */
+  registryDataDir?: string;
+  /** Relay ID for registry entries. Default: auto-generated */
+  relayId?: string;
 }
 
 export interface RelayClientConfig {

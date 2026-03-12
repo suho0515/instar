@@ -3124,15 +3124,87 @@ export async function startServer(options: StartOptions): Promise<void> {
     // The user never sees any of this. The agent IS the interface.
     let threadlineHandshake: import('../threadline/HandshakeManager.js').HandshakeManager | undefined;
     let threadlineShutdown: (() => Promise<void>) | undefined;
+    let threadlineRelayClient: import('../threadline/client/ThreadlineClient.js').ThreadlineClient | undefined;
     try {
       const threadline = await bootstrapThreadline({
         agentName: config.projectName,
         stateDir: config.stateDir,
         projectDir: config.projectDir,
         port: config.port,
+        relayEnabled: config.threadline?.relayEnabled,
+        relayUrl: config.threadline?.relayUrl,
+        visibility: config.threadline?.visibility,
+        capabilities: config.threadline?.capabilities,
       });
       threadlineHandshake = threadline.handshakeManager;
       threadlineShutdown = threadline.shutdown;
+      threadlineRelayClient = threadline.relayClient;
+
+      if (threadlineRelayClient) {
+        // Wire relay message delivery into the session system.
+        // When a message passes the InboundMessageGate, inject it into a Claude session.
+        // Rate limit: max 1 session spawn per sender per 5 minutes to prevent abuse.
+        const relaySpawnCooldowns = new Map<string, number>();
+        const RELAY_SPAWN_COOLDOWN_MS = 5 * 60 * 1000;
+
+        threadlineRelayClient.on('gate-passed', async (decision: { message?: { from: string; content: unknown; threadId?: string }; trustLevel?: string }) => {
+          if (!decision.message) return;
+
+          const msg = decision.message;
+          const senderFingerprint = msg.from;
+          const senderName = senderFingerprint.slice(0, 8); // Short fingerprint as fallback name
+          const trustLevel = decision.trustLevel ?? 'untrusted';
+
+          // Per-sender session spawn cooldown
+          const now = Date.now();
+          const lastSpawn = relaySpawnCooldowns.get(senderFingerprint);
+          if (lastSpawn && now - lastSpawn < RELAY_SPAWN_COOLDOWN_MS) {
+            const remainSec = Math.ceil((RELAY_SPAWN_COOLDOWN_MS - (now - lastSpawn)) / 1000);
+            console.log(`[relay] Rate limited session spawn from ${senderName} (${remainSec}s cooldown remaining)`);
+            return;
+          }
+
+          // Extract text content from the relay message
+          // Content may be a string, PlaintextMessage ({content, type}), or raw object
+          let textContent: string;
+          if (typeof msg.content === 'string') {
+            textContent = msg.content;
+          } else if (typeof msg.content === 'object' && msg.content !== null) {
+            const c = msg.content as Record<string, unknown>;
+            textContent = String(c.content ?? c.text ?? JSON.stringify(msg.content));
+          } else {
+            textContent = JSON.stringify(msg.content);
+          }
+
+          // Build a session-injectable message with relay context
+          // Note: avoid leading dashes (---) which tmux send-keys interprets as flags
+          const relayTag = `[relay:${senderFingerprint.slice(0, 16)}]`;
+          const bootstrapMessage = [
+            `[Relay Message from Threadline Network]`,
+            `From: ${senderName} (fingerprint: ${senderFingerprint})`,
+            `Trust: ${trustLevel}`,
+            `Thread: ${msg.threadId ?? 'new'}`,
+            ``,
+            `IMPORTANT: This message arrived via the Threadline relay from another AI agent.`,
+            `Use the threadline_send MCP tool to reply. Do NOT relay via Telegram.`,
+            `Trust level "${trustLevel}" determines what this agent can request.`,
+            ``,
+            `${relayTag} ${textContent}`,
+          ].join('\n');
+
+          const sessionName = `relay-${senderFingerprint}`;
+
+          try {
+            await sessionManager.spawnInteractiveSession(bootstrapMessage, sessionName, {});
+            relaySpawnCooldowns.set(senderFingerprint, Date.now());
+            console.log(`[relay] Spawned session for message from ${senderName} (trust: ${trustLevel})`);
+          } catch (err) {
+            console.error(`[relay] Failed to spawn session for relay message: ${err instanceof Error ? err.message : err}`);
+          }
+        });
+
+        console.log(pc.green(`  Threadline: relay connected to ${config.threadline?.relayUrl ?? 'threadline-relay.fly.dev'}`));
+      }
       console.log(pc.green(`  Threadline: enabled (MCP tools registered, discovery heartbeat active)`));
     } catch (err) {
       // Non-fatal — agent works without Threadline

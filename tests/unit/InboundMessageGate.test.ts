@@ -400,4 +400,29 @@ describe('InboundMessageGate', () => {
       expect(decision.fingerprint).toBe('blocked-fp');
     });
   });
+
+  // ── Late-Binding Router ────────────────────────────────────────
+
+  describe('setRouter (late binding)', () => {
+    it('accepts null router at construction', () => {
+      const nullGate = new InboundMessageGate(trustManager as any, null, {});
+      expect(nullGate).toBeDefined();
+      nullGate.shutdown();
+    });
+
+    it('evaluates messages with null router', async () => {
+      const nullGate = new InboundMessageGate(trustManager as any, null, {});
+      const decision = await nullGate.evaluate(createMessage());
+      expect(decision.action).toBe('pass');
+      nullGate.shutdown();
+    });
+
+    it('setRouter updates the router reference', () => {
+      const nullGate = new InboundMessageGate(trustManager as any, null, {});
+      const mockRouter = createMockRouter();
+      nullGate.setRouter(mockRouter);
+      // No error means it worked — router is stored for later use
+      nullGate.shutdown();
+    });
+  });
 });

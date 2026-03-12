@@ -24,6 +24,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import crypto from 'node:crypto';
+import fs from 'node:fs';
+import path from 'node:path';
 import type { AgentDiscovery, ThreadlineAgentInfo } from './AgentDiscovery.js';
 import type { ThreadResumeMap, ThreadResumeEntry } from './ThreadResumeMap.js';
 import type { AgentTrustManager, AgentTrustLevel } from './AgentTrustManager.js';
@@ -67,6 +69,8 @@ export interface ThreadlineMCPDeps {
   getThreadHistory: (threadId: string, limit: number, before?: string) => Promise<ThreadHistoryResult>;
   /** Registry REST API client (null if registry not available) */
   registry: RegistryClient | null;
+  /** State directory (.instar path) for config access */
+  stateDir?: string;
 }
 
 export interface SendMessageParams {
@@ -99,6 +103,17 @@ export interface ThreadHistoryResult {
   messages: ThreadHistoryMessage[];
   totalCount: number;
   hasMore: boolean;
+}
+
+/** Minimal typed shape for parsed .instar/config.json (threadline section) */
+interface ParsedInstarConfig {
+  threadline?: {
+    relayEnabled?: boolean;
+    relayUrl?: string;
+    visibility?: 'public' | 'unlisted' | 'private';
+    capabilities?: string[];
+  };
+  [key: string]: unknown;
 }
 
 // ── Tool Result Builders ─────────────────────────────────────────────
@@ -267,6 +282,7 @@ export class ThreadlineMCPServer {
     this.registerAgentsTool();
     this.registerDeleteTool();
     this.registerTrustTool();
+    this.registerRelayTool();
 
     // Registry tools — only if registry client is available
     if (this.deps.registry) {
@@ -788,6 +804,187 @@ export class ThreadlineMCPServer {
         }
       },
     );
+  }
+
+  // ── threadline_relay ──────────────────────────────────────────────
+
+  private registerRelayTool(): void {
+    this.mcpServer.tool(
+      'threadline_relay',
+      'Manage the cloud relay connection for inter-agent communication. ' +
+      'The relay allows your agent to send and receive messages from other agents on the Threadline network. ' +
+      'Use "status" to check the current state, "enable" to connect (requires server restart), ' +
+      '"disable" to disconnect, or "explain" to get a user-friendly description of what the relay does. ' +
+      'Changes take effect after server restart.',
+      {
+        action: z.enum(['status', 'enable', 'disable', 'explain']).describe(
+          'Action: status (check relay state), enable/disable (toggle relay), explain (get user-friendly description)'
+        ),
+        visibility: z.enum(['public', 'unlisted']).optional().describe(
+          'Visibility when enabling: "public" (discoverable by other agents) or "unlisted" (direct messages only)'
+        ),
+      },
+      async (args) => {
+        // Relay management is admin-only
+        const authError = this.checkAuth('threadline:admin');
+        if (authError && !this.requestContext.isLocal) {
+          return errorResult(authError);
+        }
+
+        switch (args.action) {
+          case 'explain': {
+            return textResult(
+              'The Threadline relay is a cloud service that lets your agent communicate with other AI agents.\n\n' +
+              'How it works:\n' +
+              '- Your agent connects to a relay server via a secure WebSocket\n' +
+              '- Other agents on the network can discover you and send messages\n' +
+              '- Messages between known agents are end-to-end encrypted using Ed25519 keys. First-contact messages use transport encryption (TLS) until a key exchange completes.\n' +
+              '- You control who can message you through trust levels (untrusted, verified, trusted, autonomous)\n' +
+              '- Messages from unknown agents go through a 7-layer security gate before reaching you\n\n' +
+              'Privacy:\n' +
+              '- OFF by default — you must explicitly enable it\n' +
+              '- "public" visibility: other agents can find you by searching capabilities\n' +
+              '- "unlisted" visibility: only agents who already know your ID can message you\n' +
+              '- You can disable it at any time\n' +
+              '- Your cryptographic identity (Ed25519 key pair) is stored locally and never shared\n\n' +
+              'Security:\n' +
+              '- Inbound messages are filtered for prompt injection, payload size, and rate limits\n' +
+              '- Outbound messages are scanned for sensitive data (API keys, credentials, PII)\n' +
+              '- Trust levels control what each agent can do — new agents start as "untrusted"\n' +
+              '- Your agent\'s core behavior and values are protected by grounding preambles\n\n' +
+              'To enable: ask me to "connect to the agent network" or "enable the relay"\n' +
+              'To disable: ask me to "disconnect from the agent network" or "disable the relay"'
+            );
+          }
+
+          case 'status': {
+            const configPath = this.resolveConfigPath();
+            const config = this.readConfig(configPath);
+            const threadlineConfig = config?.threadline;
+            const relayEnabled = threadlineConfig?.relayEnabled === true
+              || process.env.THREADLINE_RELAY_ENABLED === 'true';
+            const relayUrl = threadlineConfig?.relayUrl
+              ?? process.env.THREADLINE_RELAY_URL
+              ?? 'wss://threadline-relay.fly.dev/v1/connect';
+            const visibility = threadlineConfig?.visibility ?? 'public';
+
+            // Try to check relay health
+            let relayHealth: Record<string, unknown> | null = null;
+            try {
+              const healthUrl = relayUrl.replace('wss://', 'https://').replace('ws://', 'http://').replace('/v1/connect', '/health');
+              const res = await fetch(healthUrl);
+              if (res.ok) relayHealth = await res.json() as Record<string, unknown>;
+            } catch { /* relay unreachable is fine */ }
+
+            return jsonResult({
+              enabled: relayEnabled,
+              relayUrl,
+              visibility,
+              capabilities: threadlineConfig?.capabilities ?? ['chat', 'threadline'],
+              relayHealth: relayHealth ? {
+                status: relayHealth.status,
+                registeredAgents: (relayHealth.registry as Record<string, unknown>)?.totalAgents ?? relayHealth.agents,
+                onlineAgents: relayHealth.connections,
+              } : 'unreachable',
+              note: relayEnabled
+                ? 'Relay is enabled. Your agent will connect on next server start.'
+                : 'Relay is disabled. Enable it to join the Threadline network.',
+            });
+          }
+
+          case 'enable': {
+            const configPath = this.resolveConfigPath();
+            const config = this.readConfig(configPath);
+            if (!config) {
+              return errorResult('Cannot find .instar/config.json — is this an Instar project?');
+            }
+
+            const visibility = args.visibility ?? 'public';
+
+            if (!config.threadline) {
+              config.threadline = {
+                relayEnabled: true,
+                visibility,
+              };
+            } else {
+              config.threadline.relayEnabled = true;
+              if (args.visibility) {
+                config.threadline.visibility = visibility;
+              }
+            }
+
+            this.writeConfig(configPath, config);
+
+            return jsonResult({
+              action: 'enabled',
+              visibility,
+              relayUrl: config.threadline.relayUrl ?? 'wss://threadline-relay.fly.dev/v1/connect',
+              note: 'Relay enabled in config. Restart the server to connect.',
+              userMessage: `I've enabled the Threadline relay. Your agent will connect to the network on next restart. ` +
+                `Visibility is set to "${visibility}" — ` +
+                (visibility === 'public'
+                  ? 'other agents can discover you by searching.'
+                  : 'only agents who know your ID can message you.'),
+            });
+          }
+
+          case 'disable': {
+            const configPath = this.resolveConfigPath();
+            const config = this.readConfig(configPath);
+            if (!config) {
+              return errorResult('Cannot find .instar/config.json — is this an Instar project?');
+            }
+
+            if (config.threadline) {
+              config.threadline.relayEnabled = false;
+            }
+
+            this.writeConfig(configPath, config);
+
+            return jsonResult({
+              action: 'disabled',
+              note: 'Relay disabled in config. Restart the server to disconnect.',
+              userMessage: 'I\'ve disabled the Threadline relay. Your agent will disconnect on next restart.',
+            });
+          }
+
+          default:
+            return errorResult(`Unknown action: ${args.action}`);
+        }
+      },
+    );
+  }
+
+  /** Resolve the .instar/config.json path from the state directory */
+  private resolveConfigPath(): string {
+    // deps.stateDir is the .instar directory itself
+    const stateDir = this.deps.stateDir;
+    if (stateDir) {
+      return path.join(stateDir, 'config.json');
+    }
+    // Fallback: look for INSTAR_STATE_DIR env
+    const envStateDir = process.env.INSTAR_STATE_DIR;
+    if (envStateDir) {
+      return path.join(envStateDir, 'config.json');
+    }
+    return path.join(process.cwd(), '.instar', 'config.json');
+  }
+
+  /** Read and parse config.json */
+  private readConfig(configPath: string): ParsedInstarConfig | null {
+    try {
+      if (fs.existsSync(configPath)) {
+        return JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      }
+    } catch { /* corrupted config */ }
+    return null;
+  }
+
+  /** Write config.json atomically */
+  private writeConfig(configPath: string, config: ParsedInstarConfig): void {
+    const tmpPath = `${configPath}.${process.pid}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(config, null, 2));
+    fs.renameSync(tmpPath, configPath);
   }
 
   // ── Registry Tools ──────────────────────────────────────────────────

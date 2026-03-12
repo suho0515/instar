@@ -1344,6 +1344,21 @@ export interface InstarConfig {
   responseReview?: ResponseReviewConfig;
   /** Input Guard — cross-topic injection defense */
   inputGuard?: InputGuardConfig;
+  /** Threadline relay — cloud relay connection for inter-agent communication */
+  threadline?: ThreadlineConfig;
+}
+
+// ── Threadline Relay ────────────────────────────────────────────────
+
+export interface ThreadlineConfig {
+  /** Whether cloud relay is enabled (default: false, opt-in) */
+  relayEnabled: boolean;
+  /** Cloud relay URL (default: 'wss://threadline-relay.fly.dev/v1/connect') */
+  relayUrl?: string;
+  /** Agent visibility on the relay network: 'public' (discoverable), 'unlisted' (direct only), 'private' (no relay) */
+  visibility?: 'public' | 'unlisted' | 'private';
+  /** Agent capabilities advertised on the network */
+  capabilities?: string[];
 }
 
 // ── Input Guard ─────────────────────────────────────────────────────

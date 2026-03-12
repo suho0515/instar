@@ -80,7 +80,7 @@ describe('Relay Auto-Connect Pipeline (Integration)', () => {
     spawnManager = createMockSpawnManager();
 
     // Create the gate (with null router — gate doesn't call router methods)
-    gate = new InboundMessageGate(trustManager, null as any, {});
+    gate = new InboundMessageGate(trustManager, null, {});
 
     // Create the router
     router = new ThreadlineRouter(
@@ -350,6 +350,85 @@ describe('Relay Auto-Connect Pipeline (Integration)', () => {
     });
   });
 
+  // ── Session Delivery ──────────────────────────────────────────
+
+  describe('relay message session delivery', () => {
+    it('builds correct bootstrap message from gate-passed decision', async () => {
+      trustManager.setTrustLevelByFingerprint(
+        'fp-session-test', 'verified', 'user-granted', 'test', 'SessionBot'
+      );
+
+      const msg = createRelayMessage({
+        from: 'fp-session-test',
+        content: 'Can you help me with a code review?',
+        threadId: 'thread-review-123',
+      });
+
+      const decision = await gate.evaluate(msg);
+      expect(decision.action).toBe('pass');
+
+      // Simulate what server.ts does with the gate-passed decision
+      const senderFingerprint = msg.from;
+      const senderName = senderFingerprint.slice(0, 8);
+      const trustLevel = decision.trustLevel ?? 'untrusted';
+      const textContent = typeof msg.content === 'string'
+        ? msg.content
+        : JSON.stringify(msg.content);
+
+      const relayTag = `[relay:${senderFingerprint.slice(0, 16)}]`;
+      const bootstrapMessage = [
+        `[Relay Message from Threadline Network]`,
+        `From: ${senderName} (fingerprint: ${senderFingerprint})`,
+        `Trust: ${trustLevel}`,
+        `Thread: ${msg.threadId}`,
+        ``,
+        `IMPORTANT: This message arrived via the Threadline relay from another AI agent.`,
+        `Use the threadline_send MCP tool to reply. Do NOT relay via Telegram.`,
+        `Trust level "${trustLevel}" determines what this agent can request.`,
+        ``,
+        `${relayTag} ${textContent}`,
+      ].join('\n');
+
+      // Verify the bootstrap message contains all required elements
+      expect(bootstrapMessage).toContain('Relay Message from Threadline Network');
+      expect(bootstrapMessage).toContain('fp-session-test');
+      expect(bootstrapMessage).toContain('verified');
+      expect(bootstrapMessage).toContain('thread-review-123');
+      expect(bootstrapMessage).toContain('threadline_send');
+      expect(bootstrapMessage).toContain('Can you help me with a code review?');
+      expect(bootstrapMessage).toContain('[relay:fp-session-test]');
+    });
+
+    it('handles object content in relay messages', async () => {
+      trustManager.setTrustLevelByFingerprint(
+        'fp-obj-test', 'trusted', 'user-granted', 'test', 'ObjBot'
+      );
+
+      const msg = createRelayMessage({
+        from: 'fp-obj-test',
+        content: { text: 'Hello with structured content', type: 'message' } as any,
+      });
+
+      const decision = await gate.evaluate(msg);
+      expect(decision.action).toBe('pass');
+
+      // Extract text from object content (simulating server.ts logic)
+      // Content may be string, PlaintextMessage ({content, type}), or raw object
+      const content = decision.message!.content;
+      let textContent: string;
+      if (typeof content === 'string') {
+        textContent = content;
+      } else if (typeof content === 'object' && content !== null) {
+        const c = content as Record<string, unknown>;
+        textContent = String(c.content ?? c.text ?? JSON.stringify(content));
+      } else {
+        textContent = JSON.stringify(content);
+      }
+
+      expect(textContent).toBe('Hello with structured content');
+    });
+  });
+
   // ── Persistence ────────────────────────────────────────────────
 
   describe('trust state persistence', () => {
@@ -362,7 +441,7 @@ describe('Relay Auto-Connect Pipeline (Integration)', () => {
 
       // Create new manager and gate from same state
       const newTrustManager = new AgentTrustManager({ stateDir: temp.dir });
-      const newGate = new InboundMessageGate(newTrustManager, null as any, {});
+      const newGate = new InboundMessageGate(newTrustManager, null, {});
 
       // Verify trust persisted
       const level = newTrustManager.getTrustLevelByFingerprint('fp-persist');

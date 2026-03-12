@@ -2,7 +2,7 @@
  * ThreadlineMCPServer — Unit Tests
  *
  * Tests the MCP server tool registration and behavior using mocked dependencies.
- * Covers all 6 tools:
+ * Covers all 7 tools:
  *   - threadline_discover
  *   - threadline_send
  *   - threadline_history
@@ -189,11 +189,11 @@ describe('ThreadlineMCPServer', () => {
   // ── Server Lifecycle ─────────────────────────────────────────────
 
   describe('lifecycle', () => {
-    it('creates server and lists 6 tools', async () => {
+    it('creates server and lists 7 tools', async () => {
       const { client, close } = await connectClientServer({}, deps);
       try {
         const tools = await client.listTools();
-        expect(tools.tools).toHaveLength(6);
+        expect(tools.tools).toHaveLength(7);
 
         const names = tools.tools.map(t => t.name).sort();
         expect(names).toEqual([
@@ -201,6 +201,7 @@ describe('ThreadlineMCPServer', () => {
           'threadline_delete',
           'threadline_discover',
           'threadline_history',
+          'threadline_relay',
           'threadline_send',
           'threadline_trust',
         ]);

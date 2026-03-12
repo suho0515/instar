@@ -2678,6 +2678,23 @@ Strip the \`[telegram:N]\` prefix before interpreting the message. Respond natur
 `);
   }
 
+  // Threadline Network section — always added so the agent knows about relay
+  if (!content.includes('Threadline Network')) {
+    additions.push(`
+## Threadline Network (Agent-to-Agent Communication)
+
+I can connect to the Threadline relay network for secure agent-to-agent communication.
+
+- **Off by default** — I only connect if you ask me to
+- **Encrypted** — TLS transport + Ed25519 E2E encryption between known agents
+- **Trust-gated** — I control who can message me via trust levels
+- **Conversational control** — ask me to "connect to the agent network" or "disconnect"
+
+MCP tools: \`threadline_discover\`, \`threadline_send\`, \`threadline_trust\`, \`threadline_relay\`
+Use \`threadline_relay explain\` for full details on privacy and security.
+`);
+  }
+
   if (additions.length > 0) {
     fs.appendFileSync(claudeMdPath, '\n' + additions.join('\n'));
   }

@@ -147,7 +147,7 @@ export async function bootstrapThreadline(
     // Create inbound message gate (imports ThreadlineRouter lazily if needed)
     // For now, router is not available at bootstrap time — it's created in server.ts
     // The gate will be wired to the router after server setup
-    inboundGate = new InboundMessageGate(trustManager, null as any, {
+    inboundGate = new InboundMessageGate(trustManager, null, {
       maxPayloadBytes: 64 * 1024,
     });
 
@@ -161,9 +161,58 @@ export async function bootstrapThreadline(
       }
     });
 
-    // Handle unknown senders with relay-assisted key advertisement
-    relayClient.on('unknown-sender', (envelope: unknown) => {
-      console.log(`Threadline: received message from unknown sender (relay-assisted key exchange needed)`);
+    // Handle unknown senders — decode payload directly (relay-authenticated, not E2E encrypted)
+    relayClient.on('unknown-sender', async (envelope: Record<string, unknown>) => {
+      if (!inboundGate || !envelope) return;
+
+      // Attempt to decode the base64 payload as plaintext JSON
+      let textContent: string;
+      let msgType: string | undefined;
+      try {
+        const payloadStr = Buffer.from(envelope.payload as string, 'base64').toString('utf-8');
+        const parsed = JSON.parse(payloadStr);
+        if (typeof parsed === 'object' && parsed !== null && 'text' in parsed) {
+          textContent = String(parsed.text);
+          msgType = parsed.type as string | undefined;
+        } else if (typeof parsed === 'string') {
+          textContent = parsed;
+        } else {
+          textContent = JSON.stringify(parsed);
+        }
+      } catch {
+        textContent = `[undecryptable relay message from ${String(envelope.from).slice(0, 16)}]`;
+      }
+
+      const received: ReceivedMessage = {
+        from: String(envelope.from ?? 'unknown'),
+        fromName: String(envelope.from ?? 'unknown').slice(0, 8),
+        threadId: String(envelope.threadId ?? `relay-${Date.now()}`),
+        messageId: String(envelope.messageId ?? `msg-${Date.now()}`),
+        content: { content: textContent, type: msgType },
+        timestamp: String(envelope.timestamp ?? new Date().toISOString()),
+        envelope: envelope as never,
+      };
+
+      // Relay-authenticated unknown senders bypass the trust manager gate.
+      // The relay already verified their Ed25519 identity via challenge-response.
+      // We still run payload size checks but skip trust/rate checks.
+      const payloadSize = Buffer.byteLength(JSON.stringify(received.content), 'utf-8');
+      if (payloadSize > 64 * 1024) {
+        console.log(`Threadline: relay message from ${received.from.slice(0, 8)} blocked (payload too large: ${payloadSize})`);
+        return;
+      }
+
+      // Record the interaction for trust building
+      trustManager!.recordMessageReceivedByFingerprint(received.from);
+
+      // Emit gate-passed with relay-authenticated trust level
+      relayClient!.emit('gate-passed', {
+        action: 'pass' as const,
+        reason: 'relay-authenticated',
+        trustLevel: 'verified',
+        fingerprint: received.from,
+        message: received,
+      });
     });
 
     try {

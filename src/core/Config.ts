@@ -317,6 +317,7 @@ export function loadConfig(projectDir?: string): InstarConfig {
     updates: fileConfig.updates,
     publishing: fileConfig.publishing,
     tunnel: fileConfig.tunnel,
+    threadline: fileConfig.threadline,
     agentType: resolvedProjectDir.startsWith(standaloneAgentsDir())
       ? 'standalone'
       : (fileConfig as Record<string, unknown>).agentType as AgentType | undefined || 'project-bound',

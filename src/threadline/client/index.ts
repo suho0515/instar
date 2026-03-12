@@ -17,3 +17,6 @@ export type {
   KnownAgent,
   ReceivedMessage,
 } from './ThreadlineClient.js';
+
+export { RegistryRestClient } from './RegistryRestClient.js';
+export type { RegistryRestClientConfig } from './RegistryRestClient.js';

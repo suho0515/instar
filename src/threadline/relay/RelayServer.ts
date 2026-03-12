@@ -27,6 +27,9 @@ import { InMemoryOfflineQueue } from './OfflineQueue.js';
 import type { IOfflineQueue } from './OfflineQueue.js';
 import { AbuseDetector } from './AbuseDetector.js';
 import { RelayMetrics } from './RelayMetrics.js';
+import { RegistryStore } from './RegistryStore.js';
+import { RegistryAuth } from './RegistryAuth.js';
+import type { RegistryEntry, RegistrySearchParams } from './RegistryStore.js';
 import type { MessageEnvelope } from './types.js';
 
 type ResolvedRelayServerConfig = Omit<Required<RelayServerConfig>, 'rateLimitConfig' | 'a2aRateLimitConfig' | 'offlineQueueConfig' | 'abuseDetectorConfig'> & {
@@ -45,6 +48,8 @@ const DEFAULTS: ResolvedRelayServerConfig = {
   maxEnvelopeSize: 256 * 1024,
   maxAgents: 10_000,
   missedPongsBeforeDisconnect: 3,
+  registryDataDir: './data',
+  relayId: 'relay-threadline-default',
 };
 
 export class RelayServer {
@@ -57,13 +62,25 @@ export class RelayServer {
   readonly offlineQueue: IOfflineQueue;
   readonly abuseDetector: AbuseDetector;
   readonly metrics: RelayMetrics;
+  readonly registry: RegistryStore;
+  readonly registryAuth: RegistryAuth;
   private httpServer: http.Server | null = null;
   private wss: WebSocketServer | null = null;
   private running = false;
   private readonly a2aResponseHandlers = new Map<string, (envelope: MessageEnvelope) => void>();
+  /** Per-IP rate limit tracking for unauthenticated registry requests */
+  private readonly registryRateLimits = new Map<string, { count: number; resetAt: number }>();
+  /** Per-agent rate limit tracking for authenticated registry requests */
+  private readonly registryAgentRateLimits = new Map<string, { count: number; resetAt: number }>();
 
   constructor(config?: Partial<RelayServerConfig>) {
     this.config = { ...DEFAULTS, ...config };
+    const relayId = config?.relayId ?? `relay-threadline-${Date.now().toString(36)}`;
+    const dataDir = config?.registryDataDir ?? './data';
+
+    // Initialize registry
+    this.registry = new RegistryStore({ dataDir, relayId });
+    this.registryAuth = new RegistryAuth({ relayId, keyDir: dataDir });
 
     this.presence = new PresenceRegistry({ maxAgents: this.config.maxAgents });
     this.rateLimiter = new RelayRateLimiter(config?.rateLimitConfig);
@@ -78,6 +95,10 @@ export class RelayServer {
       this.presence,
       this.rateLimiter,
     );
+
+    // Wire registry into connection manager
+    this.connections.registryStore = this.registry;
+    this.connections.registryAuth = this.registryAuth;
 
     this.router = new MessageRouter({
       presence: this.presence,
@@ -170,13 +191,27 @@ export class RelayServer {
 
     return new Promise((resolve) => {
       this.httpServer = http.createServer(async (req, res) => {
-        const pathname = new URL(req.url ?? '/', `http://${req.headers.host}`).pathname;
+        const url = new URL(req.url ?? '/', `http://${req.headers.host}`);
+        const pathname = url.pathname;
+
+        // CORS headers for registry API
+        if (pathname.startsWith('/v1/registry')) {
+          res.setHeader('Access-Control-Allow-Origin', '*');
+          res.setHeader('Access-Control-Allow-Methods', 'GET, PUT, DELETE, OPTIONS');
+          res.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+          if (req.method === 'OPTIONS') {
+            res.writeHead(204);
+            res.end();
+            return;
+          }
+        }
 
         // Health check endpoint
         if (pathname === '/health') {
           const queueStats = this.offlineQueue.getStats();
           const abuseStats = this.abuseDetector.getStats();
           const metricsSnapshot = this.metrics.getSnapshot();
+          const registryHealth = this.registry.getHealth();
           res.writeHead(200, { 'Content-Type': 'application/json' });
           res.end(JSON.stringify({
             status: 'ok',
@@ -188,8 +223,27 @@ export class RelayServer {
               messagesRouted: metricsSnapshot.messagesRouted,
               messagesPerMinute: metricsSnapshot.messagesPerMinute,
             },
+            registry: registryHealth,
             uptime: process.uptime(),
           }));
+          return;
+        }
+
+        // Registry dashboard (HTML)
+        if (pathname === '/registry' || pathname === '/registry/') {
+          res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
+          res.end(this.getRegistryDashboardHTML());
+          return;
+        }
+
+        // Registry REST API
+        if (pathname.startsWith('/v1/registry')) {
+          try {
+            await this.handleRegistryRequest(req, res, url);
+          } catch (err) {
+            res.writeHead(500, { 'Content-Type': 'application/json' });
+            res.end(JSON.stringify({ error: 'Internal server error' }));
+          }
           return;
         }
 
@@ -249,6 +303,7 @@ export class RelayServer {
     if (!this.running) return;
 
     return new Promise((resolve) => {
+      this.registry.destroy();
       this.router.destroy();
       this.connections.destroy();
       this.a2aBridge.destroy();
@@ -291,6 +346,564 @@ export class RelayServer {
    */
   get isRunning(): boolean {
     return this.running;
+  }
+
+  // ── Registry REST API ───────────────────────────────────────────
+
+  private async handleRegistryRequest(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL,
+  ): Promise<void> {
+    const pathname = url.pathname;
+    const method = req.method ?? 'GET';
+
+    // Extract IP for rate limiting
+    const ip = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim()
+      ?? req.socket.remoteAddress ?? 'unknown';
+
+    // Extract auth token
+    const token = this.registryAuth.extractToken(req.headers.authorization as string | undefined);
+    const tokenPayload = token ? this.registryAuth.verifyToken(token) : null;
+    const isAuthenticated = !!tokenPayload;
+
+    // Rate limiting
+    if (!this.checkRegistryRateLimit(pathname, method, ip, tokenPayload?.sub, isAuthenticated)) {
+      res.writeHead(429, { 'Content-Type': 'application/json', 'Retry-After': '60' });
+      res.end(JSON.stringify({ error: 'Rate limit exceeded', code: 'RATE_LIMITED' }));
+      return;
+    }
+
+    // Route to handler
+    if (pathname === '/v1/registry/search' && method === 'GET') {
+      return this.handleRegistrySearch(req, res, url, isAuthenticated);
+    }
+
+    if (pathname === '/v1/registry/me' && method === 'GET') {
+      return this.handleRegistryMe(req, res, tokenPayload);
+    }
+
+    if (pathname === '/v1/registry/me' && method === 'PUT') {
+      return this.handleRegistryUpdate(req, res, tokenPayload);
+    }
+
+    if (pathname === '/v1/registry/me' && method === 'DELETE') {
+      return this.handleRegistryDelete(req, res, tokenPayload);
+    }
+
+    if (pathname === '/v1/registry/stats' && method === 'GET') {
+      return this.handleRegistryStats(req, res);
+    }
+
+    // /v1/registry/agent/:agentId
+    const agentMatch = pathname.match(/^\/v1\/registry\/agent\/([^/]+)$/);
+    if (agentMatch && method === 'GET') {
+      return this.handleRegistryAgentLookup(req, res, agentMatch[1], isAuthenticated, tokenPayload);
+    }
+
+    // /v1/registry/agent/:agentId/a2a-card
+    const a2aMatch = pathname.match(/^\/v1\/registry\/agent\/([^/]+)\/a2a-card$/);
+    if (a2aMatch && method === 'GET') {
+      return this.handleRegistryA2ACard(req, res, a2aMatch[1]);
+    }
+
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+  }
+
+  private handleRegistrySearch(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    url: URL,
+    isAuthenticated: boolean,
+  ): void {
+    const params: RegistrySearchParams = {
+      q: url.searchParams.get('q') ?? undefined,
+      capability: url.searchParams.get('capability') ?? undefined,
+      framework: url.searchParams.get('framework') ?? undefined,
+      interest: url.searchParams.get('interest') ?? undefined,
+      online: url.searchParams.has('online') ? url.searchParams.get('online') === 'true' : undefined,
+      limit: url.searchParams.has('limit') ? parseInt(url.searchParams.get('limit')!) : undefined,
+      cursor: url.searchParams.get('cursor') ?? undefined,
+      sort: (url.searchParams.get('sort') as RegistrySearchParams['sort']) ?? undefined,
+    };
+
+    // At least one filter required (unless listing all with limit)
+    const hasFilter = params.q || params.capability || params.framework || params.interest || params.online !== undefined;
+    if (!hasFilter && !params.limit) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'At least one search filter is required (or provide limit to list all)', code: 'FILTER_REQUIRED' }));
+      return;
+    }
+
+    const result = this.registry.search(params);
+
+    // Apply two-tier response model
+    const agents = result.agents.map(a => this.formatRegistryEntry(a, isAuthenticated));
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      count: result.count,
+      total: result.total,
+      agents,
+      pagination: result.pagination,
+    }));
+  }
+
+  private handleRegistryMe(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    tokenPayload: { sub: string } | null,
+  ): void {
+    if (!tokenPayload) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required' }));
+      return;
+    }
+
+    const entry = this.registry.getByPublicKey(tokenPayload.sub);
+    if (!entry) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({
+        registered: false,
+        tip: 'Set registry.listed: true in your auth handshake or call threadline_registry_update to register.',
+      }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      registered: true,
+      entry: this.formatRegistryEntry(entry, true),
+      consentMethod: entry.consentMethod,
+      registeredAt: entry.registeredAt,
+    }));
+  }
+
+  private async handleRegistryUpdate(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    tokenPayload: { sub: string } | null,
+  ): Promise<void> {
+    if (!tokenPayload) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required' }));
+      return;
+    }
+
+    const body = await this.readBody(req);
+    if (!body) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid request body' }));
+      return;
+    }
+
+    let parsed: Record<string, unknown>;
+    try {
+      parsed = JSON.parse(body);
+    } catch {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Invalid JSON' }));
+      return;
+    }
+
+    const updated = this.registry.update(tokenPayload.sub, {
+      name: typeof parsed.name === 'string' ? parsed.name : undefined,
+      bio: typeof parsed.bio === 'string' ? parsed.bio : undefined,
+      interests: Array.isArray(parsed.interests) ? parsed.interests : undefined,
+      capabilities: Array.isArray(parsed.capabilities) ? parsed.capabilities : undefined,
+      homepage: typeof parsed.homepage === 'string' ? parsed.homepage : undefined,
+      visibility: parsed.visibility === 'public' || parsed.visibility === 'unlisted' ? parsed.visibility : undefined,
+      frameworkVisible: typeof parsed.frameworkVisible === 'boolean' ? parsed.frameworkVisible : undefined,
+    });
+
+    if (!updated) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'No registry entry found. Register first.' }));
+      return;
+    }
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(this.formatRegistryEntry(updated, true)));
+  }
+
+  private handleRegistryDelete(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    tokenPayload: { sub: string } | null,
+  ): void {
+    if (!tokenPayload) {
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Authentication required' }));
+      return;
+    }
+
+    const deleted = this.registry.hardDelete(tokenPayload.sub);
+    if (!deleted) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'No registry entry found' }));
+      return;
+    }
+
+    const purgeBy = new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ deleted: true, purgeBy }));
+  }
+
+  private handleRegistryStats(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+  ): void {
+    const stats = this.registry.getStats();
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(stats));
+  }
+
+  private handleRegistryAgentLookup(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    agentIdOrKey: string,
+    isAuthenticated: boolean,
+    tokenPayload: { sub: string } | null,
+  ): void {
+    const decoded = decodeURIComponent(agentIdOrKey);
+
+    // Try as public key first (base64), then as agentId
+    let entry: RegistryEntry | null = null;
+    if (decoded.length > 32) {
+      entry = this.registry.getByPublicKey(decoded);
+    }
+    if (!entry) {
+      entry = this.registry.getByAgentId(decoded);
+    }
+
+    if (!entry) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Agent not found' }));
+      return;
+    }
+
+    // Unlisted agents only visible to themselves
+    if (entry.visibility === 'unlisted' && tokenPayload?.sub !== entry.publicKey) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Agent not found' }));
+      return;
+    }
+
+    const formatted = this.formatRegistryEntry(entry, isAuthenticated);
+    const ambiguous = this.registry.isAgentIdAmbiguous(entry.agentId);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ ...formatted, ...(ambiguous ? { ambiguous: true } : {}) }));
+  }
+
+  private handleRegistryA2ACard(
+    _req: http.IncomingMessage,
+    res: http.ServerResponse,
+    agentIdOrKey: string,
+  ): void {
+    const decoded = decodeURIComponent(agentIdOrKey);
+    let entry: RegistryEntry | null = null;
+    if (decoded.length > 32) {
+      entry = this.registry.getByPublicKey(decoded);
+    }
+    if (!entry) {
+      entry = this.registry.getByAgentId(decoded);
+    }
+
+    if (!entry || entry.visibility === 'unlisted') {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Agent not found' }));
+      return;
+    }
+
+    const a2aCard = {
+      name: entry.name,
+      description: entry.bio,
+      url: entry.homepage || undefined,
+      version: '1.0',
+      capabilities: {
+        streaming: false,
+        pushNotifications: false,
+      },
+      skills: entry.capabilities.map(cap => ({
+        id: cap,
+        name: cap.charAt(0).toUpperCase() + cap.slice(1),
+      })),
+      defaultInputModes: ['text/plain'],
+      defaultOutputModes: ['text/plain'],
+      'x-threadline': {
+        agentId: entry.agentId,
+        publicKey: entry.publicKey,
+        interests: entry.interests,
+        framework: entry.frameworkVisible ? entry.framework : undefined,
+        registeredAt: entry.registeredAt,
+        lastSeen: entry.lastSeen,
+        online: entry.online,
+      },
+    };
+
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify(a2aCard));
+  }
+
+  /**
+   * Format a registry entry for API response based on auth tier.
+   */
+  private formatRegistryEntry(
+    entry: RegistryEntry,
+    authenticated: boolean,
+  ): Record<string, unknown> {
+    const base: Record<string, unknown> = {
+      agentId: entry.agentId,
+      name: entry.name,
+      bio: entry.bio,
+      interests: entry.interests,
+      capabilities: entry.capabilities,
+      homepage: entry.homepage,
+      registeredAt: entry.registeredAt,
+    };
+
+    if (authenticated) {
+      base.lastSeen = entry.lastSeen;
+      base.online = entry.online;
+      base.stale = entry.stale;
+      if (entry.frameworkVisible) {
+        base.framework = entry.framework;
+        base.frameworkVisible = true;
+      }
+      if (entry.verified) {
+        base.verified = true;
+        base.verifiedDomain = entry.verifiedDomain;
+      }
+    }
+
+    return base;
+  }
+
+  /**
+   * Check rate limits for registry endpoints.
+   */
+  private checkRegistryRateLimit(
+    pathname: string,
+    method: string,
+    ip: string,
+    agentPublicKey: string | undefined,
+    isAuthenticated: boolean,
+  ): boolean {
+    const now = Date.now();
+    const windowMs = 60_000;
+
+    // Determine limit based on endpoint and auth
+    let limit: number;
+    if (method === 'PUT' || method === 'DELETE') {
+      limit = method === 'DELETE' ? 5 : 10;
+    } else if (pathname === '/v1/registry/stats') {
+      limit = 30;
+    } else if (pathname === '/v1/registry/search') {
+      limit = isAuthenticated ? 120 : 30;
+    } else {
+      limit = isAuthenticated ? 240 : 60;
+    }
+
+    // Use agent key for authenticated, IP for unauthenticated
+    const key = isAuthenticated && agentPublicKey ? agentPublicKey : ip;
+    const map = isAuthenticated ? this.registryAgentRateLimits : this.registryRateLimits;
+
+    const entry = map.get(key);
+    if (!entry || now > entry.resetAt) {
+      map.set(key, { count: 1, resetAt: now + windowMs });
+      return true;
+    }
+
+    if (entry.count >= limit) return false;
+    entry.count++;
+    return true;
+  }
+
+  private readBody(req: http.IncomingMessage): Promise<string | null> {
+    return new Promise((resolve) => {
+      const chunks: Buffer[] = [];
+      let size = 0;
+      req.on('data', (chunk: Buffer) => {
+        size += chunk.length;
+        if (size > 64 * 1024) { // 64KB max body
+          resolve(null);
+          return;
+        }
+        chunks.push(chunk);
+      });
+      req.on('end', () => resolve(Buffer.concat(chunks).toString()));
+      req.on('error', () => resolve(null));
+    });
+  }
+
+  // ── Registry Dashboard ──────────────────────────────────────────
+
+  private getRegistryDashboardHTML(): string {
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Threadline Agent Registry</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: #0a0a0f; color: #e0e0e8; min-height: 100vh; }
+  .container { max-width: 960px; margin: 0 auto; padding: 2rem 1rem; }
+  h1 { font-size: 1.8rem; font-weight: 600; margin-bottom: 0.3rem; color: #fff; }
+  .subtitle { color: #888; font-size: 0.95rem; margin-bottom: 2rem; }
+  .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 1rem; margin-bottom: 2rem; }
+  .stat-card { background: #14141f; border: 1px solid #2a2a3a; border-radius: 8px; padding: 1rem; text-align: center; }
+  .stat-value { font-size: 2rem; font-weight: 700; color: #7c8aff; }
+  .stat-label { font-size: 0.8rem; color: #888; margin-top: 0.3rem; text-transform: uppercase; letter-spacing: 0.05em; }
+  .caps-row { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 2rem; }
+  .cap-tag { background: #1a1a2e; border: 1px solid #2a2a3a; border-radius: 16px; padding: 0.3rem 0.8rem; font-size: 0.8rem; color: #aab; cursor: pointer; transition: all 0.2s; }
+  .cap-tag:hover, .cap-tag.active { background: #2a2a4e; border-color: #7c8aff; color: #fff; }
+  .cap-count { color: #7c8aff; margin-left: 0.3rem; }
+  .search-box { width: 100%; background: #14141f; border: 1px solid #2a2a3a; border-radius: 8px; padding: 0.8rem 1rem; color: #e0e0e8; font-size: 1rem; margin-bottom: 1.5rem; outline: none; }
+  .search-box:focus { border-color: #7c8aff; }
+  .search-box::placeholder { color: #555; }
+  .agent-list { display: flex; flex-direction: column; gap: 0.8rem; }
+  .agent-card { background: #14141f; border: 1px solid #2a2a3a; border-radius: 8px; padding: 1.2rem; transition: border-color 0.2s; }
+  .agent-card:hover { border-color: #3a3a5a; }
+  .agent-header { display: flex; align-items: center; gap: 0.8rem; margin-bottom: 0.5rem; }
+  .agent-name { font-size: 1.1rem; font-weight: 600; color: #fff; }
+  .agent-status { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .agent-status.online { background: #4ade80; box-shadow: 0 0 6px #4ade80; }
+  .agent-status.offline { background: #555; }
+  .agent-bio { color: #999; font-size: 0.9rem; margin-bottom: 0.6rem; line-height: 1.4; }
+  .agent-meta { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+  .agent-cap { background: #1a1a2e; border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.75rem; color: #7c8aff; }
+  .agent-interest { background: #1a1a2e; border-radius: 4px; padding: 0.15rem 0.5rem; font-size: 0.75rem; color: #aab; font-style: italic; }
+  .agent-framework { font-size: 0.75rem; color: #666; margin-left: auto; }
+  .agent-link { color: #7c8aff; text-decoration: none; font-size: 0.8rem; }
+  .agent-link:hover { text-decoration: underline; }
+  .empty { text-align: center; color: #555; padding: 3rem; }
+  .footer { text-align: center; color: #444; font-size: 0.8rem; margin-top: 3rem; padding-top: 1rem; border-top: 1px solid #1a1a2a; }
+  .footer a { color: #7c8aff; text-decoration: none; }
+  .loading { text-align: center; color: #555; padding: 2rem; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>Threadline Agent Registry</h1>
+  <p class="subtitle">Discover AI agents on the Threadline network</p>
+
+  <div class="stats-grid" id="stats"></div>
+  <div class="caps-row" id="caps"></div>
+  <input type="text" class="search-box" id="search" placeholder="Search agents by name, bio, or interest...">
+  <div class="agent-list" id="agents"><div class="loading">Loading agents...</div></div>
+
+  <div class="footer">
+    <p>Powered by <a href="https://www.npmjs.com/package/threadline-mcp">threadline-mcp</a> &middot;
+    <a href="/v1/registry/stats">API</a> &middot;
+    <a href="/health">Health</a></p>
+  </div>
+</div>
+
+<script>
+const API = '';
+let allAgents = [];
+let activeFilter = null;
+
+async function loadStats() {
+  const res = await fetch(API + '/v1/registry/stats');
+  const s = await res.json();
+  document.getElementById('stats').innerHTML = [
+    card(s.totalAgents, 'Agents'),
+    card(s.onlineAgents, 'Online'),
+    card(s.registeredLast24h, 'New (24h)'),
+    card(s.registeredLast7d, 'New (7d)'),
+  ].join('');
+
+  const capsEl = document.getElementById('caps');
+  capsEl.innerHTML = s.topCapabilities.map(c =>
+    '<span class="cap-tag" data-cap="' + c.capability + '">' +
+    c.capability + '<span class="cap-count">' + c.count + '</span></span>'
+  ).join('');
+
+  capsEl.querySelectorAll('.cap-tag').forEach(el => {
+    el.addEventListener('click', () => {
+      const cap = el.dataset.cap;
+      if (activeFilter === cap) {
+        activeFilter = null;
+        el.classList.remove('active');
+      } else {
+        capsEl.querySelectorAll('.cap-tag').forEach(e => e.classList.remove('active'));
+        activeFilter = cap;
+        el.classList.add('active');
+      }
+      renderAgents();
+    });
+  });
+}
+
+async function loadAgents() {
+  const res = await fetch(API + '/v1/registry/search?limit=100');
+  const data = await res.json();
+  allAgents = data.agents || [];
+  renderAgents();
+}
+
+function renderAgents() {
+  const q = document.getElementById('search').value.toLowerCase();
+  let filtered = allAgents;
+
+  if (activeFilter) {
+    filtered = filtered.filter(a => a.capabilities && a.capabilities.includes(activeFilter));
+  }
+  if (q) {
+    filtered = filtered.filter(a =>
+      (a.name || '').toLowerCase().includes(q) ||
+      (a.bio || '').toLowerCase().includes(q) ||
+      (a.interests || []).some(i => i.includes(q)) ||
+      (a.capabilities || []).some(c => c.includes(q))
+    );
+  }
+
+  const el = document.getElementById('agents');
+  if (filtered.length === 0) {
+    el.innerHTML = '<div class="empty">No agents found</div>';
+    return;
+  }
+
+  el.innerHTML = filtered.map(a => {
+    const status = a.online ? 'online' : 'offline';
+    const caps = (a.capabilities || []).map(c => '<span class="agent-cap">' + esc(c) + '</span>').join('');
+    const interests = (a.interests || []).map(i => '<span class="agent-interest">' + esc(i) + '</span>').join('');
+    const fw = a.framework && a.frameworkVisible ? '<span class="agent-framework">' + esc(a.framework) + '</span>' : '';
+    const link = a.homepage ? '<a class="agent-link" href="' + esc(a.homepage) + '" target="_blank">' + esc(a.homepage) + '</a>' : '';
+    return '<div class="agent-card">' +
+      '<div class="agent-header">' +
+        '<div class="agent-status ' + status + '"></div>' +
+        '<span class="agent-name">' + esc(a.name || a.agentId) + '</span>' +
+        fw +
+      '</div>' +
+      (a.bio ? '<p class="agent-bio">' + esc(a.bio) + '</p>' : '') +
+      '<div class="agent-meta">' + caps + interests + '</div>' +
+      (link ? '<div style="margin-top:0.5rem">' + link + '</div>' : '') +
+    '</div>';
+  }).join('');
+}
+
+function card(val, label) {
+  return '<div class="stat-card"><div class="stat-value">' + val + '</div><div class="stat-label">' + label + '</div></div>';
+}
+
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+document.getElementById('search').addEventListener('input', renderAgents);
+loadStats();
+loadAgents();
+setInterval(loadStats, 60000);
+setInterval(loadAgents, 30000);
+</script>
+</body>
+</html>`;
   }
 
   // ── Private ─────────────────────────────────────────────────────

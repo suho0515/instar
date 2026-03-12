@@ -105,7 +105,7 @@ class PerSenderRateLimiter {
 
 export class InboundMessageGate {
   private readonly trustManager: AgentTrustManager;
-  private readonly router: ThreadlineRouter;
+  private router: ThreadlineRouter | null;
   private readonly config: InboundGateConfig;
   private readonly rateLimiter = new PerSenderRateLimiter();
   private readonly maxPayloadBytes: number;
@@ -123,7 +123,7 @@ export class InboundMessageGate {
 
   constructor(
     trustManager: AgentTrustManager,
-    router: ThreadlineRouter,
+    router: ThreadlineRouter | null,
     config: InboundGateConfig = {},
   ) {
     this.trustManager = trustManager;
@@ -134,6 +134,15 @@ export class InboundMessageGate {
     // Periodic cleanup of rate limiter state (every 30 minutes)
     this.cleanupTimer = setInterval(() => this.rateLimiter.cleanup(), 30 * 60 * 1000);
     if (this.cleanupTimer.unref) this.cleanupTimer.unref();
+  }
+
+  /**
+   * Late-bind the router after server initialization.
+   * The router isn't available at bootstrap time — it's created in server.ts
+   * after the Threadline bootstrap completes.
+   */
+  setRouter(router: ThreadlineRouter): void {
+    this.router = router;
   }
 
   /**
