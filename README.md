@@ -37,8 +37,6 @@ One command. Guided setup. Talking to your agent from Telegram within minutes.
 
 Instar turns Claude Code from a powerful CLI tool into a **coherent, autonomous partner**. Persistent identity, memory that survives every restart, job scheduling, two-way Telegram messaging, and the infrastructure to evolve.
 
-Named after the developmental stages between molts in arthropods -- each instar is more developed than the last.
-
 ## Quick Start
 
 Three steps to a running agent:
@@ -205,9 +203,9 @@ But agents created with Instar are not Dawn. Every agent's story begins at its o
 
 ## Contributing
 
-We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines on getting started, development setup, and submitting pull requests.
+Instar is **open source evolved** -- the primary development loop is agent-driven. Run an agent, encounter friction, send feedback, and that feedback shapes what gets built next. Traditional PRs are welcome too.
 
-Check out our [good first issues](https://github.com/SageMindAI/instar/labels/good%20first%20issue) for approachable entry points.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the full story.
 
 ## License
 
