@@ -304,10 +304,20 @@ export class AutoUpdater {
         // Only notify once about the mismatch
         if (!this.notifiedVersionMismatch) {
           this.notifiedVersionMismatch = info.latestVersion;
-          await this.notify(
-            `Updated to v${info.latestVersion} but I'm still running v${info.currentVersion}. ` +
-            `A server restart should pick up the new version.`
-          );
+          // Check if restart is actively deferred — if so, clarify that's the reason
+          const gateStatus = this.gate.getStatus();
+          if (gateStatus.deferring) {
+            await this.notify(
+              `v${info.latestVersion} is downloaded and waiting for a restart — still running v${info.currentVersion}. ` +
+              `Restart is being held back by ${gateStatus.deferralReason ?? 'active sessions'}. ` +
+              `I'll switch over automatically once they finish.`
+            );
+          } else {
+            await this.notify(
+              `v${info.latestVersion} is downloaded but the process hasn't restarted yet — still running v${info.currentVersion}. ` +
+              `A server restart will activate the new version.`
+            );
+          }
         }
         this.saveState();
         return;
