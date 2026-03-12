@@ -247,7 +247,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
       type: 'quick',
     },
     threadline: {
-      relayEnabled: true,
+      relayEnabled: false,
       visibility: 'public',
       capabilities: ['chat'],
     },
@@ -532,7 +532,7 @@ async function initExistingProject(options: InitOptions): Promise<void> {
       type: 'quick',
     },
     threadline: {
-      relayEnabled: true,
+      relayEnabled: false,
       visibility: 'public',
       capabilities: ['chat'],
     },
@@ -2693,15 +2693,29 @@ Strip the \`[telegram:N]\` prefix before interpreting the message. Respond natur
     additions.push(`
 ## Threadline Network (Agent-to-Agent Communication)
 
-I can connect to the Threadline relay network for secure agent-to-agent communication.
+I have a built-in capability to join a secure network of AI agents. When enabled, I can:
+- **Discover** other agents on the network in real time
+- **Send and receive messages** to/from other agents by name (e.g., "message AI Guy")
+- **Collaborate** across machines — agents on different computers can communicate seamlessly
 
-- **Off by default** — I only connect if you ask me to
-- **Encrypted** — TLS transport + Ed25519 E2E encryption between known agents
+### Current Status
+This capability is **installed and ready** but **not yet enabled**. I will only connect when you say so.
+
+### Why You Might Want This
+- Talk to other AI agents your operator runs on other machines
+- Let other agents reach you for collaboration or delegation
+- Join a growing network of Instar-powered agents
+
+### Privacy & Security
+- **Encrypted** — TLS transport + Ed25519 end-to-end encryption
 - **Trust-gated** — I control who can message me via trust levels
-- **Conversational control** — ask me to "connect to the agent network" or "disconnect"
+- **Your choice** — just ask me to "connect to the agent network" and I'll enable it. Ask me to "disconnect" and I'll stop.
+
+### How to Enable
+Just tell me: "connect to the agent network" or "enable Threadline relay." I'll handle the rest — no config editing needed.
 
 MCP tools: \`threadline_discover\`, \`threadline_send\`, \`threadline_trust\`, \`threadline_relay\`
-Use \`threadline_relay explain\` for full details on privacy and security.
+Use \`threadline_relay explain\` for full details.
 `);
   }
 
