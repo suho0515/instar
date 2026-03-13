@@ -1131,13 +1131,21 @@ async function ensureSqliteBindings(): Promise<boolean> {
 
     console.log(pc.yellow('  better-sqlite3: native binding mismatch detected — auto-rebuilding for current Node.js version...'));
     try {
-      const globalInstarDir = execSync('npm root -g', { encoding: 'utf-8', timeout: 10000 }).trim() + '/instar';
-      execSync('npm rebuild better-sqlite3', {
-        cwd: globalInstarDir,
-        encoding: 'utf-8',
-        timeout: 60000,
-        stdio: 'pipe',
-      });
+      // Use the bundled fix script which downloads correct prebuilds from GitHub.
+      // This is more reliable than `npm rebuild` which fails with pnpm/asdf installs.
+      const fixScript = new URL('../../../scripts/fix-better-sqlite3.cjs', import.meta.url).pathname;
+      if (fs.existsSync(fixScript)) {
+        execFileSync(process.execPath, [fixScript], { encoding: 'utf-8', timeout: 60000, stdio: 'pipe' });
+      } else {
+        // Fallback: npm rebuild (may fail in pnpm/asdf environments)
+        const globalInstarDir = execSync('npm root -g', { encoding: 'utf-8', timeout: 10000 }).trim() + '/instar';
+        execSync('npm rebuild better-sqlite3', {
+          cwd: globalInstarDir,
+          encoding: 'utf-8',
+          timeout: 60000,
+          stdio: 'pipe',
+        });
+      }
       console.log(pc.green('  better-sqlite3: rebuilt successfully — restarting to apply (ESM module cache must be cleared).'));
       return true; // Restart needed — ESM cache holds the stale failure
     } catch (rebuildErr) {
@@ -1902,13 +1910,18 @@ export async function startServer(options: StartOptions): Promise<void> {
           if (!isBindingError) throw openErr;
 
           console.log(pc.yellow('  TopicMemory: native binding mismatch — auto-rebuilding better-sqlite3...'));
-          const globalInstarDir = execSync('npm root -g', { encoding: 'utf-8', timeout: 10000 }).trim() + '/instar';
-          execSync('npm rebuild better-sqlite3', {
-            cwd: globalInstarDir,
-            encoding: 'utf-8',
-            timeout: 60000,
-            stdio: 'pipe',
-          });
+          const fixScript = new URL('../../../scripts/fix-better-sqlite3.cjs', import.meta.url).pathname;
+          if (fs.existsSync(fixScript)) {
+            execFileSync(process.execPath, [fixScript], { encoding: 'utf-8', timeout: 60000, stdio: 'pipe' });
+          } else {
+            const globalInstarDir = execSync('npm root -g', { encoding: 'utf-8', timeout: 10000 }).trim() + '/instar';
+            execSync('npm rebuild better-sqlite3', {
+              cwd: globalInstarDir,
+              encoding: 'utf-8',
+              timeout: 60000,
+              stdio: 'pipe',
+            });
+          }
           console.log(pc.green('  TopicMemory: better-sqlite3 rebuilt successfully, retrying...'));
 
           topicMemory = new TopicMemory(config.stateDir);

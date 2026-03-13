@@ -65,6 +65,7 @@
     "src/templates",
     "src/data",
     "playbook-scripts",
+    "scripts",
     ".claude/skills/setup-wizard",
     ".claude/skills/secret-setup",
     ".claude/hooks",
