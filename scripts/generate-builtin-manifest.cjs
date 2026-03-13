@@ -12,8 +12,20 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { execSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
+
+// Guard: warn if working tree is dirty (manifest won't match committed source in CI)
+try {
+  const status = execSync('git status --porcelain -- src/', { cwd: ROOT, encoding: 'utf-8' }).trim();
+  if (status) {
+    console.warn('\n⚠️  WARNING: Working tree has uncommitted changes in src/.');
+    console.warn('   The generated manifest may not match committed source.');
+    console.warn('   CI test "is up-to-date with current source" will fail if you commit this.');
+    console.warn('   Stash WIP first: git stash push -u\n');
+  }
+} catch { /* not a git repo or git not available — skip check */ }
 
 function sha256(content) {
   return crypto.createHash('sha256').update(content).digest('hex');

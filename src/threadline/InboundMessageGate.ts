@@ -1,7 +1,7 @@
 /**
  * InboundMessageGate — Pre-filter for relay inbound messages.
  *
- * Gates on sender identity, trust level, rate limits, and payload size.
+ * Gates on sender identity, trust level, rate limits, payload size, and replay.
  * Does NOT determine delivery mode — that's AutonomyGate's job.
  *
  * Part of PROP-relay-auto-connect.
@@ -40,6 +40,9 @@ const DEFAULT_RATE_LIMITS: Record<AgentTrustLevel, { probesPerHour: number; mess
 };
 
 const MAX_PAYLOAD_BYTES = 64 * 1024; // 64KB
+
+/** Seen messageId TTL for replay protection (10 minutes) */
+const SEEN_MESSAGE_TTL_MS = 10 * 60 * 1000;
 
 // ── Rate Limiter (per-sender sliding window) ─────────────────────────
 
@@ -111,6 +114,9 @@ export class InboundMessageGate {
   private readonly maxPayloadBytes: number;
   private cleanupTimer: ReturnType<typeof setInterval> | null = null;
 
+  /** Seen messageId cache for replay protection */
+  private readonly seenMessageIds = new Map<string, number>();
+
   // Metrics
   private metrics = {
     passed: 0,
@@ -118,6 +124,7 @@ export class InboundMessageGate {
     blockedByTrust: 0,
     blockedByRate: 0,
     blockedBySize: 0,
+    blockedByReplay: 0,
     probesHandled: 0,
   };
 
@@ -131,8 +138,11 @@ export class InboundMessageGate {
     this.config = config;
     this.maxPayloadBytes = config.maxPayloadBytes ?? MAX_PAYLOAD_BYTES;
 
-    // Periodic cleanup of rate limiter state (every 30 minutes)
-    this.cleanupTimer = setInterval(() => this.rateLimiter.cleanup(), 30 * 60 * 1000);
+    // Periodic cleanup of rate limiter state and seen-messageId cache (every 30 minutes)
+    this.cleanupTimer = setInterval(() => {
+      this.rateLimiter.cleanup();
+      this.pruneSeenMessageIds();
+    }, 30 * 60 * 1000);
     if (this.cleanupTimer.unref) this.cleanupTimer.unref();
   }
 
@@ -153,7 +163,15 @@ export class InboundMessageGate {
   async evaluate(message: ReceivedMessage): Promise<GateDecision> {
     const fingerprint = message.from;
 
-    // 0. Payload size check
+    // 0a. Replay protection — check seen-messageId cache
+    const messageId = this.extractMessageId(message);
+    if (messageId && this.seenMessageIds.has(messageId)) {
+      this.metrics.blocked++;
+      this.metrics.blockedByReplay++;
+      return { action: 'block', reason: 'replay_detected', fingerprint };
+    }
+
+    // 0b. Payload size check
     const payloadSize = this.estimatePayloadSize(message);
     if (payloadSize > this.maxPayloadBytes) {
       this.metrics.blocked++;
@@ -204,7 +222,12 @@ export class InboundMessageGate {
     // 6. Record interaction (debounced)
     this.trustManager.recordMessageReceivedByFingerprint(fingerprint);
 
-    // 7. Pass to ThreadlineRouter -> AutonomyGate handles delivery mode
+    // 7. Record messageId for replay protection
+    if (messageId) {
+      this.seenMessageIds.set(messageId, Date.now());
+    }
+
+    // 8. Pass to ThreadlineRouter -> AutonomyGate handles delivery mode
     this.metrics.passed++;
     return { action: 'pass', message, trustLevel: trust };
   }
@@ -251,5 +274,31 @@ export class InboundMessageGate {
       ...DEFAULT_RATE_LIMITS[trust],
       ...this.config.rateLimits?.[trust],
     };
+  }
+
+  /**
+   * Extract messageId from a ReceivedMessage.
+   */
+  private extractMessageId(message: ReceivedMessage): string | null {
+    // ReceivedMessage has a messageId field directly
+    if (message.messageId) return message.messageId;
+    // Also check content for a messageId field
+    if (typeof message.content === 'object' && message.content !== null) {
+      const c = message.content as unknown as Record<string, unknown>;
+      if (typeof c.messageId === 'string') return c.messageId;
+    }
+    return null;
+  }
+
+  /**
+   * Prune expired entries from the seen-messageId cache.
+   */
+  private pruneSeenMessageIds(): void {
+    const now = Date.now();
+    for (const [id, timestamp] of this.seenMessageIds) {
+      if (now - timestamp > SEEN_MESSAGE_TTL_MS) {
+        this.seenMessageIds.delete(id);
+      }
+    }
   }
 }

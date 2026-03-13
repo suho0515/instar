@@ -113,6 +113,7 @@ export class AgentServer {
     threadlineRouter?: import('../threadline/ThreadlineRouter.js').ThreadlineRouter;
     handshakeManager?: import('../threadline/HandshakeManager.js').HandshakeManager;
     threadlineRelayClient?: import('../threadline/client/ThreadlineClient.js').ThreadlineClient;
+    listenerManager?: import('../threadline/ListenerSessionManager.js').ListenerSessionManager;
     responseReviewGate?: import('../core/CoherenceGate.js').CoherenceGate;
     telemetryHeartbeat?: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat;
     pasteManager?: import('../paste/PasteManager.js').PasteManager;
@@ -290,6 +291,7 @@ export class AgentServer {
       threadlineRouter: options.threadlineRouter ?? null,
       handshakeManager: options.handshakeManager ?? null,
       threadlineRelayClient: options.threadlineRelayClient ?? null,
+      listenerManager: options.listenerManager ?? null,
       responseReviewGate: options.responseReviewGate ?? null,
       telemetryHeartbeat: options.telemetryHeartbeat ?? null,
       pasteManager: options.pasteManager ?? null,

@@ -1397,6 +1397,14 @@ export interface ThreadlineConfig {
   visibility?: 'public' | 'unlisted' | 'private';
   /** Agent capabilities advertised on the network */
   capabilities?: string[];
+  /** Whether to send auto-ack for incoming messages (default: true) */
+  autoAck?: boolean;
+  /** Custom auto-ack message text */
+  autoAckMessage?: string;
+  /** Max acks per minute per sender (default: 5) */
+  ackRateLimit?: number;
+  /** First-contact policy: 'supervised' (hold for approval) or 'auto' (respond immediately) */
+  firstContactPolicy?: 'supervised' | 'auto';
 }
 
 // ── Input Guard ─────────────────────────────────────────────────────

@@ -139,6 +139,7 @@ export interface RouteContext {
   threadlineRouter: ThreadlineRouter | null;
   handshakeManager: HandshakeManager | null;
   threadlineRelayClient: import('../threadline/client/ThreadlineClient.js').ThreadlineClient | null;
+  listenerManager: import('../threadline/ListenerSessionManager.js').ListenerSessionManager | null;
   responseReviewGate: CoherenceGate | null;
   telemetryHeartbeat: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat | null;
   pasteManager: PasteManager | null;
@@ -5706,6 +5707,29 @@ export function createRoutes(ctx: RouteContext): Router {
     );
     router.use(threadlineRoutes);
   }
+
+  // ── Threadline Status (auth-gated) ──────────────────────────────────
+  router.get('/threadline/status', (_req, res) => {
+    const relayClient = ctx.threadlineRelayClient;
+    const connected = relayClient?.connectionState === 'connected';
+    const listenerState = ctx.listenerManager?.getState() ?? { active: false, state: 'not-configured', messagesHandled: 0, queueDepth: 0, rotationId: '', rotationStartedAt: '' };
+
+    res.json({
+      ready: connected,
+      relay: {
+        connected,
+        fingerprint: relayClient?.fingerprint ?? null,
+        url: ctx.config.threadline?.relayUrl ?? 'wss://threadline-relay.fly.dev/v1/connect',
+        visibility: ctx.config.threadline?.visibility ?? 'unlisted',
+      },
+      listener: listenerState,
+      config: {
+        relayEnabled: ctx.config.threadline?.relayEnabled ?? false,
+        autoAck: ctx.config.threadline?.autoAck ?? true,
+        firstContactPolicy: ctx.config.threadline?.firstContactPolicy ?? 'auto',
+      },
+    });
+  });
 
   // ── Threadline Relay Send ────────────────────────────────────────────
   // Used by the MCP server's threadline_send tool to route messages through

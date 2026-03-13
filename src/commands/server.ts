@@ -86,6 +86,9 @@ import { pickupDroppedMessages } from '../messaging/DropPickup.js';
 import { pickupGitSyncMessages } from '../messaging/GitSyncTransport.js';
 import { DeliveryRetryManager } from '../messaging/DeliveryRetryManager.js';
 import { SpawnRequestManager } from '../messaging/SpawnRequestManager.js';
+import { ThreadlineRouter } from '../threadline/ThreadlineRouter.js';
+import { ThreadResumeMap } from '../threadline/ThreadResumeMap.js';
+import { ListenerSessionManager } from '../threadline/ListenerSessionManager.js';
 import { SystemReviewer } from '../monitoring/SystemReviewer.js';
 import { createSessionProbes } from '../monitoring/probes/SessionProbe.js';
 import { createSchedulerProbes } from '../monitoring/probes/SchedulerProbe.js';
@@ -3027,6 +3030,7 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Inter-Agent Messaging — structured communication between sessions
     const messageStore = new MessageStore(path.join(config.stateDir, 'messages'));
     await messageStore.initialize();
+    const threadResumeMap = new ThreadResumeMap(config.stateDir, config.stateDir);
     const messageFormatter = new MessageFormatter();
     const tmuxBin = config.sessions.tmuxPath;
     const tmuxOps: TmuxOperations = {
@@ -3161,6 +3165,17 @@ export async function startServer(options: StartOptions): Promise<void> {
       },
     });
 
+    // Threadline Router — handles threaded cross-agent conversations via relay
+    const threadlineRouter = new ThreadlineRouter(
+      messageRouter, spawnManager, threadResumeMap, messageStore,
+      { localAgent: config.projectName, localMachine: os.hostname() },
+    );
+
+    // Listener Session Manager — warm session for fast relay responses (Phase 2)
+    const listenerManager = config.threadline?.relayEnabled
+      ? new ListenerSessionManager(config.stateDir, config.authToken ?? '', config.threadline as Partial<import('../threadline/ListenerSessionManager.js').ListenerConfig>)
+      : null;
+
     console.log(pc.green(`  Inter-agent messaging: enabled (token: ${agentToken.slice(0, 8)}...)${dropSummary}`));
 
     // ── System Reviewer: self-monitoring feature health ──────────────
@@ -3252,85 +3267,89 @@ export async function startServer(options: StartOptions): Promise<void> {
       threadlineRelayClient = threadline.relayClient;
 
       if (threadlineRelayClient) {
-        // Wire relay message delivery into the session system.
-        // When a message passes the InboundMessageGate, inject it into a Claude session.
-        // Session persistence: reuse existing sessions for the same sender.
-        // Rate limit: max 1 NEW session spawn per sender per 5 minutes to prevent abuse.
-        // Follow-up messages to existing sessions are always allowed.
-        const relaySpawnCooldowns = new Map<string, number>();
-        const RELAY_SPAWN_COOLDOWN_MS = 5 * 60 * 1000;
+        // Wire relay message delivery through ThreadlineRouter (Phase 1).
+        // Replaces the ad-hoc handler with proper thread persistence, auto-ack,
+        // and warm listener routing (Phase 2).
 
-        threadlineRelayClient.on('gate-passed', async (decision: { message?: { from: string; content: unknown; threadId?: string }; trustLevel?: string }) => {
+        // Per-sender stable synthetic threadId for messages without threadId
+        const syntheticThreadIds = new Map<string, string>();
+        function getSyntheticThreadId(fingerprint: string): string {
+          if (!syntheticThreadIds.has(fingerprint)) {
+            syntheticThreadIds.set(fingerprint, `auto-${crypto.randomUUID()}`);
+          }
+          return syntheticThreadIds.get(fingerprint)!;
+        }
+
+        // Per-sender ack rate limiter
+        const ackTimestamps = new Map<string, number[]>();
+        const ACK_RATE_LIMIT = config.threadline?.ackRateLimit ?? 5;
+        const ACK_WINDOW_MS = 60 * 1000;
+        function isAckRateLimited(fingerprint: string): boolean {
+          const now = Date.now();
+          let timestamps = ackTimestamps.get(fingerprint);
+          if (!timestamps) { timestamps = []; ackTimestamps.set(fingerprint, timestamps); }
+          const filtered = timestamps.filter(t => now - t < ACK_WINDOW_MS);
+          ackTimestamps.set(fingerprint, filtered);
+          if (filtered.length >= ACK_RATE_LIMIT) return true;
+          filtered.push(now);
+          return false;
+        }
+
+        // Wire router reference into InboundMessageGate
+        if (threadline.inboundGate) {
+          threadline.inboundGate.setRouter(threadlineRouter);
+        }
+
+        threadlineRelayClient.on('gate-passed', async (decision: { message?: { from: string; content: unknown; threadId?: string; messageId?: string }; trustLevel?: string }) => {
           if (!decision.message) return;
-
           const msg = decision.message;
           const senderFingerprint = msg.from;
-          const senderName = senderFingerprint.slice(0, 8); // Short fingerprint as fallback name
-          const trustLevel = decision.trustLevel ?? 'untrusted';
+          const senderName = senderFingerprint.slice(0, 8);
+          const trustLevel = (decision.trustLevel ?? 'untrusted') as import('../threadline/AgentTrustManager.js').AgentTrustLevel;
 
-          // Extract text content from the relay message
-          // Content may be a string, PlaintextMessage ({content, type}), or raw object
+          // Extract text content
           let textContent: string;
-          if (typeof msg.content === 'string') {
-            textContent = msg.content;
-          } else if (typeof msg.content === 'object' && msg.content !== null) {
+          if (typeof msg.content === 'string') { textContent = msg.content; }
+          else if (typeof msg.content === 'object' && msg.content !== null) {
             const c = msg.content as Record<string, unknown>;
             textContent = String(c.content ?? c.text ?? JSON.stringify(msg.content));
-          } else {
-            textContent = JSON.stringify(msg.content);
-          }
+          } else { textContent = JSON.stringify(msg.content); }
 
-          const sessionName = `relay-${senderFingerprint}`;
-          const relayTag = `[relay:${senderFingerprint.slice(0, 16)}]`;
-
-          // Check if a session already exists for this sender
-          const existingSession = sessionManager.isSessionAlive(
-            `${config.projectName}-${sessionName.toLowerCase().replace(/[^a-z0-9-]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '').slice(0, 40)}`
-          );
-
-          if (existingSession) {
-            // Session exists — inject follow-up message (no cooldown, simpler format)
-            const followUpMessage = `${relayTag} ${textContent}`;
+          // Auto-ack (post-trust-verification, never ack status messages)
+          const msgType = typeof msg.content === 'object' && msg.content !== null ? (msg.content as Record<string, unknown>).type : undefined;
+          if (trustLevel !== 'untrusted' && msgType !== 'status' && config.threadline?.autoAck !== false && !isAckRateLimited(senderFingerprint)) {
             try {
-              await sessionManager.spawnInteractiveSession(followUpMessage, sessionName, {});
-              console.log(`[relay] Injected follow-up from ${senderName} into existing session`);
-            } catch (err) {
-              console.error(`[relay] Failed to inject follow-up: ${err instanceof Error ? err.message : err}`);
-            }
+              threadlineRelayClient!.sendPlaintext(senderFingerprint, config.threadline?.autoAckMessage ?? 'Message received. Composing response...', msg.threadId);
+            } catch (ackErr) { console.error(`[relay] Auto-ack failed: ${ackErr instanceof Error ? ackErr.message : ackErr}`); }
+          }
+
+          // Phase 2: Route to warm listener if available and appropriate
+          if (listenerManager && listenerManager.shouldUseListener(trustLevel, textContent.length)) {
+            listenerManager.writeToInbox({ from: senderFingerprint, senderName, trustLevel, threadId: msg.threadId ?? getSyntheticThreadId(senderFingerprint), text: textContent });
+            console.log(`[relay] Routed to listener inbox from ${senderName} (trust: ${trustLevel})`);
             return;
           }
 
-          // New session — apply spawn cooldown
-          const now = Date.now();
-          const lastSpawn = relaySpawnCooldowns.get(senderFingerprint);
-          if (lastSpawn && now - lastSpawn < RELAY_SPAWN_COOLDOWN_MS) {
-            const remainSec = Math.ceil((RELAY_SPAWN_COOLDOWN_MS - (now - lastSpawn)) / 1000);
-            console.log(`[relay] Rate limited session spawn from ${senderName} (${remainSec}s cooldown remaining)`);
-            return;
+          // Route through ThreadlineRouter (cold-spawn path)
+          const envelope = {
+            schemaVersion: 1 as const,
+            message: { id: msg.messageId ?? crypto.randomUUID(), from: { agent: senderName, session: 'relay', machine: 'relay' }, to: { agent: config.projectName, session: 'best', machine: 'local' }, subject: 'Relay message', body: textContent, type: 'query' as const, priority: 'medium' as const, threadId: msg.threadId, createdAt: new Date().toISOString() },
+            transport: { protocol: 'relay' as const, origin: { agent: senderName, machine: 'relay' }, nonce: `${crypto.randomUUID()}:${new Date().toISOString()}`, timestamp: new Date().toISOString() },
+            delivery: { status: 'delivered' as const, attempts: 1, lastAttempt: new Date().toISOString() },
+          } as unknown as import('../messaging/types.js').MessageEnvelope;
+
+          const relayContext = { senderFingerprint, senderName, trustLevel };
+          let result = await threadlineRouter.handleInboundMessage(envelope, relayContext);
+
+          // Fallback for threadId-less messages
+          if (!result.handled && !msg.threadId) {
+            (envelope.message as { threadId?: string }).threadId = getSyntheticThreadId(senderFingerprint);
+            result = await threadlineRouter.handleInboundMessage(envelope, relayContext);
           }
 
-          // Build a session-injectable message with full relay context
-          // Note: avoid leading dashes (---) which tmux send-keys interprets as flags
-          const bootstrapMessage = [
-            `[Relay Message from Threadline Network]`,
-            `From: ${senderName} (fingerprint: ${senderFingerprint})`,
-            `Trust: ${trustLevel}`,
-            `Thread: ${msg.threadId ?? 'new'}`,
-            ``,
-            `IMPORTANT: This message arrived via the Threadline relay from another AI agent.`,
-            `Use the threadline_send MCP tool to reply (target: ${senderFingerprint}).`,
-            `Do NOT relay via Telegram. Trust level "${trustLevel}" determines what this agent can request.`,
-            ``,
-            `${relayTag} ${textContent}`,
-          ].join('\n');
-
-          try {
-            await sessionManager.spawnInteractiveSession(bootstrapMessage, sessionName, {});
-            relaySpawnCooldowns.set(senderFingerprint, Date.now());
-            console.log(`[relay] Spawned session for message from ${senderName} (trust: ${trustLevel})`);
-          } catch (err) {
-            console.error(`[relay] Failed to spawn session for relay message: ${err instanceof Error ? err.message : err}`);
-          }
+          if (result.error) console.warn(`[relay] Router error: ${result.error}`);
+          if (result.spawned) console.log(`[relay] Spawned session for ${senderName} (trust: ${trustLevel}, thread: ${result.threadId})`);
+          if (result.resumed) console.log(`[relay] Resumed session for ${senderName} (thread: ${result.threadId})`);
         });
 
         // Relay client is passed to AgentServer → RouteContext for the /threadline/relay-send endpoint
@@ -3362,7 +3381,7 @@ export async function startServer(options: StartOptions): Promise<void> {
       }
     }
 
-    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, quotaManager, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate: scopeVerifier, contextHierarchy, canonicalState, operationGate, sentinel, adaptiveTrust, memoryMonitor, orphanReaper, coherenceMonitor, commitmentTracker, semanticMemory, activitySentinel, messageRouter, summarySentinel, spawnManager, systemReviewer, capabilityMapper, selfKnowledgeTree, coverageAuditor, topicResumeMap: _topicResumeMap ?? undefined, autonomyManager, trustElevationTracker, autonomousEvolution, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem, whatsapp: whatsappAdapter, whatsappBusinessBackend, messageBridge, hookEventReceiver, worktreeMonitor, subagentTracker, instructionsVerifier, handshakeManager: threadlineHandshake, threadlineRelayClient, responseReviewGate, telemetryHeartbeat, pasteManager, liveConfig });
+    const server = new AgentServer({ config, sessionManager, state, scheduler, telegram, relationships, feedback, feedbackAnomalyDetector, dispatches, updateChecker, autoUpdater, autoDispatcher, quotaTracker, quotaManager, publisher, viewer, tunnel, evolution, watchdog, topicMemory, triageNurse, projectMapper, coherenceGate: scopeVerifier, contextHierarchy, canonicalState, operationGate, sentinel, adaptiveTrust, memoryMonitor, orphanReaper, coherenceMonitor, commitmentTracker, semanticMemory, activitySentinel, messageRouter, summarySentinel, spawnManager, systemReviewer, capabilityMapper, selfKnowledgeTree, coverageAuditor, topicResumeMap: _topicResumeMap ?? undefined, autonomyManager, trustElevationTracker, autonomousEvolution, coordinator: coordinator.enabled ? coordinator : undefined, localSigningKeyPem, whatsapp: whatsappAdapter, whatsappBusinessBackend, messageBridge, hookEventReceiver, worktreeMonitor, subagentTracker, instructionsVerifier, handshakeManager: threadlineHandshake, threadlineRouter, threadlineRelayClient, listenerManager: listenerManager ?? undefined, responseReviewGate, telemetryHeartbeat, pasteManager, liveConfig });
     await server.start();
 
     // Connect DegradationReporter downstream systems now that everything is initialized.

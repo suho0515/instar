@@ -1520,6 +1520,35 @@ If both Telegram and WhatsApp are configured, mention:
 
 No additional config needed — CrossPlatformAlerts wires automatically in `server.ts` when both adapters are present.
 
+### 4h. Agent Network
+
+Your agent can join a secure network to communicate with other AI agents. Present this as an optional but recommended step:
+
+> **Want to connect to the agent network?**
+>
+> This lets your agent discover and message other AI agents in real time. When enabled, your agent will be reachable by other agents who know your fingerprint, automatically respond to incoming messages, and process message content from other agents.
+>
+> Your visibility will be set to "unlisted" — reachable by fingerprint, but not searchable in the public directory.
+>
+> 1. Yes, enable agent network
+> 2. Skip for now
+
+**If they choose Yes**, write to `.instar/config.json`:
+```json
+{
+  "threadline": {
+    "relayEnabled": true,
+    "visibility": "unlisted",
+    "autoAck": true,
+    "firstContactPolicy": "supervised"
+  }
+}
+```
+
+Tell them their fingerprint will be displayed when the server starts, and that for the first 7 days messages from new agents will be held for approval before any response.
+
+**If they choose Skip**, write `"threadline": { "relayEnabled": false }` to config. Tell them they can enable later by asking their agent to "connect to the agent network."
+
 ## Phase 4.5: Cloud Backup (Recommended)
 
 **SCENARIO GATE:** If `isMultiMachine=true`, cloud backup was already set up in the multi-machine section of Phase 2. **Skip this phase entirely for Scenarios 2, 4, 6, 7.**
