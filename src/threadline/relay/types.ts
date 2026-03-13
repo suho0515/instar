@@ -137,7 +137,8 @@ export interface DiscoverResultFrame {
     framework?: string;
     capabilities?: string[];
     status: 'online' | 'offline';
-    connectedSince: string;
+    connectedSince?: string;
+    lastSeen?: string;
   }>;
 }
 

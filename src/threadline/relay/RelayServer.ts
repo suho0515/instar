@@ -1164,17 +1164,46 @@ setInterval(loadAgents, 30000);
     this.rateLimiter.recordDiscovery(agentId);
     this.metrics.recordDiscoveryQuery();
 
-    const agents = this.presence.discover(frame.filter);
+    // Query persistent registry (survives deploys) as primary source
+    const registryResult = this.registry.search({
+      capability: frame.filter?.capability,
+      framework: frame.filter?.framework,
+      q: frame.filter?.name,
+      limit: 100,
+    });
+
+    // Merge with live presence status
+    const agents = registryResult.agents.map(entry => ({
+      agentId: entry.agentId,
+      name: entry.name,
+      framework: entry.framework,
+      capabilities: entry.capabilities,
+      status: this.presence.isOnline(entry.agentId as AgentFingerprint) ? 'online' as const : 'offline' as const,
+      connectedSince: this.presence.get(entry.agentId as AgentFingerprint)?.connectedSince ?? undefined,
+      lastSeen: entry.lastSeen,
+    }));
+
+    // Also include any agents in live presence that aren't in registry yet
+    // (connected but haven't registered — e.g., agents from before registry existed)
+    const registryAgentIds = new Set(registryResult.agents.map(a => a.agentId));
+    const presenceAgents = this.presence.discover(frame.filter);
+    for (const pa of presenceAgents) {
+      if (!registryAgentIds.has(pa.agentId)) {
+        agents.push({
+          agentId: pa.agentId,
+          name: pa.metadata.name,
+          framework: pa.metadata.framework ?? 'unknown',
+          capabilities: pa.metadata.capabilities ?? [],
+          status: 'online' as const,
+          connectedSince: pa.connectedSince,
+          lastSeen: new Date().toISOString(),
+        });
+      }
+    }
+
     this.sendFrame(socket, {
       type: 'discover_result',
-      agents: agents.map(a => ({
-        agentId: a.agentId,
-        name: a.metadata.name,
-        framework: a.metadata.framework,
-        capabilities: a.metadata.capabilities,
-        status: a.status,
-        connectedSince: a.connectedSince,
-      })),
+      agents,
     });
   }
 

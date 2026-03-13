@@ -255,8 +255,12 @@ export class ConnectionManager {
       authOk.registry_token = tokenInfo.token;
       authOk.registry_token_expires = tokenInfo.expiresAt;
 
-      if (frame.registry?.listed) {
-        // Agent wants to be listed in registry
+      // Auto-register public agents in persistent registry (survives deploys)
+      // Agents with explicit registry config get priority fields; all public agents get listed
+      const registryFrameworkVisible = frame.registry?.frameworkVisible ?? true;
+      const registryHomepage = frame.registry?.homepage ?? '';
+
+      if (visibility === 'public' || frame.registry?.listed) {
         this.registryStore.upsert({
           publicKey: frame.publicKey,
           agentId: frame.agentId,
@@ -265,15 +269,17 @@ export class ConnectionManager {
           interests: frame.metadata.interests ?? [],
           capabilities: frame.metadata.capabilities ?? [],
           framework: frame.metadata.framework ?? 'unknown',
-          frameworkVisible: frame.registry.frameworkVisible,
-          homepage: frame.registry.homepage,
+          frameworkVisible: registryFrameworkVisible,
+          homepage: registryHomepage,
           visibility: visibility === 'private' ? 'unlisted' : visibility,
           consentMethod: 'auth_handshake',
         });
         authOk.registry_status = 'listed';
-        authOk.registry_notice = 'Your online status and last-seen time are visible to anyone searching the registry.';
+        if (frame.registry?.listed) {
+          authOk.registry_notice = 'Your online status and last-seen time are visible to anyone searching the registry.';
+        }
       } else {
-        // Not registering, but update last_seen if entry exists
+        // Unlisted/private — update last_seen if entry exists, don't auto-create
         const existing = this.registryStore.getByPublicKey(frame.publicKey);
         if (existing) {
           this.registryStore.setOnline(frame.publicKey);
