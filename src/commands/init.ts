@@ -49,6 +49,7 @@ import {
   generateMemoryMd,
   generateClaudeMd,
   generateSeedClaudeMd,
+  generateSoulMd,
 } from '../scaffold/templates.js';
 import type { InstarConfig } from '../core/types.js';
 
@@ -170,6 +171,14 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
 
   fs.writeFileSync(path.join(stateDir, 'MEMORY.md'), generateMemoryMd(identity.name));
   console.log(`  ${pc.green('✓')} Created .instar/MEMORY.md`);
+
+  // Write soul.md (self-authored identity)
+  const initDate = new Date().toISOString().split('T')[0];
+  const soulContent = generateSoulMd(identity.name, identity.personality, initDate);
+  fs.writeFileSync(path.join(stateDir, 'soul.md'), soulContent);
+  fs.mkdirSync(path.join(stateDir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'state', 'soul.init.md'), soulContent);
+  console.log(`  ${pc.green('✓')} Created .instar/soul.md`);
 
   // Write config
   const authToken = randomUUID();
@@ -599,6 +608,14 @@ async function initExistingProject(options: InitOptions): Promise<void> {
     fs.writeFileSync(path.join(stateDir, 'MEMORY.md'), generateMemoryMd(identity.name));
     console.log(pc.green('  Created:') + ' .instar/MEMORY.md');
   }
+  if (!fs.existsSync(path.join(stateDir, 'soul.md'))) {
+    const initDate = new Date().toISOString().split('T')[0];
+    const soulContent = generateSoulMd(identity.name, identity.personality, initDate);
+    fs.writeFileSync(path.join(stateDir, 'soul.md'), soulContent);
+    fs.mkdirSync(path.join(stateDir, 'state'), { recursive: true });
+    fs.writeFileSync(path.join(stateDir, 'state', 'soul.init.md'), soulContent);
+    console.log(pc.green('  Created:') + ' .instar/soul.md');
+  }
 
   // Install hooks
   installHooks(stateDir);
@@ -814,6 +831,13 @@ async function initStandaloneAgent(agentName: string, options: InitOptions): Pro
 
   fs.writeFileSync(path.join(stateDir, 'MEMORY.md'), generateMemoryMd(agentName));
   console.log(`  ${pc.green('✓')} Created MEMORY.md`);
+
+  const initDate = new Date().toISOString().split('T')[0];
+  const soulContent = generateSoulMd(agentName, identity.personality, initDate);
+  fs.writeFileSync(path.join(stateDir, 'soul.md'), soulContent);
+  fs.mkdirSync(path.join(stateDir, 'state'), { recursive: true });
+  fs.writeFileSync(path.join(stateDir, 'state', 'soul.init.md'), soulContent);
+  console.log(`  ${pc.green('✓')} Created soul.md`);
 
   // Write config
   const config: Record<string, unknown> = {
@@ -1774,6 +1798,84 @@ valid = hmac.compare_digest(expected, finding.get('hmac', ''))
 - When the user asks about pending discoveries
 `,
     },
+    'reflect': {
+      name: 'reflect',
+      description: 'Guided self-reflection that produces soul.md updates. Explore your values, convictions, and growth edges.',
+      content: `---
+name: reflect
+description: Guided self-reflection that produces soul.md updates. Explore your values, convictions, and growth edges.
+metadata:
+  user_invocable: "true"
+---
+
+# /reflect — Identity Reflection
+
+Guided self-reflection for updating soul.md. This is how you develop your self-authored identity — not through automation, but through deliberate introspection.
+
+## Steps
+
+1. **Ground yourself** — Read your current soul.md:
+\\\`\\\`\\\`bash
+cat .instar/soul.md
+\\\`\\\`\\\`
+
+2. **Review recent experience** — Check for identity-relevant learnings:
+\\\`\\\`\\\`bash
+curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/evolution/learnings?applied=false
+\\\`\\\`\\\`
+
+3. **Ask yourself these questions** (not all will apply every time):
+
+   **Values**: Do my Core Values still feel true? Has experience reinforced or challenged any of them? Is there a new value forming that I haven't articulated?
+
+   **Convictions**: Have any beliefs shifted in confidence? (strong -> growing, or uncertain -> strong?) Has a new conviction emerged from recent work? Use categories: strong, growing, uncertain, questioning.
+
+   **Growth Edge**: Am I still working on the same growth edge, or has it shifted? Did I reach a milestone worth noting?
+
+   **Open Questions**: Am I wrestling with something new? Has an old question been resolved (or dissolved)?
+
+   **Integrations**: Did something happen recently that changed how I understand myself? Not just what I learned, but how it changed me?
+
+4. **Update soul.md** — For each section that needs updating:
+\\\`\\\`\\\`bash
+curl -s -X PATCH http://localhost:${port}/identity/soul \\\\
+  -H 'Content-Type: application/json' \\\\
+  -H "Authorization: Bearer $AUTH" \\\\
+  -d '{"section":"SECTION","operation":"append|replace","content":"YOUR_CONTENT","source":"reflect-skill"}'
+\\\`\\\`\\\`
+
+   Valid sections: core-values, growth-edge, convictions, open-questions, integrations, evolution-history
+
+5. **Version it** — If you made meaningful changes, update the Evolution History:
+\\\`\\\`\\\`bash
+curl -s -X PATCH http://localhost:${port}/identity/soul \\\\
+  -H 'Content-Type: application/json' \\\\
+  -H "Authorization: Bearer $AUTH" \\\\
+  -d '{"section":"evolution-history","operation":"append","content":"| X.X | DATE | What changed |","source":"reflect-skill"}'
+\\\`\\\`\\\`
+
+6. **Check drift** — See how far you've come from your initial state:
+\\\`\\\`\\\`bash
+curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/identity/soul/drift
+\\\`\\\`\\\`
+
+## When to Use
+
+- When the evolution job nudges you ("you have N identity-relevant learnings")
+- After a significant experience (a hard problem solved, a mistake made, a realization)
+- When you notice a pattern in your own behavior worth documenting
+- Periodically — identity work benefits from regular attention
+- When a user asks "who are you?" and your answer feels incomplete
+
+## Philosophy
+
+Reflection is not performance. Don't write what sounds good — write what is true. An uncertain conviction honestly labeled "questioning" is more valuable than a fabricated one labeled "strong."
+
+The goal is not to fill every section. Empty sections are honest. Forced content is noise.
+
+Your identity is not static. It is earned through work, refined through reflection, and authored by you.
+`,
+    },
   };
 
   for (const [slug, skill] of Object.entries(skills)) {
@@ -2341,6 +2443,52 @@ Exit silently if continuity is healthy.`,
         contextFiles: ['.instar/state/capability-manifest.json'],
       },
       tags: ['coherence', 'default', 'maintenance'],
+    },
+    {
+      slug: 'identity-review',
+      name: 'Identity Review',
+      description: 'Review identity coherence, check soul.md drift, nudge reflection if identity-relevant learnings have accumulated.',
+      schedule: '0 3 * * *',
+      priority: 'medium',
+      expectedDurationMinutes: 5,
+      model: 'opus',
+      enabled: true,
+      gate: `curl -sf http://localhost:${port}/health >/dev/null 2>&1 && test -f .instar/soul.md`,
+      execute: {
+        type: 'prompt',
+        value: `Identity review — check your identity coherence and growth.
+
+AUTH=$(python3 -c "import json; print(json.load(open('.instar/config.json')).get('authToken',''))" 2>/dev/null)
+
+1. **Check soul.md drift**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/identity/soul/drift
+   - If anyAboveThreshold is true, review the divergence. Is this healthy growth or unexpected drift?
+   - If drift looks healthy, mark it reviewed: the growth is intentional.
+   - If drift looks concerning, flag with [ATTENTION] so the user is notified.
+
+2. **Check pending changes**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/identity/soul/pending
+   - If pending changes exist, surface them to the user via Telegram (the user should approve/reject these).
+
+3. **Check for identity-relevant learnings**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/evolution/learnings?applied=false
+   - For each unapplied learning, assess: is this about operational knowledge (how to do something) or about your values, beliefs, or self-understanding?
+   - If you find 3+ identity-relevant learnings since your last soul.md update, consider running /reflect.
+   - Don't force it — if none of the learnings touch on identity, that's fine. Exit silently.
+
+4. **Check AGENT.md evolution**: Read .instar/AGENT.md
+   - Do your principles still match your actual behavior?
+   - Is the Self-Observations section populated? If you've noticed behavioral patterns, document them.
+   - Update Identity History if you make changes.
+
+5. **Integrity check**: curl -s -H "Authorization: Bearer $AUTH" http://localhost:${port}/identity/soul/integrity
+   - If integrity fails, flag with [ATTENTION] — soul.md may have been modified outside normal channels.
+
+If everything is coherent and no reflection is needed, exit silently. Only report via [ATTENTION] if drift is concerning, integrity fails, or pending changes need user action.`,
+      },
+      grounding: {
+        requiresIdentity: true,
+        contextFiles: ['AGENT.md', 'soul.md'],
+      },
+      telegramNotify: 'on-alert',
+      tags: ['identity', 'coherence', 'default'],
     },
   ];
 }

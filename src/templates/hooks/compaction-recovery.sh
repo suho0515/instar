@@ -27,6 +27,71 @@ if [ -f "$INSTAR_DIR/AGENT.md" ]; then
   echo ""
 fi
 
+# Phase A.5: Soul (inject Personality Seed + Core Values from soul.md)
+# Only inject compact identity sections, not full history.
+# Integrity-verified: if soul.md was tampered with, fall back to init snapshot.
+if [ -f "$INSTAR_DIR/soul.md" ]; then
+  SOUL_LINES=$(wc -l < "$INSTAR_DIR/soul.md" | tr -d ' ')
+  if [ "$SOUL_LINES" -gt "10" ]; then
+    # Check integrity via server if available
+    SOUL_INTEGRITY="valid"
+    if [ -n "$PORT" ] && [ -n "$AUTH_TOKEN" ]; then
+      INTEGRITY_CHECK=$(curl -s -H "Authorization: Bearer ${AUTH_TOKEN}" \
+        "http://localhost:${PORT}/identity/soul/integrity" 2>/dev/null)
+      SOUL_INTEGRITY=$(echo "$INTEGRITY_CHECK" | python3 -c "
+import sys, json
+try:
+    d = json.load(sys.stdin)
+    print('valid' if d.get('valid') else 'invalid')
+except: print('valid')
+" 2>/dev/null)
+    fi
+
+    if [ "$SOUL_INTEGRITY" = "valid" ]; then
+      # Extract Personality Seed and Core Values sections only
+      echo "--- YOUR SOUL (from .instar/soul.md — Personality Seed + Core Values) ---"
+      python3 -c "
+import sys
+content = open('$INSTAR_DIR/soul.md').read()
+sections = []
+for header in ['## Personality Seed', '## Core Values']:
+    idx = content.find(header)
+    if idx == -1: continue
+    after = content[idx:]
+    # Find next section boundary
+    import re
+    m = re.search(r'\n---\n|\n## ', after[len(header):])
+    section = after[:len(header) + m.start()] if m else after
+    sections.append(section.strip())
+if sections:
+    print('\n\n'.join(sections))
+" 2>/dev/null
+      echo ""
+      echo "--- END SOUL ---"
+      echo ""
+    else
+      # Fall back to init snapshot
+      if [ -f "$INSTAR_DIR/state/soul.init.md" ]; then
+        echo "--- YOUR SOUL (from init snapshot — integrity check failed) ---"
+        python3 -c "
+content = open('$INSTAR_DIR/state/soul.init.md').read()
+idx = content.find('## Personality Seed')
+if idx >= 0:
+    import re
+    after = content[idx:]
+    m = re.search(r'\n---\n|\n## ', after[len('## Personality Seed'):])
+    section = after[:len('## Personality Seed') + m.start()] if m else after
+    print(section.strip())
+" 2>/dev/null
+        echo ""
+        echo "WARNING: soul.md integrity check failed. Only Personality Seed from init snapshot injected."
+        echo "--- END SOUL ---"
+        echo ""
+      fi
+    fi
+  fi
+fi
+
 # Phase B: Memory (inject MEMORY.md content directly)
 if [ -f "$INSTAR_DIR/MEMORY.md" ]; then
   # Only inject if MEMORY.md has actual content (more than the template skeleton)

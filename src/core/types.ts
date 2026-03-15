@@ -802,6 +802,97 @@ export interface EvolutionManagerConfig {
   maxActions?: number;
 }
 
+// ── Soul.md — Self-Authored Identity ─────────────────────────────────
+
+/** Sections of soul.md that can be individually updated. */
+export type SoulSection =
+  | 'core-values'
+  | 'growth-edge'
+  | 'convictions'
+  | 'open-questions'
+  | 'integrations'
+  | 'evolution-history';
+
+/** Conviction confidence categories (not floats — discrete, auditable). */
+export type ConvictionConfidence = 'strong' | 'growing' | 'uncertain' | 'questioning';
+
+/** Source of a soul.md write — used for audit trail and trust decisions. */
+export type SoulWriteSource = 'reflect-skill' | 'evolution-job' | 'inline' | 'threadline';
+
+/** Operation type for PATCH /identity/soul. */
+export type SoulWriteOperation = 'replace' | 'append' | 'remove';
+
+/** Request body for PATCH /identity/soul. */
+export interface SoulPatchRequest {
+  section: SoulSection;
+  operation: SoulWriteOperation;
+  content: string;
+  source: SoulWriteSource;
+}
+
+/** Response for a successful soul.md patch. */
+export interface SoulPatchResponse {
+  status: 'applied' | 'pending';
+  section: SoulSection;
+  trustLevel: AutonomyProfileLevel;
+  pendingId?: string;
+}
+
+/** A pending soul.md change awaiting user approval. */
+export interface SoulPendingChange {
+  id: string;
+  section: SoulSection;
+  operation: SoulWriteOperation;
+  content: string;
+  source: SoulWriteSource;
+  trustLevel: AutonomyProfileLevel;
+  createdAt: string;
+  status: 'pending' | 'approved' | 'rejected';
+  resolvedAt?: string;
+  rejectionReason?: string;
+}
+
+/** Audit event emitted on every soul.md write. */
+export interface SoulWriteEvent {
+  event: 'soul.write';
+  timestamp: string;
+  section: SoulSection;
+  operation: SoulWriteOperation;
+  trustLevel: AutonomyProfileLevel;
+  source: SoulWriteSource;
+  diffSummary: string;
+  threadlineSource: string | null;
+}
+
+/** Drift analysis for a single section. */
+export interface SoulDriftSection {
+  section: SoulSection;
+  divergencePercent: number;
+  aboveThreshold: boolean;
+}
+
+/** Full drift analysis result. */
+export interface SoulDriftReport {
+  sections: SoulDriftSection[];
+  anyAboveThreshold: boolean;
+  lastReviewedAt: string | null;
+  initSnapshotExists: boolean;
+}
+
+/**
+ * Minimum trust level required to DIRECTLY write to each soul.md section.
+ * At lower levels, writes are routed to the pending queue (not rejected).
+ * Collaborative+ can write to all sections directly.
+ */
+export const SOUL_SECTION_TRUST: Record<SoulSection, AutonomyProfileLevel> = {
+  'integrations': 'cautious',
+  'open-questions': 'collaborative',
+  'evolution-history': 'cautious',
+  'convictions': 'collaborative',
+  'core-values': 'collaborative',
+  'growth-edge': 'collaborative',
+};
+
 // ── Living Skills (PROP-229) ─────────────────────────────────────────
 
 /**

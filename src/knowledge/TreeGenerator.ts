@@ -186,6 +186,21 @@ export class TreeGenerator {
       });
     }
 
+    // Soul.md — self-authored identity (Being layer)
+    if (sections.get('soul') || fs.existsSync(path.join(options.stateDir, 'soul.md'))) {
+      children.push({
+        id: 'identity.soul',
+        name: 'Soul — Self-Authored Identity',
+        alwaysInclude: false,
+        managed: true,
+        depth: 'medium',
+        maxTokens: 800,
+        sensitivity: 'internal',
+        sources: [{ type: 'file', path: 'soul.md' }],
+        description: 'Self-authored values, convictions, growth edges, and open questions. The agent\'s reflective identity.',
+      });
+    }
+
     if (sections.get('voice') || sections.get('personality')) {
       children.push({
         id: 'identity.voice',

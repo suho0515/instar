@@ -145,6 +145,7 @@ export interface RouteContext {
   telemetryHeartbeat: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat | null;
   pasteManager: PasteManager | null;
   wsManager: WebSocketManager | null;
+  soulManager: import('../core/SoulManager.js').SoulManager | null;
   startTime: Date;
 }
 
@@ -4097,7 +4098,20 @@ export function createRoutes(ctx: RouteContext): Router {
       source: source || { discoveredAt: new Date().toISOString() },
       tags, evolutionRelevance,
     });
-    res.status(201).json(learning);
+
+    // Learning→Soul pipeline nudge: if soul.md is enabled, hint whether this
+    // learning might be identity-relevant (the agent decides whether to act on it).
+    let soulNudge: string | undefined;
+    if (ctx.soulManager?.isEnabled()) {
+      // Simple heuristic: check if the learning touches identity-related keywords.
+      // The full LLM classifier runs in the identity-review job; this is a fast hint.
+      const identityKeywords = /value|principle|belief|conviction|identity|who i am|growth|voice|authenticity|self-|philosophy|meaning|purpose/i;
+      if (identityKeywords.test(title) || identityKeywords.test(description)) {
+        soulNudge = 'This learning may be identity-relevant. Consider updating soul.md or running /reflect.';
+      }
+    }
+
+    res.status(201).json({ ...learning, soulNudge });
   });
 
   router.patch('/evolution/learnings/:id/apply', (req, res) => {
@@ -5193,6 +5207,157 @@ export function createRoutes(ctx: RouteContext): Router {
     }
     const drained = ctx.autonomousEvolution.drainNotifications();
     res.json({ drained: drained.length, notifications: drained });
+  });
+
+  // ── Identity / Soul.md ───────────────────────────────────────────────
+
+  // GET /identity — combined identity overview (public sections only)
+  router.get('/identity', (_req, res) => {
+    const agentMdPath = path.join(ctx.config.stateDir, 'AGENT.md');
+    const agentMd = fs.existsSync(agentMdPath)
+      ? fs.readFileSync(agentMdPath, 'utf-8')
+      : null;
+
+    const soulPublic = ctx.soulManager?.readPublicSections() ?? null;
+
+    res.json({
+      agentName: ctx.config.projectName,
+      agentMd: agentMd ? agentMd.substring(0, 2000) : null,
+      soul: soulPublic,
+      soulEnabled: ctx.soulManager?.isEnabled() ?? false,
+    });
+  });
+
+  // GET /identity/soul — full soul.md content (requires auth)
+  router.get('/identity/soul', (_req, res) => {
+    if (!ctx.soulManager || !ctx.soulManager.isEnabled()) {
+      return res.status(404).json({ error: 'soul.md is not enabled for this agent' });
+    }
+    const content = ctx.soulManager.readSoul();
+    res.json({ content, enabled: true });
+  });
+
+  // PATCH /identity/soul — structured soul.md update with trust enforcement
+  router.patch('/identity/soul', (req, res) => {
+    if (!ctx.soulManager || !ctx.soulManager.isEnabled()) {
+      return res.status(404).json({ error: 'soul.md is not enabled for this agent' });
+    }
+
+    const { section, operation, content, source } = req.body;
+
+    // Validate request
+    const validSections = ['core-values', 'growth-edge', 'convictions', 'open-questions', 'integrations', 'evolution-history'];
+    const validOps = ['replace', 'append', 'remove'];
+    const validSources = ['reflect-skill', 'evolution-job', 'inline', 'threadline'];
+
+    if (!section || !validSections.includes(section)) {
+      return res.status(400).json({ error: `Invalid section. Must be one of: ${validSections.join(', ')}` });
+    }
+    if (!operation || !validOps.includes(operation)) {
+      return res.status(400).json({ error: `Invalid operation. Must be one of: ${validOps.join(', ')}` });
+    }
+    if (typeof content !== 'string' || content.length === 0) {
+      return res.status(400).json({ error: 'Content must be a non-empty string' });
+    }
+    if (content.length > 10000) {
+      return res.status(400).json({ error: 'Content exceeds maximum length (10000 chars)' });
+    }
+    if (!source || !validSources.includes(source)) {
+      return res.status(400).json({ error: `Invalid source. Must be one of: ${validSources.join(', ')}` });
+    }
+
+    // Get current trust level
+    const trustLevel = ctx.autonomyManager?.getProfile() ?? 'supervised';
+
+    try {
+      const result = ctx.soulManager.patch(
+        { section, operation, content, source },
+        trustLevel,
+      );
+      const statusCode = result.status === 'pending' ? 202 : 200;
+      res.status(statusCode).json(result);
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const soulErr = err as { code: string; message: string; details?: Record<string, unknown> };
+        if (soulErr.code === 'trust_violation') {
+          return res.status(403).json({
+            error: 'trust_violation',
+            message: soulErr.message,
+            ...soulErr.details,
+          });
+        }
+        if (soulErr.code === 'conflict') {
+          return res.status(409).json({ error: 'conflict', message: soulErr.message });
+        }
+      }
+      return res.status(500).json({ error: 'Failed to update soul.md' });
+    }
+  });
+
+  // GET /identity/soul/pending — list pending soul.md changes
+  router.get('/identity/soul/pending', (_req, res) => {
+    if (!ctx.soulManager) {
+      return res.status(404).json({ error: 'soul.md is not enabled' });
+    }
+    const pending = ctx.soulManager.getPending('pending');
+    res.json({ pending, count: pending.length });
+  });
+
+  // POST /identity/soul/pending/:id/approve — approve a pending change
+  router.post('/identity/soul/pending/:id/approve', (req, res) => {
+    if (!ctx.soulManager) {
+      return res.status(404).json({ error: 'soul.md is not enabled' });
+    }
+    try {
+      const result = ctx.soulManager.approvePending(req.params.id);
+      res.json(result);
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const soulErr = err as { code: string; message: string };
+        if (soulErr.code === 'not_found') {
+          return res.status(404).json({ error: soulErr.message });
+        }
+        if (soulErr.code === 'invalid_state') {
+          return res.status(400).json({ error: soulErr.message });
+        }
+      }
+      return res.status(500).json({ error: 'Failed to approve pending change' });
+    }
+  });
+
+  // POST /identity/soul/pending/:id/reject — reject a pending change
+  router.post('/identity/soul/pending/:id/reject', (req, res) => {
+    if (!ctx.soulManager) {
+      return res.status(404).json({ error: 'soul.md is not enabled' });
+    }
+    try {
+      ctx.soulManager.rejectPending(req.params.id, req.body?.reason);
+      res.json({ ok: true, id: req.params.id, status: 'rejected' });
+    } catch (err: unknown) {
+      if (err && typeof err === 'object' && 'code' in err) {
+        const soulErr = err as { code: string; message: string };
+        if (soulErr.code === 'not_found') {
+          return res.status(404).json({ error: soulErr.message });
+        }
+      }
+      return res.status(500).json({ error: 'Failed to reject pending change' });
+    }
+  });
+
+  // GET /identity/soul/drift — drift analysis
+  router.get('/identity/soul/drift', (_req, res) => {
+    if (!ctx.soulManager) {
+      return res.status(404).json({ error: 'soul.md is not enabled' });
+    }
+    res.json(ctx.soulManager.analyzeDrift());
+  });
+
+  // GET /identity/soul/integrity — integrity check
+  router.get('/identity/soul/integrity', (_req, res) => {
+    if (!ctx.soulManager) {
+      return res.status(404).json({ error: 'soul.md is not enabled' });
+    }
+    res.json(ctx.soulManager.verifyIntegrity());
   });
 
   // ── Memory Monitoring ──────────────────────────────────────────────

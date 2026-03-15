@@ -152,6 +152,36 @@ except Exception:
     sys.exit(0)
 " <<< "$WORKING_MEM" 2>/dev/null
 
+# Soul.md fallback injection — until the Being layer is in the self-knowledge tree,
+# inject Personality Seed + Core Values at session start for identity grounding.
+if [ -f "$INSTAR_DIR/soul.md" ]; then
+  SOUL_LINES=$(wc -l < "$INSTAR_DIR/soul.md" | tr -d ' ')
+  if [ "$SOUL_LINES" -gt "15" ]; then
+    python3 -c "
+import sys
+content = open('$INSTAR_DIR/soul.md').read()
+sections = []
+for header in ['## Personality Seed', '## Core Values', '## Current Growth Edge']:
+    idx = content.find(header)
+    if idx == -1: continue
+    after = content[idx:]
+    import re
+    m = re.search(r'\n---\n|\n## ', after[len(header):])
+    section = after[:len(header) + m.start()] if m else after
+    text = section.strip()
+    # Skip sections that are just comments/empty
+    lines = [l for l in text.split('\n') if l.strip() and not l.strip().startswith('<!--')]
+    if len(lines) > 2:  # header + description + at least one content line
+        sections.append(text)
+if sections:
+    print('=== SOUL — IDENTITY GROUNDING ===')
+    print('\n\n'.join(sections))
+    print('=== END SOUL ===')
+    print()
+" 2>/dev/null
+  fi
+fi
+
 # Surface job topic ID so agents don't need to hardcode it
 if [ -n "$JOB_TOPIC_ID" ]; then
   echo ""

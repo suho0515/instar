@@ -64,6 +64,8 @@ export class PostUpdateMigrator {
     this.migrateConfig(result);
     this.migrateGitignore(result);
     this.migrateSelfKnowledgeTree(result);
+    this.migrateSoulMd(result);
+    this.migrateAgentMdSections(result);
 
     return result;
   }
@@ -1040,6 +1042,73 @@ The user has been talking to you (possibly for days). A generic greeting like "H
       result.upgraded.push(`${label}: un-ignored ${entry} (shared state for multi-machine)`);
     } catch (err) {
       result.errors.push(`${label}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Opt-in soul.md migration for existing agents.
+   * Does NOT auto-create soul.md — adds config flag and queues notification.
+   */
+  private migrateSoulMd(result: MigrationResult): void {
+    const soulPath = path.join(this.config.stateDir, 'soul.md');
+    const configPath = path.join(this.config.stateDir, 'config.json');
+
+    // Skip if soul.md already exists
+    if (fs.existsSync(soulPath)) {
+      return;
+    }
+
+    // Add identity.soulEnabled flag to config if not present
+    try {
+      if (fs.existsSync(configPath)) {
+        const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+        if (config.identity?.soulEnabled === undefined) {
+          config.identity = config.identity || {};
+          config.identity.soulEnabled = false;
+          fs.writeFileSync(configPath, JSON.stringify(config, null, 2));
+          result.upgraded.push('config: added identity.soulEnabled flag (opt-in, default false)');
+        }
+      }
+    } catch (err) {
+      result.errors.push(`soul.md config migration: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  /**
+   * Add Self-Observations and Identity History sections to existing AGENT.md.
+   */
+  private migrateAgentMdSections(result: MigrationResult): void {
+    const agentMdPath = path.join(this.config.stateDir, 'AGENT.md');
+    if (!fs.existsSync(agentMdPath)) return;
+
+    try {
+      let content = fs.readFileSync(agentMdPath, 'utf-8');
+      let modified = false;
+
+      if (!content.includes('## Self-Observations')) {
+        // Add before ## Growth if it exists, otherwise append
+        const growthIdx = content.indexOf('## Growth');
+        if (growthIdx !== -1) {
+          content = content.substring(0, growthIdx)
+            + '## Self-Observations\n\n_Behavioral patterns I\'ve noticed in myself. Strengths, weaknesses, tendencies._\n\n<!-- Populated as the agent observes their own patterns across sessions. -->\n\n'
+            + content.substring(growthIdx);
+        } else {
+          content += '\n\n## Self-Observations\n\n_Behavioral patterns I\'ve noticed in myself. Strengths, weaknesses, tendencies._\n\n<!-- Populated as the agent observes their own patterns across sessions. -->\n';
+        }
+        modified = true;
+      }
+
+      if (!content.includes('## Identity History')) {
+        content += '\n\n## Identity History\n\n_When and why I changed this file._\n\n| Date | Change |\n|------|--------|\n<!-- Updated when the agent modifies their own identity. -->\n';
+        modified = true;
+      }
+
+      if (modified) {
+        fs.writeFileSync(agentMdPath, content);
+        result.upgraded.push('AGENT.md: added Self-Observations and Identity History sections');
+      }
+    } catch (err) {
+      result.errors.push(`AGENT.md migration: ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 

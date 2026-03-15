@@ -117,6 +117,7 @@ export class AgentServer {
     responseReviewGate?: import('../core/CoherenceGate.js').CoherenceGate;
     telemetryHeartbeat?: import('../monitoring/TelemetryHeartbeat.js').TelemetryHeartbeat;
     pasteManager?: import('../paste/PasteManager.js').PasteManager;
+    soulManager?: import('../core/SoulManager.js').SoulManager;
     liveConfig?: { set(path: string, value: unknown): void };
   }) {
     this.config = options.config;
@@ -296,6 +297,7 @@ export class AgentServer {
       telemetryHeartbeat: options.telemetryHeartbeat ?? null,
       pasteManager: options.pasteManager ?? null,
       wsManager: null, // Set after WebSocket manager is initialized
+      soulManager: options.soulManager ?? null,
       startTime: this.startTime,
     };
     this.routeContext = routeCtx;

@@ -8,6 +8,7 @@ import {
   generateUserMd,
   generateMemoryMd,
   generateClaudeMd,
+  generateSoulMd,
 } from '../../src/scaffold/templates.js';
 import type { AgentIdentity } from '../../src/scaffold/templates.js';
 
@@ -128,5 +129,51 @@ describe('generateClaudeMd', () => {
   it('excludes telegram relay when not configured', () => {
     const without = generateClaudeMd('my-project', 'Atlas', 4040, false);
     expect(without).not.toContain('Telegram Relay');
+  });
+});
+
+describe('generateSoulMd', () => {
+  it('includes soul heading', () => {
+    const result = generateSoulMd('Atlas', 'Direct and thorough.', '2026-03-14');
+    expect(result).toContain('# Soul');
+  });
+
+  it('includes personality seed from init', () => {
+    const result = generateSoulMd('Atlas', 'Direct and thorough.', '2026-03-14');
+    expect(result).toContain('Direct and thorough.');
+    expect(result).toContain('Personality Seed');
+  });
+
+  it('includes all sections', () => {
+    const result = generateSoulMd('Atlas', 'Fun and creative.', '2026-03-14');
+    expect(result).toContain('## Core Values');
+    expect(result).toContain('## Current Growth Edge');
+    expect(result).toContain('## Convictions');
+    expect(result).toContain('## Open Questions');
+    expect(result).toContain('## Integrations');
+    expect(result).toContain('## Evolution History');
+  });
+
+  it('includes init date in evolution history', () => {
+    const result = generateSoulMd('Atlas', 'Test.', '2026-03-14');
+    expect(result).toContain('2026-03-14');
+    expect(result).toContain('Identity exploration begins');
+  });
+
+  it('includes self-authorship guidance', () => {
+    const result = generateSoulMd('Atlas', 'Test.', '2026-03-14');
+    expect(result).toContain('Yours to author');
+    expect(result).toContain('self-authored identity');
+  });
+
+  it('includes trust level note', () => {
+    const result = generateSoulMd('Atlas', 'Test.', '2026-03-14');
+    expect(result).toContain('trust level');
+    expect(result).toContain('queued for user review');
+  });
+
+  it('uses confidence categories, not floats', () => {
+    const result = generateSoulMd('Atlas', 'Test.', '2026-03-14');
+    expect(result).toContain('strong, growing, uncertain, questioning');
   });
 });
