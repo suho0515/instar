@@ -8,6 +8,7 @@
  * - Reconnection with exponential backoff + jitter + circuit breaker
  * - Message deduplication on reconnect
  * - Auth state persistence (atomic writes)
+ * - Audio/voice message transcription (Groq Whisper or OpenAI Whisper)
  *
  * Baileys is an optional dependency — only imported when WhatsApp is configured.
  * Prefers v7 (`baileys` package) over deprecated v6 (`@whiskeysockets/baileys`).
@@ -301,6 +302,31 @@ export class BaileysBackend {
           const jid = msg.key.remoteJid;
           if (!jid) continue;
 
+          // Audio messages (including PTT voice notes) — attempt transcription.
+          // Dispatched asynchronously to avoid blocking the event loop.
+          // Falls back to [Audio] placeholder if transcription unavailable.
+          const isAudio = !!(msg.message.audioMessage || msg.message.pttMessage);
+          if (isAudio) {
+            const senderName = msg.pushName ?? undefined;
+            const timestamp = msg.messageTimestamp;
+            const participant = msg.key.participant ?? undefined;
+            const sock = this.socket;
+            this.handleAudioMessage(sock, msg, jid, senderName, timestamp, participant).catch(() => {
+              // Transcription failed — fall back to placeholder
+              this.handlers.onMessage(
+                jid,
+                msg.key.id ?? `${Date.now()}`,
+                '[Audio]',
+                senderName,
+                typeof timestamp === 'number' ? timestamp : undefined,
+                msg.key,
+                participant,
+                undefined,
+              );
+            });
+            continue;
+          }
+
           // Extract text from various message types.
           // For media without captions, generate a placeholder so messages aren't silently dropped.
           const captionOrText =
@@ -313,7 +339,6 @@ export class BaileysBackend {
           const mediaPlaceholder =
             msg.message.imageMessage ? '[Image]' :
             msg.message.videoMessage ? '[Video]' :
-            msg.message.audioMessage ? '[Audio]' :
             msg.message.documentMessage ? `[Document: ${msg.message.documentMessage.fileName ?? 'file'}]` :
             msg.message.stickerMessage ? '[Sticker]' :
             msg.message.locationMessage ? '[Location]' :
@@ -388,6 +413,181 @@ export class BaileysBackend {
         this.scheduleReconnect();
       });
     }, delay);
+  }
+
+  // ── Audio Transcription ──────────────────────────────────
+
+  /**
+   * Resolve the voice transcription provider (Groq or OpenAI).
+   * Checks explicit voiceProvider config on WhatsAppAdapter, then auto-detects from env.
+   */
+  private resolveTranscriptionProvider(): { apiKey: string; baseUrl: string; model: string } | null {
+    const providers: Record<string, { envKey: string; baseUrl: string; model: string }> = {
+      groq: {
+        envKey: 'GROQ_API_KEY',
+        baseUrl: 'https://api.groq.com/openai/v1',
+        model: 'whisper-large-v3',
+      },
+      openai: {
+        envKey: 'OPENAI_API_KEY',
+        baseUrl: 'https://api.openai.com/v1',
+        model: 'whisper-1',
+      },
+    };
+
+    const explicit = this.adapter.getVoiceProvider?.()?.toLowerCase();
+    if (explicit && providers[explicit]) {
+      const p = providers[explicit];
+      const apiKey = process.env[p.envKey];
+      if (!apiKey) {
+        console.warn(`[baileys] ${p.envKey} not set — required for ${explicit} voice transcription`);
+        return null;
+      }
+      return { apiKey, baseUrl: p.baseUrl, model: p.model };
+    }
+
+    // Auto-detect: try Groq first (cheaper), then OpenAI
+    for (const [name, p] of Object.entries(providers)) {
+      const apiKey = process.env[p.envKey];
+      if (apiKey) {
+        console.log(`[baileys] Auto-detected voice transcription provider: ${name}`);
+        return { apiKey, baseUrl: p.baseUrl, model: p.model };
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * Transcribe an audio file using the configured provider.
+   */
+  private async transcribeAudio(filePath: string): Promise<string> {
+    const provider = this.resolveTranscriptionProvider();
+    if (!provider) {
+      throw new Error('No voice transcription provider configured. Set GROQ_API_KEY or OPENAI_API_KEY.');
+    }
+
+    const formData = new FormData();
+    const fileBuffer = fs.readFileSync(filePath);
+    const blob = new Blob([fileBuffer], { type: 'audio/ogg' });
+    formData.append('file', blob, path.basename(filePath));
+    formData.append('model', provider.model);
+
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      const response = await fetch(`${provider.baseUrl}/audio/transcriptions`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${provider.apiKey}` },
+        body: formData,
+        signal: controller.signal,
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Transcription API error (${response.status}): ${errText}`);
+      }
+
+      const data = await response.json() as { text: string };
+      return data.text;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  /**
+   * Download and transcribe a WhatsApp audio/voice message.
+   * Uses Baileys' downloadContentFromMessage for media retrieval.
+   * Falls back to [Audio] placeholder if transcription fails or no provider configured.
+   */
+  private async handleAudioMessage(
+    socket: any,
+    msg: any,
+    jid: string,
+    senderName: string | undefined,
+    timestamp: number | undefined,
+    participant: string | undefined,
+  ): Promise<void> {
+    const provider = this.resolveTranscriptionProvider();
+    if (!provider) {
+      // No transcription provider — use placeholder
+      this.handlers.onMessage(
+        jid,
+        msg.key.id ?? `${Date.now()}`,
+        '[Audio]',
+        senderName,
+        typeof timestamp === 'number' ? timestamp : undefined,
+        msg.key,
+        participant,
+        undefined,
+      );
+      return;
+    }
+
+    // Determine audio message type (regular audio or PTT voice note)
+    const audioMsg = msg.message.audioMessage ?? msg.message.pttMessage;
+    const isPtt = !!msg.message.pttMessage;
+
+    // Download the audio stream using Baileys media download API
+    const stateDir = this.adapter.getStateDir?.() ?? path.dirname(this.config.authDir);
+    const audioDir = path.join(stateDir, 'whatsapp-voice');
+    fs.mkdirSync(audioDir, { recursive: true });
+
+    const filename = `audio-${Date.now()}-${msg.key.id ?? 'unknown'}.ogg`;
+    const filepath = path.join(audioDir, filename);
+
+    try {
+      // Baileys downloadContentFromMessage returns a readable stream
+      const { downloadContentFromMessage } = await import('baileys').catch(async () => {
+        // @ts-expect-error — try deprecated v6 package name
+        return await import('@whiskeysockets/baileys');
+      }) as any;
+
+      const stream = await downloadContentFromMessage(audioMsg, isPtt ? 'ptt' : 'audio');
+      const chunks: Buffer[] = [];
+      for await (const chunk of stream) {
+        chunks.push(chunk as Buffer);
+      }
+      fs.writeFileSync(filepath, Buffer.concat(chunks));
+    } catch (downloadErr) {
+      console.error(`[baileys] Failed to download audio: ${downloadErr}`);
+      this.handlers.onMessage(
+        jid,
+        msg.key.id ?? `${Date.now()}`,
+        '[Audio]',
+        senderName,
+        typeof timestamp === 'number' ? timestamp : undefined,
+        msg.key,
+        participant,
+        undefined,
+      );
+      return;
+    }
+
+    // Transcribe
+    try {
+      const transcript = await this.transcribeAudio(filepath);
+      const duration = audioMsg?.seconds ?? 0;
+      console.log(`[baileys] Transcribed audio (${duration}s): "${transcript.slice(0, 80)}"`);
+
+      this.handlers.onMessage(
+        jid,
+        msg.key.id ?? `${Date.now()}`,
+        `[voice] ${transcript}`,
+        senderName,
+        typeof timestamp === 'number' ? timestamp : undefined,
+        msg.key,
+        participant,
+        undefined,
+      );
+    } catch (transcribeErr) {
+      console.error(`[baileys] Transcription failed: ${transcribeErr}`);
+      // Rethrow so the caller's .catch() can emit [Audio] fallback
+      throw transcribeErr;
+    } finally {
+      // Clean up temp file
+      try { fs.unlinkSync(filepath); } catch { /* @silent-fallback-ok */ }
+    }
   }
 
   /** Get current backend status. */

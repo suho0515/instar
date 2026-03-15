@@ -994,4 +994,14 @@ export class WhatsAppAdapter implements MessagingAdapter {
       browser: bc.browser ?? (topLevel.browser as BaileysConfig['browser']) ?? undefined as unknown as [string, string, string],
     };
   }
+
+  /** Expose voice transcription provider preference for BaileysBackend. */
+  getVoiceProvider(): string | undefined {
+    return this.config.voiceProvider;
+  }
+
+  /** Expose state directory for BaileysBackend (audio file storage). */
+  getStateDir(): string {
+    return this.stateDir;
+  }
 }
