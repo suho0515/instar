@@ -2587,6 +2587,11 @@ export async function startServer(options: StartOptions): Promise<void> {
     // acts on it — the process stays stale forever (the Luna/v0.9.70 incident).
     const restartWatcher = new ForegroundRestartWatcher({
       stateDir: config.stateDir,
+      // Don't let the watcher call process.exit() directly — it crashes with
+      // "mutex lock failed" because better-sqlite3 databases aren't closed.
+      // Instead, we wire the 'restartDetected' event to the graceful shutdown
+      // function (defined below) which closes all resources before exiting.
+      exitOnRestart: false,
       onRestartDetected: async (request) => {
         // Only notify if there are active sessions — silent restart otherwise.
         // Phase 1C of GRACEFUL_UPDATES: reduce noise for routine maintenance.
@@ -3599,12 +3604,21 @@ export async function startServer(options: StartOptions): Promise<void> {
       scheduler?.stop();
       if (telegram) await telegram.stop();
       sessionManager.stopMonitoring();
+      // Close SQLite databases before exit — prevents "mutex lock failed" crash
+      // when better-sqlite3 destructors fire during process teardown.
+      topicMemory?.close();
+      semanticMemory?.close();
       await server.stop();
       process.exit(0);
     };
 
     process.on('SIGINT', shutdown);
     process.on('SIGTERM', shutdown);
+
+    // Wire the ForegroundRestartWatcher to the graceful shutdown function.
+    // This ensures auto-update restarts close all resources (especially SQLite
+    // databases) before exiting, preventing the "mutex lock failed" crash.
+    restartWatcher.on('restartDetected', shutdown);
   } else {
     // Run in tmux background session
     const tmuxPath = detectTmuxPath();
