@@ -1,28 +1,35 @@
 # Upgrade Guide — vNEXT
 
 <!-- bump: patch -->
+<!-- Valid values: patch, minor, major -->
+<!-- patch = bug fixes, refactors, test additions, doc updates -->
+<!-- minor = new features, new APIs, new capabilities (backwards-compatible) -->
+<!-- major = breaking changes to existing APIs or behavior -->
 
 ## What Changed
 
-**AuthGate default flipped from allow-all to deny-all when no authorized users are configured.**
-
-Previously, `AuthGate.isAuthorized()` returned `true` when the `authorizedUsers` set was empty (size === 0). This dangerous default caused a critical bug where a WhatsApp-connected agent with no `authorizedNumbers` configured responded to every incoming message on the account — including personal conversations with unrelated contacts.
-
-Now:
-- Empty `authorizedUsers` = deny all (safe default)
-- To explicitly allow all users, include `'*'` in the authorized list (e.g., `authorizedNumbers: ['*']`)
-- WhatsApp adapter logs a console warning when started with no `authorizedNumbers`
-
-**Migration impact**: Any agent config with empty or missing `authorizedNumbers` will now correctly reject all messages. Agents that intentionally accept messages from anyone must add `'*'` to their authorized list.
+<!-- Describe what changed technically. What new features, APIs, behavioral changes? -->
+<!-- Write this for the AGENT — they need to understand the system deeply. -->
 
 ## What to Tell Your User
 
-- **Security fix**: "I've tightened up who can message me. Previously if no allowed contacts were set, I'd respond to everyone — now I only respond to contacts you've specifically approved. This prevents me from accidentally responding to messages meant for you."
+<!-- Write talking points the agent should relay to their user. -->
+<!-- This should be warm, conversational, user-facing — not a changelog. -->
+<!-- Focus on what THEY can now do, not internal plumbing. -->
+<!--                                                                    -->
+<!-- PROHIBITED in this section (will fail validation):                 -->
+<!--   camelCase config keys: silentReject, maxRetries, telegramNotify -->
+<!--   Inline code backtick references like silentReject: false        -->
+<!--   Fenced code blocks                                              -->
+<!--   Instructions to edit files or run commands                      -->
+<!--                                                                    -->
+<!-- CORRECT style: "I can turn that on for you" not "set X to false"  -->
+<!-- The agent relays this to their user — keep it human.              -->
+
+- **[Feature name]**: "[Brief, friendly description of what this means for the user]"
 
 ## Summary of New Capabilities
 
 | Capability | How to Use |
 |-----------|-----------|
-| Safe default authorization | Automatic — empty config now denies all |
-| Wildcard authorization | Add a wildcard entry to your allowed contacts to accept everyone |
-| Missing config warning | Automatic — console warning on startup if no contacts configured |
+| [Capability] | [Endpoint, command, or "automatic"] |

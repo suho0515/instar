@@ -23,6 +23,24 @@ export default defineConfig({
       customCss: [
         './src/styles/starlight-custom.css',
       ],
+      // Force dark mode to match landing page — no light/dark toggle
+      expressiveCode: {
+        themes: ['github-dark'],
+      },
+      head: [
+        {
+          tag: 'script',
+          content: `
+            // Force dark mode — Instar is always dark
+            document.documentElement.dataset.theme = 'dark';
+            localStorage.setItem('starlight-theme', 'dark');
+          `,
+        },
+      ],
+      components: {
+        // Hide the theme toggle by overriding with empty component
+        ThemeSelect: './src/components/EmptyThemeSelect.astro',
+      },
       sidebar: [
         {
           label: 'Getting Started',
