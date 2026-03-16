@@ -379,6 +379,29 @@ describe('MessageSentinel', () => {
       expect(llmCalled).toBe(true);
     });
 
+    it('LLM prompt treats "hold on let me think" as normal example — not pause (regression: cluster-messagesentinel-llm-classifier)', async () => {
+      let promptReceived = '';
+      sentinel = new MessageSentinel({
+        intelligence: {
+          evaluate: async (prompt) => {
+            promptReceived = prompt;
+            // Simulate LLM returning "normal" after seeing the updated prompt
+            // which now places "hold on let me think" in the normal examples
+            return 'normal';
+          },
+        },
+      });
+
+      const result = await sentinel.classify('hold on let me think');
+      expect(result.category).toBe('normal');
+      expect(result.method).toBe('llm');
+      // Verify the prompt correctly categorizes hold-on variants as normal
+      expect(promptReceived).toContain('hold on let me think');
+      expect(promptReceived).toContain('normal');
+      // And that pause examples no longer include conversational hold-on phrases
+      expect(promptReceived).not.toContain('pause: User wants the agent to pause and wait (examples: "hold on let me think"');
+    });
+
     it('fast-path takes precedence over LLM', async () => {
       let llmCalled = false;
       sentinel = new MessageSentinel({
