@@ -1,35 +1,27 @@
 # Upgrade Guide — vNEXT
 
 <!-- bump: patch -->
-<!-- Valid values: patch, minor, major -->
-<!-- patch = bug fixes, refactors, test additions, doc updates -->
-<!-- minor = new features, new APIs, new capabilities (backwards-compatible) -->
-<!-- major = breaking changes to existing APIs or behavior -->
 
 ## What Changed
 
-<!-- Describe what changed technically. What new features, APIs, behavioral changes? -->
-<!-- Write this for the AGENT — they need to understand the system deeply. -->
+Added CLI commands for inspecting job execution history and continuity data (`instar job history`, `instar job handoff`). Job execution now supports handoff notes — each execution can leave context for the next one, enabling cross-execution continuity for daemon-style jobs.
+
+A new usage-based reflection metrics system tracks how often the agent reflects, enabling monitoring of reflection health over time.
+
+Test infrastructure improvements: updated message-formatter tests for MCP-based reply instructions, adjusted silent-fallback baselines, fixed hybrid-search E2E mock config, and expanded the flaky test push exclusion list for more reliable CI.
+
+Added a separate publish workflow for the threadline-mcp subpackage.
 
 ## What to Tell Your User
 
-<!-- Write talking points the agent should relay to their user. -->
-<!-- This should be warm, conversational, user-facing — not a changelog. -->
-<!-- Focus on what THEY can now do, not internal plumbing. -->
-<!--                                                                    -->
-<!-- PROHIBITED in this section (will fail validation):                 -->
-<!--   camelCase config keys: silentReject, maxRetries, telegramNotify -->
-<!--   Inline code backtick references like silentReject: false        -->
-<!--   Fenced code blocks                                              -->
-<!--   Instructions to edit files or run commands                      -->
-<!--                                                                    -->
-<!-- CORRECT style: "I can turn that on for you" not "set X to false"  -->
-<!-- The agent relays this to their user — keep it human.              -->
-
-- **[Feature name]**: "[Brief, friendly description of what this means for the user]"
+- **Job inspection tools**: "You can now check what your agent has been working on between sessions. The new job history and handoff commands show execution records and continuity notes."
+- **Reflection monitoring**: "Your agent now tracks reflection frequency, so you can see how often it pauses to learn from its work."
+- **Stability improvements**: "Several test reliability fixes make the update process smoother."
 
 ## Summary of New Capabilities
 
 | Capability | How to Use |
 |-----------|-----------|
-| [Capability] | [Endpoint, command, or "automatic"] |
+| Job execution history | `instar job history [job-slug]` |
+| Job handoff inspection | `instar job handoff [job-slug]` |
+| Usage-based reflection metrics | Automatic — tracked during agent operation |
