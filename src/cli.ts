@@ -975,6 +975,26 @@ jobCmd
     await jobHandoff(slug, opts);
   });
 
+jobCmd
+  .command('history [slug]')
+  .description('Show job run history with handoff notes')
+  .option('-n, --limit <n>', 'Number of runs to show (default: 10)', (v: string) => parseInt(v, 10))
+  .option('--handoff-only', 'Only show runs with handoff notes')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (slug: string | undefined, opts: { limit?: number; handoffOnly?: boolean; dir?: string }) => {
+    const { jobHistory } = await import('./commands/job.js');
+    await jobHistory(slug, opts);
+  });
+
+jobCmd
+  .command('continuity <slug>')
+  .description('Show what the next execution of a job will inherit (handoff notes, state)')
+  .option('-d, --dir <path>', 'Project directory')
+  .action(async (slug: string, _opts: { dir?: string }) => {
+    const { jobContinuity } = await import('./commands/job.js');
+    await jobContinuity(slug);
+  });
+
 // ── Lifeline ──────────────────────────────────────────────────────
 
 const lifelineCmd = program

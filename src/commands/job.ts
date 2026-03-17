@@ -119,6 +119,95 @@ export async function listJobs(_options: { dir?: string }): Promise<void> {
 }
 
 /**
+ * Show job run history with handoff notes.
+ */
+export async function jobHistory(
+  slug: string | undefined,
+  options: { limit?: number; handoffOnly?: boolean; dir?: string },
+): Promise<void> {
+  const config = loadConfig();
+  ensureStateDir(config.stateDir);
+
+  const history = new JobRunHistory(config.stateDir);
+  const limit = options.limit ?? 10;
+
+  const { runs, total } = history.query({ slug, limit: limit * 2 }); // over-fetch for handoff filter
+
+  let filtered = runs;
+  if (options.handoffOnly) {
+    filtered = runs.filter(r => r.handoffNotes);
+  }
+  filtered = filtered.slice(0, limit);
+
+  if (filtered.length === 0) {
+    console.log(pc.dim(slug ? `No runs found for "${slug}".` : 'No job runs recorded yet.'));
+    return;
+  }
+
+  console.log(pc.bold(`Job Run History${slug ? ` — ${slug}` : ''} (${filtered.length} of ${total} total)\n`));
+
+  for (const run of filtered) {
+    const resultColor = run.result === 'success' ? pc.green : run.result === 'failure' ? pc.red : pc.yellow;
+    const duration = run.durationSeconds ? `${Math.round(run.durationSeconds / 60)}m` : '?';
+
+    console.log(`  ${resultColor(run.result.padEnd(8))} ${pc.bold(run.slug)} — ${run.sessionId}`);
+    console.log(`    ${pc.dim(run.startedAt)} | ${duration} | trigger: ${run.trigger}`);
+
+    if (run.handoffNotes) {
+      const preview = run.handoffNotes.length > 120
+        ? run.handoffNotes.slice(0, 120) + '...'
+        : run.handoffNotes;
+      console.log(`    ${pc.cyan('handoff:')} ${preview}`);
+    }
+
+    if (run.reflection?.summary) {
+      const preview = run.reflection.summary.length > 100
+        ? run.reflection.summary.slice(0, 100) + '...'
+        : run.reflection.summary;
+      console.log(`    ${pc.dim('reflect:')} ${preview}`);
+    }
+
+    console.log();
+  }
+}
+
+/**
+ * Show what the next execution of a job will inherit.
+ */
+export async function jobContinuity(slug: string): Promise<void> {
+  const config = loadConfig();
+  ensureStateDir(config.stateDir);
+
+  const history = new JobRunHistory(config.stateDir);
+  const handoff = history.getLastHandoff(slug);
+
+  if (!handoff) {
+    console.log(pc.dim(`No handoff notes found for "${slug}".`));
+    console.log(pc.dim('The next execution will start fresh.'));
+    return;
+  }
+
+  console.log(pc.bold(`Continuity for "${slug}"\n`));
+  console.log(`  ${pc.dim('From session:')} ${handoff.fromSession}`);
+  console.log(`  ${pc.dim('Completed:')}    ${handoff.completedAt}`);
+  console.log(`  ${pc.dim('Run ID:')}       ${handoff.fromRunId}`);
+  console.log();
+  console.log(pc.cyan('  Handoff Notes:'));
+  for (const line of handoff.handoffNotes.split('\n')) {
+    console.log(`    ${line}`);
+  }
+
+  if (handoff.stateSnapshot) {
+    console.log();
+    console.log(pc.cyan('  State Snapshot:'));
+    console.log(`    ${JSON.stringify(handoff.stateSnapshot, null, 2).split('\n').join('\n    ')}`);
+  }
+
+  console.log();
+  console.log(pc.dim('This will be injected into the next execution\'s prompt.'));
+}
+
+/**
  * Write handoff notes for the next execution of a job.
  * Called by the agent at session end to leave context for the next run.
  */
