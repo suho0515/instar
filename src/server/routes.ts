@@ -3800,6 +3800,99 @@ export function createRoutes(ctx: RouteContext): Router {
       });
     }
 
+    // Route a system message to the agent session so it can respond conversationally.
+    // Uses the same inject-or-spawn pattern as Telegram forwarding.
+    if (submission.topicId && ctx.sessionManager) {
+      const topicId = submission.topicId;
+      const fieldCount = Object.keys(submission.values).length;
+      const fieldNames = Object.keys(submission.values).join(', ');
+      const systemMsg = `[secret-drop-received] Secret "${submission.label}" was just submitted (${fieldCount} field${fieldCount !== 1 ? 's' : ''}: ${fieldNames}). ` +
+        `Retrieve it with: curl -s -X POST -H "Authorization: Bearer $AUTH" http://localhost:${ctx.config.port}/secrets/retrieve/${req.params.token} | Then acknowledge receipt to the user conversationally via Telegram topic ${topicId}.`;
+
+      const sdRegistryPath = path.join(ctx.config.stateDir, 'topic-session-registry.json');
+      let targetSession: string | null = null;
+      try {
+        if (fs.existsSync(sdRegistryPath)) {
+          const registry = JSON.parse(fs.readFileSync(sdRegistryPath, 'utf-8'));
+          targetSession = registry.topicToSession?.[String(topicId)] ?? null;
+        }
+      } catch { /* registry read failed — fall through to spawn */ }
+
+      if (targetSession && ctx.sessionManager.isSessionAlive(targetSession)) {
+        // Inject into existing session as a system reminder
+        ctx.sessionManager.injectPasteNotification(targetSession,
+          `<system-reminder>${systemMsg}</system-reminder>`);
+      } else {
+        // No live session — spawn one to handle the secret receipt
+        let topicName = `topic-${topicId}`;
+        try {
+          if (fs.existsSync(sdRegistryPath)) {
+            const reg = JSON.parse(fs.readFileSync(sdRegistryPath, 'utf-8'));
+            const stored = reg.topicToName?.[String(topicId)];
+            if (stored) topicName = stored;
+          }
+        } catch { /* fall through to default */ }
+
+        // Build context with thread history
+        const historyLines: string[] = [];
+        if (ctx.telegram) {
+          try {
+            const history = ctx.telegram.getTopicHistory(topicId, 20);
+            if (history.length > 0) {
+              historyLines.push(`--- Thread History (last ${history.length} messages) ---`);
+              historyLines.push(`IMPORTANT: Read this history carefully before taking any action.`);
+              historyLines.push(`Your task is to continue THIS conversation, not start something new.`);
+              historyLines.push(``);
+              for (const m of history) {
+                const sender = m.fromUser ? (m.senderName || 'User') : 'Agent';
+                const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
+                const histText = (m.text || '').slice(0, 300);
+                historyLines.push(`[${ts}] ${sender}: ${histText}`);
+              }
+              historyLines.push(``);
+              historyLines.push(`--- End Thread History ---`);
+            }
+          } catch {
+            // Non-fatal — spawn without history
+          }
+        }
+
+        const contextLines = [
+          ...historyLines,
+          ``,
+          `This session was auto-created because a Secret Drop was submitted.`,
+          ``,
+          systemMsg,
+          ``,
+          `CRITICAL: You MUST relay your response back to Telegram after responding.`,
+          `Use the relay script:`,
+          ``,
+          `cat <<'EOF' | .claude/scripts/telegram-reply.sh ${topicId}`,
+          `Your response text here`,
+          `EOF`,
+        ];
+        const tmpDir = '/tmp/instar-telegram';
+        fs.mkdirSync(tmpDir, { recursive: true });
+        const ctxPath = path.join(tmpDir, `ctx-${topicId}-${Date.now()}.txt`);
+        fs.writeFileSync(ctxPath, contextLines.join('\n'));
+
+        const bootstrapMessage = `[telegram:${topicId}] ${systemMsg} (IMPORTANT: Read ${ctxPath} for thread history and Telegram relay instructions — you MUST relay your response back.)`;
+
+        const resumeSessionId = ctx.topicResumeMap?.get(topicId) ?? undefined;
+        ctx.sessionManager.spawnInteractiveSession(bootstrapMessage, topicName, { telegramTopicId: topicId, resumeSessionId }).then((newSessionName) => {
+          if (resumeSessionId) ctx.topicResumeMap?.remove(topicId);
+          try {
+            const reg = fs.existsSync(sdRegistryPath) ? JSON.parse(fs.readFileSync(sdRegistryPath, 'utf-8')) : { topicToSession: {}, topicToName: {} };
+            reg.topicToSession[String(topicId)] = newSessionName;
+            fs.writeFileSync(sdRegistryPath, JSON.stringify(reg, null, 2));
+          } catch { /* @silent-fallback-ok — registry write non-critical */ }
+          console.log(`[secret-drop] Spawned "${newSessionName}" for secret receipt on topic ${topicId}`);
+        }).catch((err) => {
+          console.error(`[secret-drop] Session spawn failed:`, err);
+        });
+      }
+    }
+
     res.json({ ok: true, receivedAt: submission.receivedAt });
   });
 
