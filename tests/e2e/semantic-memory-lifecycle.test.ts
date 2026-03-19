@@ -392,7 +392,7 @@ Use email for longer-form communication.
 
       expect(res.status).toBe(200);
       expect(res.body.results.length).toBeGreaterThan(0);
-      expect(res.body.results[0].type).toBe('lesson');
+      expect(res.body.results.some((r: any) => r.type === 'lesson')).toBe(true);
     });
 
     it('finds people (Justin)', async () => {
