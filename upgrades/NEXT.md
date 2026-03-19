@@ -8,28 +8,23 @@
 
 ## What Changed
 
-<!-- Describe what changed technically. What new features, APIs, behavioral changes? -->
-<!-- Write this for the AGENT — they need to understand the system deeply. -->
+Added sleep/wake recovery infrastructure for macOS environments. When a machine sleeps and wakes, SQLite WAL locks can go stale and tunnel connections drop silently. This release adds:
+
+- **WAL checkpoint methods** on TopicMemory and SemanticMemory — `checkpoint()` flushes stale WAL locks after macOS sleep/wake, preventing "database is locked" errors that previously required manual restart.
+- **TunnelManager recovery** — `forceStop()` cleanly tears down zombie tunnel processes, and `enableAutoReconnect()` provides exponential-backoff reconnection when tunnels drop during sleep/wake cycles.
+- **TelegramAdapter resilience** — catches silent connection failures from the Telegram API that occur after network state changes, with automatic retry logic.
+
+These changes target the most common failure mode for agents running on developer laptops: machine sleep causing cascading failures across memory, tunnels, and messaging.
 
 ## What to Tell Your User
 
-<!-- Write talking points the agent should relay to their user. -->
-<!-- This should be warm, conversational, user-facing — not a changelog. -->
-<!-- Focus on what THEY can now do, not internal plumbing. -->
-<!--                                                                    -->
-<!-- PROHIBITED in this section (will fail validation):                 -->
-<!--   camelCase config keys: silentReject, maxRetries, telegramNotify -->
-<!--   Inline code backtick references like silentReject: false        -->
-<!--   Fenced code blocks                                              -->
-<!--   Instructions to edit files or run commands                      -->
-<!--                                                                    -->
-<!-- CORRECT style: "I can turn that on for you" not "set X to false"  -->
-<!-- The agent relays this to their user — keep it human.              -->
-
-- **[Feature name]**: "[Brief, friendly description of what this means for the user]"
+- **Sleep/wake recovery**: "If your machine goes to sleep and wakes back up, I can now recover automatically — my database connections, tunnels, and messaging all reconnect without needing a restart."
 
 ## Summary of New Capabilities
 
 | Capability | How to Use |
 |-----------|-----------|
-| [Capability] | [Endpoint, command, or "automatic"] |
+| WAL checkpoint after sleep/wake | Automatic — called by StallTriageNurse on stall detection |
+| Tunnel auto-reconnect | Automatic with exponential backoff |
+| Tunnel force-stop | Available via TunnelManager API for manual recovery |
+| Telegram silent-failure catch | Automatic — adapter retries on connection loss |
