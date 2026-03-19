@@ -1,19 +1,21 @@
-# v0.23.10 — Self-Recovery & ESM Compatibility
+# v0.23.11 — Deeper Native Module Self-Recovery
 
 ## What Changed
 
-Two stability improvements that make agents more resilient:
+The pre-flight SQLite binding check now exercises the native layer more thoroughly. Previously it only tested that the module could be imported, but some version mismatches cause runtime crashes (C++ mutex errors) rather than import failures. Now the check opens an in-memory database and runs a pragma, catching these deeper incompatibilities before the server starts.
 
-**Zombie session detection**: Sessions that finish their work but sit idle at the Claude prompt now get automatically killed after 15 minutes. Previously, these zombie sessions would accumulate until the max session limit was reached, blocking health checks, server restarts, and eventually crashing the lifeline process entirely.
+The rebuild fallback path is also now shadow-install-aware — it tries rebuilding in the shadow install's node_modules before falling back to global. This ensures agents running via shadow installs (the standard deployment) get their native modules rebuilt correctly.
 
-**ESM project compatibility**: The boot wrapper now correctly uses `.cjs` extension for projects with `"type": "module"` in their package.json. Previously, the boot wrapper was always generated as `.js`, which Node treated as ESM in module-type projects, causing `require is not defined` crashes. The plist self-heal also now recognizes `.cjs` boot wrappers as valid, preventing unnecessary regeneration.
+Combined with the v0.23.8 zombie session reaper and v0.23.10 ESM boot wrapper fix, agents should now self-recover from the most common crash patterns without manual intervention.
 
 ## What to Tell Your User
 
-Your agent is now better at recovering from stuck states on its own. If sessions were piling up and causing your agent to become unresponsive, that should stop happening. If you had trouble with the agent crashing on startup in a project that uses ES modules, that's also fixed now.
+- **Self-healing native modules**: "If your Node.js version changes, I can now detect and fix the incompatibility automatically on startup. No more manual rebuilds needed."
 
 ## Summary of New Capabilities
 
-- Idle prompt detection kills zombie Claude sessions after 15 minutes of inactivity
-- Boot wrapper uses .cjs extension for ESM-compatible projects
-- Plist self-heal accepts both .js and .cjs boot wrappers
+| Capability | How to Use |
+|-----------|-----------|
+| Deeper native binding check | Automatic on server startup |
+| Shadow-install-aware rebuild | Automatic fallback during rebuild |
+| Mutex crash detection | Automatic — catches previously undetectable crashes |
