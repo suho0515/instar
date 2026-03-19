@@ -965,6 +965,57 @@ describe('SemanticMemory', () => {
     });
   });
 
+  // ─── WAL Checkpoint ───────────────────────────────────────────
+
+  describe('checkpoint', () => {
+    it('does not throw on an open database', () => {
+      expect(() => setup.memory.checkpoint()).not.toThrow();
+    });
+
+    it('can be called multiple times without error', () => {
+      expect(() => {
+        setup.memory.checkpoint();
+        setup.memory.checkpoint();
+        setup.memory.checkpoint();
+      }).not.toThrow();
+    });
+
+    it('does not corrupt data after checkpoint', () => {
+      const id = setup.memory.remember({
+        type: 'fact', name: 'Pre-checkpoint', content: 'Before checkpoint',
+        confidence: 0.9, lastVerified: new Date().toISOString(),
+        source: 'test', tags: [],
+      });
+
+      setup.memory.checkpoint();
+
+      const id2 = setup.memory.remember({
+        type: 'fact', name: 'Post-checkpoint', content: 'After checkpoint',
+        confidence: 0.8, lastVerified: new Date().toISOString(),
+        source: 'test', tags: [],
+      });
+
+      setup.memory.checkpoint();
+
+      expect(setup.memory.recall(id)).not.toBeNull();
+      expect(setup.memory.recall(id2)).not.toBeNull();
+      expect(setup.memory.stats().totalEntities).toBe(2);
+    });
+
+    it('search works after checkpoint', () => {
+      setup.memory.remember({
+        type: 'fact', name: 'Checkpoint search test', content: 'Unique searchable checkpoint content',
+        confidence: 0.9, lastVerified: new Date().toISOString(),
+        source: 'test', tags: [],
+      });
+
+      setup.memory.checkpoint();
+
+      const results = setup.memory.search('checkpoint content');
+      expect(results.length).toBeGreaterThan(0);
+    });
+  });
+
   // ─── Edge Cases ────────────────────────────────────────────────
 
   describe('edge cases', () => {

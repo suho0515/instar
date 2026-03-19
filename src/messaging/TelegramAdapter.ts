@@ -240,6 +240,10 @@ export class TelegramAdapter implements MessagingAdapter {
   private startedAt: Date | null = null;
   private consecutivePollErrors = 0;
 
+  // Forum detection — if the chat is not a forum, skip all topic operations
+  private notAForum = false;
+  private notAForumWarned = false;
+
   // Topic-session registry (persisted to disk)
   private topicToSession: Map<number, string> = new Map();
   private sessionToTopic: Map<string, number> = new Map();
@@ -764,6 +768,10 @@ export class TelegramAdapter implements MessagingAdapter {
    * Create a forum topic in the supergroup.
    */
   async createForumTopic(name: string, iconColor?: number): Promise<{ topicId: number; name: string }> {
+    if (this.notAForum) {
+      throw new Error('Chat is not a forum — topic creation skipped');
+    }
+
     const params: Record<string, unknown> = {
       chat_id: this.config.chatId,
       name,
@@ -772,16 +780,28 @@ export class TelegramAdapter implements MessagingAdapter {
       params.icon_color = iconColor;
     }
 
-    const result = await this.apiCall('createForumTopic', params) as {
-      message_thread_id: number;
-      name: string;
-    };
+    try {
+      const result = await this.apiCall('createForumTopic', params) as {
+        message_thread_id: number;
+        name: string;
+      };
 
-    this.topicToName.set(result.message_thread_id, name);
-    this.saveRegistry();
+      this.topicToName.set(result.message_thread_id, name);
+      this.saveRegistry();
 
-    console.log(`[telegram] Created forum topic: "${name}" (ID: ${result.message_thread_id})`);
-    return { topicId: result.message_thread_id, name: result.name };
+      console.log(`[telegram] Created forum topic: "${name}" (ID: ${result.message_thread_id})`);
+      return { topicId: result.message_thread_id, name: result.name };
+    } catch (err) {
+      const errStr = String(err);
+      if (errStr.includes('not a forum') || errStr.includes('FORUM_REQUIRED')) {
+        this.notAForum = true;
+        if (!this.notAForumWarned) {
+          this.notAForumWarned = true;
+          console.warn('[telegram] ⚠️ Chat is not a forum-enabled supergroup. Forum topics (Lifeline, Dashboard, per-session) will not be created. Messaging will use the General Topic. To enable topics, convert your Telegram group to a supergroup with Topics enabled in group settings.');
+        }
+      }
+      throw err;
+    }
   }
 
   /**
@@ -838,6 +858,7 @@ export class TelegramAdapter implements MessagingAdapter {
    * Called on startup and can be called periodically.
    */
   async ensureLifelineTopic(): Promise<number | null> {
+    if (this.notAForum) return null;
     const styledName = `${TOPIC_STYLE.SYSTEM.emoji} Lifeline`;
     if (!this.config.lifelineTopicId) {
       // No lifeline topic configured — create one
@@ -966,10 +987,19 @@ export class TelegramAdapter implements MessagingAdapter {
   }
 
   /**
+   * Whether the chat supports forum topics. False if we detected
+   * "the chat is not a forum" from the Telegram API.
+   */
+  get isForumChat(): boolean {
+    return !this.notAForum;
+  }
+
+  /**
    * Ensure the Dashboard topic exists. Creates it on first run, verifies on restart.
    * Same resilience pattern as the lifeline topic.
    */
   async ensureDashboardTopic(): Promise<number | null> {
+    if (this.notAForum) return null;
     const styledName = `${TOPIC_STYLE.INFO.emoji} Dashboard`;
     if (!this.config.dashboardTopicId) {
       try {
@@ -2641,25 +2671,22 @@ export class TelegramAdapter implements MessagingAdapter {
       updatedAt: now,
     };
 
-    // Create Telegram topic
+    // Create Telegram topic (uses the centralized method for forum detection)
     try {
       const emoji = PRIORITY_EMOJI[item.priority] || PRIORITY_EMOJI.NORMAL;
       const color = PRIORITY_COLOR[item.priority] || PRIORITY_COLOR.NORMAL;
       const topicTitle = `${emoji} ${item.title}`.slice(0, 128);
 
-      const result = await this.apiCall(
-        'createForumTopic',
-        { chat_id: this.config.chatId, name: topicTitle, icon_color: color },
-      ) as { message_thread_id: number };
+      const topic = await this.createForumTopic(topicTitle, color);
 
-      const topicId = result.message_thread_id;
+      const topicId = topic.topicId;
       attention.topicId = topicId;
 
       // Register mappings
       this.attentionItemToTopic.set(item.id, topicId);
       this.attentionTopicToItem.set(topicId, item.id);
       this.topicToName.set(topicId, item.title);
-      this.saveRegistry();
+      // Registry already saved by createForumTopic
 
       // Post details as first message
       const detail = [
@@ -2872,13 +2899,21 @@ export class TelegramAdapter implements MessagingAdapter {
 
   private loadOffset(): void {
     try {
-      const data = JSON.parse(fs.readFileSync(this.offsetPath, 'utf-8'));
-      if (typeof data.lastUpdateId === 'number' && Number.isFinite(data.lastUpdateId) && data.lastUpdateId > 0) {
-        this.lastUpdateId = data.lastUpdateId;
+      const raw = fs.readFileSync(this.offsetPath, 'utf-8');
+      const data = JSON.parse(raw);
+      // Support both 'lastUpdateId' (canonical) and 'offset' (legacy/external)
+      const candidate = data.lastUpdateId ?? data.offset;
+      if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate > 0) {
+        this.lastUpdateId = candidate;
         console.log(`[telegram] Restored poll offset: ${this.lastUpdateId}`);
+      } else if (data.lastUpdateId !== undefined || data.offset !== undefined) {
+        console.warn(`[telegram] Poll offset file has invalid value: ${raw.trim().substring(0, 100)}. Starting from 0.`);
       }
-    } catch {
-      // File doesn't exist or is corrupted — start from 0
+    } catch (err) {
+      // Distinguish missing file from corrupted file
+      if ((err as NodeJS.ErrnoException).code !== 'ENOENT') {
+        console.warn(`[telegram] Poll offset file corrupted, starting from 0: ${err}`);
+      }
     }
   }
 

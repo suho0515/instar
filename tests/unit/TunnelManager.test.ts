@@ -301,6 +301,110 @@ describe('TunnelManager', () => {
     });
   });
 
+  describe('forceStop', () => {
+    it('stops the tunnel and clears state', async () => {
+      const tm = createManager();
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://force.trycloudflare.com'), 10);
+      await p;
+
+      expect(tm.isRunning).toBe(true);
+
+      await tm.forceStop();
+      expect(tm.isRunning).toBe(false);
+      expect(tm.url).toBeNull();
+    });
+
+    it('emits stopped event', async () => {
+      const tm = createManager();
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://fs2.trycloudflare.com'), 10);
+      await p;
+
+      let stopped = false;
+      tm.on('stopped', () => { stopped = true; });
+
+      await tm.forceStop();
+      expect(stopped).toBe(true);
+    });
+
+    it('is safe to call when not running', async () => {
+      const tm = createManager();
+      await expect(tm.forceStop()).resolves.toBeUndefined();
+    });
+
+    it('disables auto-reconnect', async () => {
+      const tm = createManager();
+      tm.enableAutoReconnect();
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://fs3.trycloudflare.com'), 10);
+      await p;
+
+      await tm.forceStop();
+
+      // After forceStop, the _stopped flag prevents reconnect.
+      // Simulate unexpected exit — should NOT attempt reconnect.
+      expect(tm.isRunning).toBe(false);
+    });
+  });
+
+  describe('auto-reconnect', () => {
+    it('does not reconnect by default on unexpected exit', async () => {
+      const tm = createManager();
+      // Catch errors to prevent unhandled rejection
+      tm.on('error', () => {});
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://ar1.trycloudflare.com'), 10);
+      await p;
+
+      // Simulate unexpected exit (not stopped intentionally)
+      mockTunnel.emit('exit', 1);
+
+      // Wait a bit — no reconnect should happen
+      await new Promise(r => setTimeout(r, 100));
+      // tm should still be in a disconnected state with no reconnect timer
+      expect(tm.isRunning).toBe(false);
+    });
+
+    it('attempts reconnect on unexpected exit when enabled', async () => {
+      const tm = createManager();
+      tm.on('error', () => {});
+      tm.enableAutoReconnect();
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://ar2.trycloudflare.com'), 10);
+      await p;
+
+      // Simulate unexpected exit
+      mockTunnel.emit('exit', 1);
+
+      // Wait for reconnect attempt (base delay is 5s, but we just check the timer was set)
+      // We can't easily test the full reconnect cycle without more complex mocking,
+      // but we can verify it doesn't crash and stop clears the timer.
+      await tm.stop();
+      expect(tm.isRunning).toBe(false);
+    });
+
+    it('stop() cancels pending reconnect', async () => {
+      const tm = createManager();
+      tm.on('error', () => {});
+      tm.enableAutoReconnect();
+      const p = tm.start();
+      setTimeout(() => mockTunnel.emit('url', 'https://ar3.trycloudflare.com'), 10);
+      await p;
+
+      // Simulate unexpected exit to trigger reconnect timer
+      mockTunnel.emit('exit', 1);
+
+      // Immediately stop — should cancel the reconnect timer
+      await tm.stop();
+      expect(tm.isRunning).toBe(false);
+
+      // Wait past the reconnect delay — nothing should happen
+      await new Promise(r => setTimeout(r, 200));
+      expect(tm.isRunning).toBe(false);
+    });
+  });
+
   describe('state', () => {
     it('returns a copy (not a reference)', () => {
       const tm = createManager();

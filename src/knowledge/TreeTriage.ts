@@ -59,7 +59,7 @@ const NODE_KEYWORDS: Record<string, string[]> = {
   'capabilities.building': ['build', 'new capability', 'create', 'extend', 'self-modification'],
   'capabilities.skills': ['skill', 'slash command', '/command', 'reusable', 'behavioral'],
   'capabilities.scripts': ['script', '.claude/scripts', 'reusable', 'bash'],
-  'capabilities.secrets': ['secret', 'password', 'api key', 'token', 'credential', 'secure'],
+  'capabilities.secrets': ['secret', 'secret drop', 'password', 'api key', 'token', 'credential', 'secure', 'share secret', 'collect secret', 'one-time link'],
   'capabilities.self_discovery': ['self-discovery', 'capabilities endpoint', 'what can i do'],
   'capabilities.registry_first': ['registry', 'state files', 'source of truth', 'check first'],
   'capabilities.architecture': ['architecture', 'how does it work', 'endpoints', 'multi-user', 'multi-machine'],

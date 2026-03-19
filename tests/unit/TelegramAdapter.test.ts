@@ -171,6 +171,112 @@ describe('TelegramAdapter', () => {
     vi.unstubAllGlobals();
   });
 
+  it('isForumChat defaults to true', () => {
+    expect(adapter.isForumChat).toBe(true);
+  });
+
+  describe('forum detection', () => {
+    it('sets isForumChat to false when createForumTopic gets "not a forum" error', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Bad Request: the chat is not a forum',
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      await expect(adapter.createForumTopic('Test Topic')).rejects.toThrow();
+      expect(adapter.isForumChat).toBe(false);
+
+      vi.unstubAllGlobals();
+    });
+
+    it('ensureLifelineTopic returns null when chat is not a forum', async () => {
+      // Force non-forum state
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Bad Request: the chat is not a forum',
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      try { await adapter.createForumTopic('trigger'); } catch {}
+      expect(adapter.isForumChat).toBe(false);
+
+      const result = await adapter.ensureLifelineTopic();
+      expect(result).toBeNull();
+
+      vi.unstubAllGlobals();
+    });
+
+    it('ensureDashboardTopic returns null when chat is not a forum', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'FORUM_REQUIRED',
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      try { await adapter.createForumTopic('trigger'); } catch {}
+
+      const result = await adapter.ensureDashboardTopic();
+      expect(result).toBeNull();
+
+      vi.unstubAllGlobals();
+    });
+
+    it('createForumTopic skips after forum detection', async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: false,
+        status: 400,
+        text: async () => 'Bad Request: the chat is not a forum',
+      });
+      vi.stubGlobal('fetch', mockFetch);
+
+      // First call detects non-forum
+      try { await adapter.createForumTopic('first'); } catch {}
+
+      // Second call should throw immediately without hitting the API
+      const callCountBefore = mockFetch.mock.calls.length;
+      await expect(adapter.createForumTopic('second')).rejects.toThrow('Chat is not a forum');
+      expect(mockFetch.mock.calls.length).toBe(callCountBefore); // No new API call
+
+      vi.unstubAllGlobals();
+    });
+  });
+
+  describe('poll offset loading', () => {
+    it('loads legacy offset key', () => {
+      // Write offset file with legacy "offset" key
+      const offsetPath = path.join(tmpDir, 'lifeline-poll-offset.json');
+      fs.writeFileSync(offsetPath, JSON.stringify({ offset: 42 }));
+
+      // Create a new adapter that loads the offset
+      const adapter2 = new TelegramAdapter({
+        token: 'test-token-123',
+        chatId: '-100123456',
+        pollIntervalMs: 100,
+      }, tmpDir);
+
+      // The offset should be loaded (we can verify by checking it doesn't start from 0)
+      // Since lastUpdateId is private, we verify indirectly — it shouldn't throw
+      expect(adapter2.platform).toBe('telegram');
+    });
+
+    it('handles corrupted offset file gracefully', () => {
+      const offsetPath = path.join(tmpDir, 'lifeline-poll-offset.json');
+      fs.writeFileSync(offsetPath, 'not-json!!!');
+
+      // Should not throw
+      expect(() => {
+        new TelegramAdapter({
+          token: 'test-token-123',
+          chatId: '-100123456',
+          pollIntervalMs: 100,
+        }, tmpDir);
+      }).not.toThrow();
+    });
+  });
+
   it('start is idempotent', async () => {
     const mockFetch = vi.fn().mockResolvedValue({
       ok: true,

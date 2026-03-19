@@ -140,6 +140,7 @@ export class TopicMemory {
 
     // WAL mode for concurrent reads during writes
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('busy_timeout = 5000');
 
     this.createSchema();
   }
@@ -151,6 +152,16 @@ export class TopicMemory {
     if (this.db) {
       this.db.close();
       this.db = null;
+    }
+  }
+
+  /**
+   * Checkpoint the WAL file. Call after sleep/wake to flush stale WAL locks.
+   * Uses PASSIVE mode (non-blocking) — safe to call at any time.
+   */
+  checkpoint(): void {
+    if (this.db) {
+      try { this.db.pragma('wal_checkpoint(PASSIVE)'); } catch { /* non-critical */ }
     }
   }
 

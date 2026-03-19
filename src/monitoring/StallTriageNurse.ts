@@ -57,6 +57,8 @@ const DEFAULT_CONFIG: Required<StallTriageConfig> = {
   maxEscalations: 2,
   useIntelligenceProvider: true,
   postInterventionDelayMs: DEFAULT_POST_INTERVENTION_DELAY_MS,
+  restartLoopThreshold: 3,
+  restartLoopWindowMs: 600_000, // 10 minutes
 };
 
 const ACTION_ESCALATION_ORDER: TreatmentAction[] = [
@@ -106,6 +108,8 @@ export class StallTriageNurse extends EventEmitter {
   private cooldowns = new Map<number, number>();
   private activeCases = new Map<number, { sessionName: string; startedAt: number }>();
   private history: TriageRecord[] = [];
+  /** Track restart timestamps per topic for loop detection */
+  private restartTimestamps = new Map<number, number[]>();
   private static readonly MAX_HISTORY = 50;
   private static readonly STATE_KEY = 'triage-active';
 
@@ -172,6 +176,43 @@ export class StallTriageNurse extends EventEmitter {
   getHistory(limit?: number): TriageRecord[] {
     const records = [...this.history];
     return limit ? records.slice(-limit) : records;
+  }
+
+  /**
+   * Check if a topic is in a restart loop (too many restarts in a short window).
+   * Returns the count of recent restarts if in a loop, or 0 if not.
+   */
+  isInRestartLoop(topicId: number): number {
+    const timestamps = this.restartTimestamps.get(topicId);
+    if (!timestamps) return 0;
+
+    const now = Date.now();
+    const windowMs = this.config.restartLoopWindowMs;
+    const recent = timestamps.filter(ts => now - ts < windowMs);
+
+    // Update the stored timestamps to only keep recent ones
+    if (recent.length !== timestamps.length) {
+      if (recent.length === 0) {
+        this.restartTimestamps.delete(topicId);
+      } else {
+        this.restartTimestamps.set(topicId, recent);
+      }
+    }
+
+    return recent.length >= this.config.restartLoopThreshold ? recent.length : 0;
+  }
+
+  /**
+   * Record a restart for loop detection tracking.
+   */
+  private recordRestart(topicId: number): void {
+    const timestamps = this.restartTimestamps.get(topicId) || [];
+    timestamps.push(Date.now());
+    // Keep only timestamps within the window
+    const windowMs = this.config.restartLoopWindowMs;
+    const now = Date.now();
+    const recent = timestamps.filter(ts => now - ts < windowMs);
+    this.restartTimestamps.set(topicId, recent);
   }
 
   /**

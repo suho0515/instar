@@ -1,8 +1,8 @@
 {
   "$schema": "./builtin-manifest.schema.json",
   "schemaVersion": 1,
-  "generatedAt": "2026-03-19T03:01:43.946Z",
-  "instarVersion": "0.23.10",
+  "generatedAt": "2026-03-19T04:03:54.716Z",
+  "instarVersion": "0.23.11",
   "entryCount": 170,
   "entries": {
     "hook:session-start": {
@@ -1351,7 +1351,7 @@
       "type": "subsystem",
       "domain": "memory",
       "sourcePath": "src/memory/SemanticMemory.ts",
-      "contentHash": "cb8bef0d495131a85797fd415d1adb871db3dcae86c5f49e05d094b06321d331",
+      "contentHash": "33f50555cb0d2826da4c34d9e4c8b3335b070e6a1a31bbe1c03f9934d399d1ed",
       "since": "2025-01-01"
     },
     "subsystem:multi-machine-coordinator": {

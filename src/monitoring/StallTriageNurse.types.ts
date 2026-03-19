@@ -23,6 +23,10 @@ export interface StallTriageConfig {
   useIntelligenceProvider?: boolean;
   /** Delay after intervention before sending follow-up message (default: 3000ms) */
   postInterventionDelayMs?: number;
+  /** Number of restarts within the loop window that triggers loop detection (default: 3) */
+  restartLoopThreshold?: number;
+  /** Time window in ms for restart loop detection (default: 600000 = 10 min) */
+  restartLoopWindowMs?: number;
 }
 
 /** Process info from process-tree analysis */
@@ -75,6 +79,7 @@ export interface TriageEvents {
   'triage:escalated': { topicId: number; from: TreatmentAction; to: TreatmentAction };
   'triage:resolved': { topicId: number; actionsTaken: TreatmentAction[] };
   'triage:failed': { topicId: number; reason: string; actionsTaken: TreatmentAction[] };
+  'triage:restart_loop': { topicId: number; restartCount: number; windowMs: number };
 }
 
 /** Dependencies injected for testability */

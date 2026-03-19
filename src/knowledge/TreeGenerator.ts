@@ -367,6 +367,20 @@ export class TreeGenerator {
       description: 'MCP servers, CLI tools, and external integrations',
     });
 
+    children.push({
+      id: 'capabilities.secrets',
+      name: 'Secret Drop',
+      alwaysInclude: false,
+      managed: true,
+      depth: 'medium',
+      maxTokens: 500,
+      sensitivity: 'public',
+      sources: [
+        { type: 'memory_search', query: 'secret drop password credential token', topK: 3 },
+      ],
+      description: 'Secure secret collection — generate one-time, time-limited URLs for users to submit passwords, API keys, or tokens without exposing them in chat. Use POST /secrets/request to create a link, then share the tunnelUrl with the user. Never ask users to paste secrets in Telegram or chat.',
+    });
+
     if (options.hasDecisionJournal) {
       children.push({
         id: 'capabilities.edges',

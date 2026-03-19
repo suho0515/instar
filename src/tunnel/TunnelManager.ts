@@ -69,6 +69,12 @@ export class TunnelManager extends EventEmitter {
   private stateFile: string;
   private _state: TunnelState;
   private _stopped = false;
+  private _autoReconnect = false;
+  private _reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private _reconnectAttempt = 0;
+  private static readonly MAX_RECONNECT_ATTEMPTS = 10;
+  private static readonly BASE_RECONNECT_DELAY_MS = 5_000;
+  private static readonly MAX_RECONNECT_DELAY_MS = 5 * 60_000;
 
   constructor(config: TunnelConfig) {
     super();
@@ -125,10 +131,15 @@ export class TunnelManager extends EventEmitter {
   }
 
   /**
-   * Stop the tunnel gracefully.
+   * Stop the tunnel gracefully. Intentional stops disable auto-reconnect.
    */
   async stop(): Promise<void> {
     this._stopped = true;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._reconnectAttempt = 0;
     if (this.tunnel) {
       this.tunnel.stop();
       this.tunnel = null;
@@ -137,6 +148,105 @@ export class TunnelManager extends EventEmitter {
     this._state.startedAt = null;
     this.saveState();
     this.emit('stopped');
+  }
+
+  /**
+   * Force-stop the tunnel with a timeout. If cloudflared doesn't respond to
+   * SIGINT within `timeoutMs`, escalate to SIGKILL. Essential for sleep/wake
+   * recovery where cloudflared may be a zombie process.
+   */
+  async forceStop(timeoutMs = 5000): Promise<void> {
+    this._stopped = true;
+    if (this._reconnectTimer) {
+      clearTimeout(this._reconnectTimer);
+      this._reconnectTimer = null;
+    }
+    this._reconnectAttempt = 0;
+
+    if (this.tunnel) {
+      const tunnelProcess = this.tunnel.process;
+      const pid = tunnelProcess?.pid;
+
+      // Send SIGINT (graceful)
+      try { this.tunnel.stop(); } catch { /* may already be dead */ }
+
+      if (pid) {
+        // Wait for process to exit, escalate to SIGKILL if it doesn't
+        const exited = await new Promise<boolean>((resolve) => {
+          const timer = setTimeout(() => resolve(false), timeoutMs);
+          // Check if process is already dead
+          try {
+            process.kill(pid, 0);
+          } catch {
+            clearTimeout(timer);
+            resolve(true);
+            return;
+          }
+          // Poll for exit
+          const poll = setInterval(() => {
+            try {
+              process.kill(pid, 0);
+            } catch {
+              clearInterval(poll);
+              clearTimeout(timer);
+              resolve(true);
+            }
+          }, 200);
+        });
+
+        if (!exited) {
+          console.warn(`[Tunnel] cloudflared (PID ${pid}) didn't exit after ${timeoutMs}ms SIGINT — sending SIGKILL`);
+          try { process.kill(pid, 'SIGKILL'); } catch { /* already dead */ }
+        }
+      }
+
+      this.tunnel = null;
+    }
+
+    this._state.url = null;
+    this._state.startedAt = null;
+    this.saveState();
+    this.emit('stopped');
+  }
+
+  /**
+   * Enable automatic reconnection when the tunnel disconnects unexpectedly.
+   * Uses exponential backoff: 5s, 10s, 20s, ... up to 5 minutes, max 10 attempts.
+   */
+  enableAutoReconnect(): void {
+    this._autoReconnect = true;
+  }
+
+  /**
+   * Attempt to reconnect the tunnel with exponential backoff.
+   */
+  private attemptReconnect(): void {
+    if (!this._autoReconnect || this._stopped) return;
+    if (this._reconnectAttempt >= TunnelManager.MAX_RECONNECT_ATTEMPTS) {
+      console.error(`[Tunnel] Auto-reconnect gave up after ${this._reconnectAttempt} attempts`);
+      this.emit('error', new Error(`Tunnel auto-reconnect failed after ${this._reconnectAttempt} attempts`));
+      return;
+    }
+
+    const delay = Math.min(
+      TunnelManager.BASE_RECONNECT_DELAY_MS * Math.pow(2, this._reconnectAttempt),
+      TunnelManager.MAX_RECONNECT_DELAY_MS,
+    );
+    this._reconnectAttempt++;
+
+    console.log(`[Tunnel] Auto-reconnect attempt ${this._reconnectAttempt}/${TunnelManager.MAX_RECONNECT_ATTEMPTS} in ${delay / 1000}s`);
+
+    this._reconnectTimer = setTimeout(async () => {
+      if (this._stopped) return;
+      try {
+        const url = await this.start();
+        console.log(`[Tunnel] Auto-reconnected: ${url}`);
+        this._reconnectAttempt = 0;
+      } catch (err) {
+        console.error(`[Tunnel] Auto-reconnect failed:`, err instanceof Error ? err.message : err);
+        this.attemptReconnect();
+      }
+    }, delay);
   }
 
   /**
@@ -224,6 +334,9 @@ export class TunnelManager extends EventEmitter {
             resolved = true;
             clearTimeout(timeout);
             reject(new Error(`Tunnel process exited with code ${code}`));
+          } else {
+            // Tunnel was running and disconnected unexpectedly — try to reconnect
+            this.attemptReconnect();
           }
         }
       });
@@ -293,6 +406,8 @@ export class TunnelManager extends EventEmitter {
             resolved = true;
             clearTimeout(timeout);
             reject(new Error(`Named tunnel process exited with code ${code}`));
+          } else {
+            this.attemptReconnect();
           }
         }
       });
@@ -363,6 +478,7 @@ export class TunnelManager extends EventEmitter {
 
       child.on('exit', (code: number | null) => {
         if (!this._stopped) {
+          this.tunnel = null;
           this._state.url = null;
           this.saveState();
           this.emit('disconnected');
@@ -371,6 +487,8 @@ export class TunnelManager extends EventEmitter {
             clearTimeout(timeout);
             const errContext = stderrBuffer.slice(-500);
             reject(new Error(`Config-file tunnel exited with code ${code}: ${errContext}`));
+          } else {
+            this.attemptReconnect();
           }
         }
       });

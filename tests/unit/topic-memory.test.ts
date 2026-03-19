@@ -465,6 +465,59 @@ describe('TopicMemory', () => {
     });
   });
 
+  // ── WAL Checkpoint ─────────────────────────────────────────
+
+  describe('checkpoint', () => {
+    it('does not throw on an open database', () => {
+      expect(() => topicMemory.checkpoint()).not.toThrow();
+    });
+
+    it('can be called multiple times without error', () => {
+      expect(() => {
+        topicMemory.checkpoint();
+        topicMemory.checkpoint();
+      }).not.toThrow();
+    });
+
+    it('does not corrupt data after checkpoint', () => {
+      topicMemory.insertMessage({
+        messageId: 1, topicId: 100, text: 'Before checkpoint',
+        fromUser: true, timestamp: '2026-02-24T12:00:00Z', sessionName: null,
+      });
+
+      topicMemory.checkpoint();
+
+      topicMemory.insertMessage({
+        messageId: 2, topicId: 100, text: 'After checkpoint',
+        fromUser: true, timestamp: '2026-02-24T12:01:00Z', sessionName: null,
+      });
+
+      topicMemory.checkpoint();
+
+      const messages = topicMemory.getRecentMessages(100);
+      expect(messages).toHaveLength(2);
+      expect(messages[0].text).toBe('Before checkpoint');
+      expect(messages[1].text).toBe('After checkpoint');
+    });
+
+    it('FTS5 search works after checkpoint', () => {
+      topicMemory.insertMessage({
+        messageId: 1, topicId: 100, text: 'Unique checkpoint verification query',
+        fromUser: true, timestamp: '2026-02-24T12:00:00Z', sessionName: null,
+      });
+
+      topicMemory.checkpoint();
+
+      const results = topicMemory.search('checkpoint verification');
+      expect(results.length).toBeGreaterThan(0);
+    });
+
+    it('is safe on uninitialized db', () => {
+      const uninit = new TopicMemory(tmpDir);
+      expect(() => uninit.checkpoint()).not.toThrow();
+    });
+  });
+
   // ── Search ──────────────────────────────────────────────────
 
   describe('search', () => {

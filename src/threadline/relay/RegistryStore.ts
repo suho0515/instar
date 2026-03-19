@@ -178,6 +178,7 @@ export class RegistryStore {
 
     // Enable WAL mode
     this.db.pragma('journal_mode = WAL');
+    this.db.pragma('busy_timeout = 5000');
     this.db.pragma('synchronous = NORMAL');
 
     this.initSchema();

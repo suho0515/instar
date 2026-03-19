@@ -131,6 +131,7 @@ export class MemoryIndex {
 
     this.db = constructor(this.dbPath) as Database;
     this.db!.pragma('journal_mode = WAL');
+    this.db!.pragma('busy_timeout = 5000');
     this.db!.pragma('foreign_keys = ON');
 
     this.createSchema();

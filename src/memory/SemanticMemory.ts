@@ -140,6 +140,7 @@ export class SemanticMemory {
 
     this.db = constructor(this.config.dbPath) as Database;
     this.db!.pragma('journal_mode = WAL');
+    this.db!.pragma('busy_timeout = 5000');
     this.db!.pragma('foreign_keys = ON');
 
     this.createSchema();
@@ -153,6 +154,16 @@ export class SemanticMemory {
     if (this.db) {
       this.db.close();
       this.db = null;
+    }
+  }
+
+  /**
+   * Checkpoint the WAL file. Call after sleep/wake to flush stale WAL locks.
+   * Uses PASSIVE mode (non-blocking) — safe to call at any time.
+   */
+  checkpoint(): void {
+    if (this.db) {
+      try { this.db.pragma('wal_checkpoint(PASSIVE)'); } catch { /* non-critical */ }
     }
   }
 
