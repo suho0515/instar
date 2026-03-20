@@ -209,24 +209,29 @@ describe('TopicResumeMap', () => {
   // ── findClaudeSessionUuid() ─────────────────────────────────────
 
   describe('findClaudeSessionUuid()', () => {
-    it('returns a valid UUID or null', () => {
-      // This method searches the real ~/.claude/projects/ directory.
-      // On a machine with Claude data, it returns a UUID; without, null.
+    it('returns null when no JSONL files exist for the project', () => {
+      // projectDir is a temp dir with no Claude JSONL files
       const result = resumeMap.findClaudeSessionUuid();
-      if (result !== null) {
-        expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
-      } else {
-        expect(result).toBeNull();
-      }
+      expect(result).toBeNull();
     });
 
-    it('finds JSONL files we create in the projects directory', () => {
+    it('finds JSONL files in the project-specific directory', () => {
       const uuid = '550e8400-e29b-41d4-a716-446655440000';
       setupFakeClaudeProject(uuid);
 
       const result = resumeMap.findClaudeSessionUuid();
-      // Should return either our uuid or another valid one from the real dir
-      expect(result).not.toBeNull();
+      expect(result).toBe(uuid);
+    });
+
+    it('returns the most recently modified JSONL', () => {
+      const uuid1 = '11111111-1111-1111-1111-111111111111';
+      const uuid2 = '22222222-2222-2222-2222-222222222222';
+      setupFakeClaudeProject(uuid1);
+      // Create second file slightly later
+      setupFakeClaudeProject(uuid2);
+
+      const result = resumeMap.findClaudeSessionUuid();
+      // Should be uuid2 since it was created last
       expect(result).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     });
   });
@@ -256,13 +261,16 @@ describe('TopicResumeMap', () => {
   });
 
   /**
-   * Create a fake JSONL file in ~/.claude/projects/ so that
-   * the JSONL existence check passes. Uses a unique subdirectory
-   * to avoid collisions with real Claude data.
+   * Create a fake JSONL file in the project-specific directory under
+   * ~/.claude/projects/ so that the JSONL existence check passes.
+   * Uses the same hashing that TopicResumeMap uses internally:
+   * replace '/' and '.' with '-'.
    */
   function setupFakeClaudeProject(uuid: string): void {
     const projectsDir = path.join(os.homedir(), '.claude', 'projects');
-    const testProjectDir = path.join(projectsDir, `_test_resume_map_${process.pid}`);
+    // Must match the hashing in TopicResumeMap.claudeProjectDirName()
+    const projectHash = projectDir.replace(/[\/\.]/g, '-');
+    const testProjectDir = path.join(projectsDir, projectHash);
     fs.mkdirSync(testProjectDir, { recursive: true });
     fs.writeFileSync(path.join(testProjectDir, `${uuid}.jsonl`), '');
     if (!testProjectDirs.includes(testProjectDir)) {

@@ -337,7 +337,7 @@ async function spawnSessionForTopic(
   let usedFallback = false;
   if (topicMemory?.isReady()) {
     try {
-      contextContent = topicMemory.formatContextForSession(topicId, 30);
+      contextContent = topicMemory.formatContextForSession(topicId, 50);
     } catch (err) {
       // @silent-fallback-ok — TopicMemory format, JSONL fallback
       console.error(`[telegram→session] TopicMemory context failed, falling back to JSONL:`, err);
@@ -348,12 +348,16 @@ async function spawnSessionForTopic(
   if (!contextContent) {
     usedFallback = true;
     try {
-      const history = telegram.getTopicHistory(topicId, 20);
+      const history = telegram.getTopicHistory(topicId, 50);
       if (history.length > 0) {
         const lines: string[] = [];
         lines.push(`--- Thread History (last ${history.length} messages) ---`);
         lines.push(`IMPORTANT: Read this history carefully before taking any action.`);
         lines.push(`Your task is to continue THIS conversation, not start something new.`);
+        const topicName = telegram.getTopicName?.(topicId);
+        if (topicName) {
+          lines.push(`Topic: ${topicName}`);
+        }
         lines.push(``);
         for (const m of history) {
           // Use actual sender name if available (multi-user topics), fall back to generic
@@ -361,7 +365,7 @@ async function spawnSessionForTopic(
             ? (m.senderName || 'User')
             : 'Agent';
           const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
-          const text = (m.text || '').slice(0, 300);
+          const text = (m.text || '').slice(0, 2000);
           lines.push(`[${ts}] ${sender}: ${text}`);
         }
         lines.push(``);
@@ -506,6 +510,23 @@ async function spawnSessionForTopic(
   // Clear the resume entry after successful spawn to prevent stale reuse
   if (resumeSessionId) {
     _topicResumeMap?.remove(topicId);
+  }
+
+  // Proactive UUID save — schedule an immediate discovery attempt after spawn.
+  // The JSONL file appears ~3-5 seconds after Claude Code starts.
+  // This is belt-and-suspenders alongside the 60s heartbeat and beforeSessionKill.
+  if (_topicResumeMap && !resumeSessionId) {
+    setTimeout(() => {
+      try {
+        const uuid = _topicResumeMap!.findClaudeSessionUuid();
+        if (uuid) {
+          _topicResumeMap!.save(topicId, uuid, newSessionName);
+          console.log(`[spawnSessionForTopic] Proactive UUID save: ${uuid} for topic ${topicId}`);
+        }
+      } catch (err) {
+        console.error(`[spawnSessionForTopic] Proactive UUID save failed:`, err);
+      }
+    }, 8000);
   }
 
   return newSessionName;
@@ -2251,6 +2272,25 @@ export async function startServer(options: StartOptions): Promise<void> {
       // Don't prevent process exit
       resumeHeartbeatInterval.unref();
       console.log(pc.green('  Resume heartbeat: active (60s interval)'));
+    }
+
+    // Save Claude session UUID before any session kill so the topic can be
+    // resumed later with --resume. This fires BEFORE the tmux session is
+    // destroyed, so the UUID can still be discovered from the JSONL mtime.
+    if (_topicResumeMap && telegram) {
+      sessionManager.on('beforeSessionKill', (session: import('../core/types.js').Session) => {
+        try {
+          const topicId = telegram!.getTopicForSession(session.tmuxSession);
+          if (!topicId) return;
+          const uuid = _topicResumeMap!.findUuidForSession(session.tmuxSession);
+          if (uuid) {
+            _topicResumeMap!.save(topicId, uuid, session.tmuxSession);
+            console.log(`[beforeSessionKill] Saved resume UUID ${uuid} for topic ${topicId} (session: ${session.name})`);
+          }
+        } catch (err) {
+          console.error(`[beforeSessionKill] Failed to save resume UUID:`, err);
+        }
+      });
     }
 
     if (scheduler) {

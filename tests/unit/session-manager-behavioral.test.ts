@@ -222,6 +222,37 @@ describe('SessionManager behavioral tests', () => {
       expect(result).toBe(false);
     });
 
+    it('emits beforeSessionKill before killing tmux session', async () => {
+      const session = await manager.spawnSession({
+        name: 'resume-test',
+        prompt: 'test session for resume',
+      });
+
+      const events: string[] = [];
+      manager.on('beforeSessionKill', (s: { name: string }) => {
+        events.push(`beforeKill:${s.name}`);
+      });
+
+      manager.killSession(session.id);
+
+      // Event should have fired with the session info
+      expect(events).toEqual(['beforeKill:resume-test']);
+
+      // Session should still be marked as killed after
+      const saved = state.getSession(session.id);
+      expect(saved!.status).toBe('killed');
+    });
+
+    it('does not emit beforeSessionKill for non-existent sessions', () => {
+      const events: string[] = [];
+      manager.on('beforeSessionKill', () => {
+        events.push('fired');
+      });
+
+      manager.killSession('nonexistent-uuid');
+      expect(events).toEqual([]);
+    });
+
     it('throws when killing a protected session', () => {
       // Manually create a session with a protected tmux name
       const session = {

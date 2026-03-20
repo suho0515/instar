@@ -28,6 +28,7 @@
     "lint": "tsc --noEmit",
     "clean": "rm -rf dist",
     "check:upgrade-guide": "node scripts/check-upgrade-guide.js",
+    "check:pre-push-gate": "node scripts/pre-push-gate.js",
     "check:release": "node scripts/analyze-release.js",
     "prepublishOnly": "npm run build && npm run check:upgrade-guide",
     "postinstall": "node scripts/fix-better-sqlite3.cjs",

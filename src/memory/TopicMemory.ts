@@ -793,7 +793,7 @@ export class TopicMemory {
           ? (m.senderName || 'User')
           : 'Agent';
         const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
-        const text = (m.text || '').slice(0, 500);
+        const text = (m.text || '').slice(0, 2000);
         lines.push(`[${ts}] ${sender}: ${text}`);
       }
     }
@@ -807,7 +807,7 @@ export class TopicMemory {
    * Format topic context as readable text for session injection.
    * This is the primary interface for loading topic context into a session.
    */
-  formatContextForSession(topicId: number, recentLimit: number = 30): string {
+  formatContextForSession(topicId: number, recentLimit: number = 50): string {
     // Return empty string when db is not open — callers use this as a falsy check
     // to trigger JSONL fallback. A non-empty string from a broken db would
     // prevent the fallback and leave the session without conversation history.
@@ -843,7 +843,7 @@ export class TopicMemory {
           ? (m.senderName || 'User')
           : 'Agent';
         const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
-        const text = (m.text || '').slice(0, 500);
+        const text = (m.text || '').slice(0, 2000);
         lines.push(`[${ts}] ${sender}: ${text}`);
       }
     }

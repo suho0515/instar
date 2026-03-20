@@ -3921,16 +3921,17 @@ export function createRoutes(ctx: RouteContext): Router {
         const historyLines: string[] = [];
         if (ctx.telegram) {
           try {
-            const history = ctx.telegram.getTopicHistory(topicId, 20);
+            const history = ctx.telegram.getTopicHistory(topicId, 50);
             if (history.length > 0) {
               historyLines.push(`--- Thread History (last ${history.length} messages) ---`);
               historyLines.push(`IMPORTANT: Read this history carefully before taking any action.`);
               historyLines.push(`Your task is to continue THIS conversation, not start something new.`);
+              historyLines.push(`Topic: ${topicName}`);
               historyLines.push(``);
               for (const m of history) {
                 const sender = m.fromUser ? (m.senderName || 'User') : 'Agent';
                 const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
-                const histText = (m.text || '').slice(0, 300);
+                const histText = (m.text || '').slice(0, 2000);
                 historyLines.push(`[${ts}] ${sender}: ${histText}`);
               }
               historyLines.push(``);
@@ -3965,11 +3966,27 @@ export function createRoutes(ctx: RouteContext): Router {
         const resumeSessionId = ctx.topicResumeMap?.get(topicId) ?? undefined;
         ctx.sessionManager.spawnInteractiveSession(bootstrapMessage, topicName, { telegramTopicId: topicId, resumeSessionId }).then((newSessionName) => {
           if (resumeSessionId) ctx.topicResumeMap?.remove(topicId);
+          // Register in-memory topic↔session mapping for beforeSessionKill
+          ctx.telegram?.registerTopicSession(topicId, newSessionName, topicName);
           try {
             const reg = fs.existsSync(sdRegistryPath) ? JSON.parse(fs.readFileSync(sdRegistryPath, 'utf-8')) : { topicToSession: {}, topicToName: {} };
             reg.topicToSession[String(topicId)] = newSessionName;
             fs.writeFileSync(sdRegistryPath, JSON.stringify(reg, null, 2));
           } catch { /* @silent-fallback-ok — registry write non-critical */ }
+          // Proactive UUID save
+          if (ctx.topicResumeMap && !resumeSessionId) {
+            setTimeout(() => {
+              try {
+                const uuid = ctx.topicResumeMap!.findClaudeSessionUuid();
+                if (uuid) {
+                  ctx.topicResumeMap!.save(topicId, uuid, newSessionName);
+                  console.log(`[secret-drop] Proactive UUID save: ${uuid} for topic ${topicId}`);
+                }
+              } catch (err) {
+                console.error(`[secret-drop] Proactive UUID save failed:`, err);
+              }
+            }, 8000);
+          }
           console.log(`[secret-drop] Spawned "${newSessionName}" for secret receipt on topic ${topicId}`);
         }).catch((err) => {
           console.error(`[secret-drop] Session spawn failed:`, err);
@@ -4182,18 +4199,19 @@ export function createRoutes(ctx: RouteContext): Router {
         const historyLines: string[] = [];
         if (ctx.telegram) {
           try {
-            const history = ctx.telegram.getTopicHistory(topicId, 20);
+            const history = ctx.telegram.getTopicHistory(topicId, 50);
             if (history.length > 0) {
               historyLines.push(`--- Thread History (last ${history.length} messages) ---`);
               historyLines.push(`IMPORTANT: Read this history carefully before taking any action.`);
               historyLines.push(`Your task is to continue THIS conversation, not start something new.`);
+              historyLines.push(`Topic: ${topicName}`);
               historyLines.push(``);
               for (const m of history) {
                 const sender = m.fromUser
                   ? (m.senderName || 'User')
                   : 'Agent';
                 const ts = m.timestamp ? new Date(m.timestamp).toISOString().slice(11, 19) : '??:??';
-                const histText = (m.text || '').slice(0, 300);
+                const histText = (m.text || '').slice(0, 2000);
                 historyLines.push(`[${ts}] ${sender}: ${histText}`);
               }
               historyLines.push(``);
@@ -4238,12 +4256,29 @@ export function createRoutes(ctx: RouteContext): Router {
           if (resumeSessionId) {
             ctx.topicResumeMap?.remove(topicId);
           }
+          // Register in-memory topic↔session mapping so beforeSessionKill
+          // can look up the topic ID and save the resume UUID on kill.
+          ctx.telegram?.registerTopicSession(topicId, newSessionName, topicName);
           // Update registry on disk
           try {
             const reg = fs.existsSync(registryPath) ? JSON.parse(fs.readFileSync(registryPath, 'utf-8')) : { topicToSession: {}, topicToName: {} };
             reg.topicToSession[String(topicId)] = newSessionName;
             fs.writeFileSync(registryPath, JSON.stringify(reg, null, 2));
           } catch { /* @silent-fallback-ok — registry write non-critical */ }
+          // Proactive UUID save — discover and persist the Claude UUID shortly after spawn
+          if (ctx.topicResumeMap && !resumeSessionId) {
+            setTimeout(() => {
+              try {
+                const uuid = ctx.topicResumeMap!.findClaudeSessionUuid();
+                if (uuid) {
+                  ctx.topicResumeMap!.save(topicId, uuid, newSessionName);
+                  console.log(`[telegram-forward] Proactive UUID save: ${uuid} for topic ${topicId}`);
+                }
+              } catch (err) {
+                console.error(`[telegram-forward] Proactive UUID save failed:`, err);
+              }
+            }, 8000);
+          }
           console.log(`[telegram-forward] Spawned "${newSessionName}" for topic ${topicId}`);
         }).catch((err) => {
           console.error(`[telegram-forward] Spawn failed:`, err);

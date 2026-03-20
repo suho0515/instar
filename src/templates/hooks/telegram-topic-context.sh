@@ -59,10 +59,10 @@ AUTH_TOKEN=$(python3 -c "import json; print(json.load(open('$CONFIG_FILE')).get(
 if [ -n "$AUTH_TOKEN" ]; then
   RECENT_MSGS=$(curl -s \
     -H "Authorization: Bearer ${AUTH_TOKEN}" \
-    "http://localhost:${PORT}/telegram/topics/${TOPIC_ID}/messages?limit=15" 2>/dev/null)
+    "http://localhost:${PORT}/telegram/topics/${TOPIC_ID}/messages?limit=30" 2>/dev/null)
 else
   RECENT_MSGS=$(curl -s \
-    "http://localhost:${PORT}/telegram/topics/${TOPIC_ID}/messages?limit=15" 2>/dev/null)
+    "http://localhost:${PORT}/telegram/topics/${TOPIC_ID}/messages?limit=30" 2>/dev/null)
 fi
 
 # Format and output context with unanswered message detection
@@ -81,8 +81,8 @@ try:
         from_user = m.get('fromUser', m.get('direction', 'in') == 'in')
         text = m.get('text', '').strip()
         sender = 'User' if from_user else 'Agent'
-        if len(text) > 300:
-            text = text[:297] + '...'
+        if len(text) > 2000:
+            text = text[:1997] + '...'
         print(f'  [{ts}] {sender}: {text}')
 
     # Detect unanswered user messages

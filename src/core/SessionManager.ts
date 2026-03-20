@@ -187,6 +187,9 @@ export class SessionManager extends EventEmitter {
           const limit = maxMinutes + buffer;
           if (elapsed > limit && !this.config.protectedSessions.includes(session.tmuxSession)) {
             console.warn(`[SessionManager] Session "${session.name}" exceeded timeout (${Math.round(elapsed)}m > ${maxMinutes}m). Killing.`);
+            // Emit beforeSessionKill BEFORE destroying the tmux session so
+            // listeners (e.g. TopicResumeMap) can discover the Claude UUID.
+            this.emit('beforeSessionKill', session);
             try {
               await execFileAsync(this.config.tmuxPath, ['kill-session', '-t', `=${session.tmuxSession}`]);
             } catch {
@@ -215,6 +218,10 @@ export class SessionManager extends EventEmitter {
               const idleMs = now - this.idlePromptSince.get(session.id)!;
               if (idleMs > IDLE_PROMPT_KILL_MINUTES * 60_000) {
                 console.warn(`[SessionManager] Session "${session.name}" idle at prompt for ${Math.round(idleMs / 60_000)}m. Killing zombie.`);
+                // Emit beforeSessionKill BEFORE destroying the tmux session so
+                // listeners (e.g. TopicResumeMap) can discover the Claude UUID while
+                // the session is still alive.
+                this.emit('beforeSessionKill', session);
                 try {
                   await execFileAsync(this.config.tmuxPath, ['kill-session', '-t', `=${session.tmuxSession}`]);
                 } catch { /* ignore */ }
@@ -417,6 +424,11 @@ export class SessionManager extends EventEmitter {
     if (this.config.protectedSessions.includes(session.tmuxSession)) {
       throw new Error(`Cannot kill protected session: ${session.tmuxSession}`);
     }
+
+    // Emit beforeSessionKill BEFORE destroying the tmux session so
+    // listeners (e.g. TopicResumeMap) can discover the Claude UUID
+    // while the session is still alive.
+    this.emit('beforeSessionKill', session);
 
     try {
       execFileSync(this.config.tmuxPath, ['kill-session', '-t', `=${session.tmuxSession}`], {

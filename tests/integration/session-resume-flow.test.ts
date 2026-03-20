@@ -95,9 +95,11 @@ describe('Session Resume Flow (integration)', () => {
     const state = new StateManager(stateDir);
     sessionManager = new SessionManager(config, state);
 
-    // Create a fake JSONL file for UUID validation
+    // Create a fake JSONL file in the project-hashed directory for UUID validation.
+    // Must match TopicResumeMap.claudeProjectDirName() which replaces '/' and '.' with '-'.
     const projectsDir = path.join(os.homedir(), '.claude', 'projects');
-    testProjectDir = path.join(projectsDir, `_test_resume_flow_${process.pid}`);
+    const projectHash = projectDir.replace(/[\/\.]/g, '-');
+    testProjectDir = path.join(projectsDir, projectHash);
     fs.mkdirSync(testProjectDir, { recursive: true });
 
     mockTmuxSessions.clear();

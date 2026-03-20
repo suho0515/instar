@@ -40,46 +40,53 @@ export class TopicResumeMap {
   }
 
   /**
+   * Compute the Claude Code project directory name for this project.
+   * Claude Code hashes the project path by replacing '/' with '-' and
+   * stripping dots — e.g. /Users/foo/.bar/baz → -Users-foo--bar-baz
+   */
+  private claudeProjectDirName(): string {
+    return this.projectDir.replace(/[\/\.]/g, '-');
+  }
+
+  /**
+   * Get the full path to this project's Claude JSONL directory.
+   */
+  private claudeProjectJsonlDir(): string {
+    return path.join(os.homedir(), '.claude', 'projects', this.claudeProjectDirName());
+  }
+
+  /**
    * Discover the Claude session UUID from the most recent JSONL file
-   * in the project's .claude/projects/ directory.
+   * in THIS project's .claude/projects/ directory.
+   *
+   * Scoped to the current project to avoid cross-project UUID contamination.
    */
   findClaudeSessionUuid(): string | null {
-    const homeDir = os.homedir();
-    const claudeProjectsDir = path.join(homeDir, '.claude', 'projects');
+    const projectJsonlDir = this.claudeProjectJsonlDir();
 
-    if (!fs.existsSync(claudeProjectsDir)) return null;
+    if (!fs.existsSync(projectJsonlDir)) return null;
 
-    // Claude Code hashes the project path to create the project directory name.
-    // We need to find the right project directory.
     try {
-      const projectDirs = fs.readdirSync(claudeProjectsDir);
-      let latestFile: { path: string; mtime: number } | null = null;
+      let latestFile: { name: string; mtime: number } | null = null;
 
-      for (const dir of projectDirs) {
-        const fullDir = path.join(claudeProjectsDir, dir);
-        const stat = fs.statSync(fullDir);
-        if (!stat.isDirectory()) continue;
-
-        // Look for JSONL files in this project dir
-        const files = fs.readdirSync(fullDir);
-        for (const file of files) {
-          if (!file.endsWith('.jsonl')) continue;
-          const filePath = path.join(fullDir, file);
-          try {
-            const fileStat = fs.statSync(filePath);
-            if (!latestFile || fileStat.mtimeMs > latestFile.mtime) {
-              latestFile = { path: filePath, mtime: fileStat.mtimeMs };
-            }
-          } catch {
-            // Skip inaccessible files
+      const files = fs.readdirSync(projectJsonlDir);
+      for (const file of files) {
+        if (!file.endsWith('.jsonl')) continue;
+        const filePath = path.join(projectJsonlDir, file);
+        try {
+          const fileStat = fs.statSync(filePath);
+          if (!latestFile || fileStat.mtimeMs > latestFile.mtime) {
+            latestFile = { name: file, mtime: fileStat.mtimeMs };
           }
+        } catch {
+          // Skip inaccessible files
         }
       }
 
       if (!latestFile) return null;
 
       // Extract UUID from filename (format: {uuid}.jsonl)
-      const basename = path.basename(latestFile.path, '.jsonl');
+      const basename = path.basename(latestFile.name, '.jsonl');
       // Validate UUID format (8-4-4-4-12)
       if (/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(basename)) {
         return basename;
@@ -180,8 +187,7 @@ export class TopicResumeMap {
     try {
       if (!topicSessions || topicSessions.size === 0) return;
 
-      const projectHash = this.projectDir.replace(/\//g, '-');
-      const projectJsonlDir = path.join(os.homedir(), '.claude', 'projects', projectHash);
+      const projectJsonlDir = this.claudeProjectJsonlDir();
 
       if (!fs.existsSync(projectJsonlDir)) return;
 
@@ -262,24 +268,14 @@ export class TopicResumeMap {
   }
 
   /**
-   * Check if a JSONL file exists for the given UUID.
+   * Check if a JSONL file exists for the given UUID in this project's directory.
    */
   private jsonlExists(uuid: string): boolean {
-    const homeDir = os.homedir();
-    const claudeProjectsDir = path.join(homeDir, '.claude', 'projects');
-
-    if (!fs.existsSync(claudeProjectsDir)) return false;
-
+    const jsonlPath = path.join(this.claudeProjectJsonlDir(), `${uuid}.jsonl`);
     try {
-      const projectDirs = fs.readdirSync(claudeProjectsDir);
-      for (const dir of projectDirs) {
-        const jsonlPath = path.join(claudeProjectsDir, dir, `${uuid}.jsonl`);
-        if (fs.existsSync(jsonlPath)) return true;
-      }
+      return fs.existsSync(jsonlPath);
     } catch {
-      // Can't check — assume not found
+      return false;
     }
-
-    return false;
   }
 }
