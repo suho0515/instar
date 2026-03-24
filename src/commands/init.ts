@@ -43,6 +43,7 @@ import { ProjectMapper } from '../core/ProjectMapper.js';
 import { ContextHierarchy } from '../core/ContextHierarchy.js';
 import { CanonicalState } from '../core/CanonicalState.js';
 import { ManifestIntegrity } from '../security/ManifestIntegrity.js';
+import { buildHttpHookSettings } from '../data/http-hook-templates.js';
 import {
   generateAgentMd,
   generateUserMd,
@@ -306,7 +307,7 @@ async function initFreshProject(projectName: string, options: InitOptions): Prom
   console.log(`  ${pc.green('✓')} Created .instar/quick-facts.json, anti-patterns.json, project-registry.json`);
 
   // Create .claude/ structure
-  installClaudeSettings(projectDir);
+  installClaudeSettings(projectDir, port);
   console.log(`  ${pc.green('✓')} Created .claude/settings.json`);
 
   installHealthWatchdog(projectDir, port, projectName);
@@ -649,7 +650,7 @@ async function initExistingProject(options: InitOptions): Promise<void> {
   }
 
   // Configure Claude Code settings with hooks
-  installClaudeSettings(projectDir);
+  installClaudeSettings(projectDir, port);
   console.log(pc.green('  Created:') + ' .claude/settings.json (hook configuration)');
 
   // Install health watchdog
@@ -2961,7 +2962,18 @@ If everything is coherent and no reflection is needed, exit silently. Only repor
  */
 export function refreshHooksAndSettings(projectDir: string, stateDir: string): void {
   installHooks(stateDir);
-  installClaudeSettings(projectDir);
+
+  // Read port from config.json so HTTP hooks get resolved URLs
+  let serverPort: number | undefined;
+  try {
+    const configPath = path.join(stateDir, 'config.json');
+    if (fs.existsSync(configPath)) {
+      const config = JSON.parse(fs.readFileSync(configPath, 'utf-8'));
+      serverPort = config.port;
+    }
+  } catch { /* non-fatal */ }
+
+  installClaudeSettings(projectDir, serverPort);
   refreshClaudeMd(projectDir, stateDir);
   refreshJobs(stateDir);
   refreshScripts(projectDir, stateDir);
@@ -3465,6 +3477,74 @@ done
   // Response review — Coherence Gate response review pipeline.
   // Stop hook that calls /review/evaluate for LLM-powered response quality checking.
   fs.writeFileSync(path.join(hooksDir, 'response-review.js'), migrator.getHookContent('response-review'), { mode: 0o755 });
+
+  // Hook event reporter — posts hook events to the Instar server for observability
+  // and session resumption (claudeSessionId). Uses command hooks because Claude Code
+  // HTTP hooks (type: "http") silently fail to fire as of v2.1.78.
+  fs.writeFileSync(path.join(hooksDir, 'hook-event-reporter.js'), getHookEventReporterScript(), { mode: 0o755 });
+}
+
+function getHookEventReporterScript(): string {
+  return `#!/usr/bin/env node
+// Hook Event Reporter — command hook replacement for HTTP hooks.
+//
+// Claude Code HTTP hooks (type: "http") silently fail to fire as of v2.1.78.
+// This command hook achieves the same result: POST hook event data to the
+// Instar server, which populates claudeSessionId for session resumption.
+//
+// Runs async (fire-and-forget) to avoid slowing down tool execution.
+
+const http = require('http');
+
+const serverUrl = process.env.INSTAR_SERVER_URL || 'http://localhost:4042';
+const authToken = process.env.INSTAR_AUTH_TOKEN || '';
+const instarSid = process.env.INSTAR_SESSION_ID || '';
+
+if (!authToken || !instarSid) {
+  // Missing env vars — skip silently
+  process.exit(0);
+}
+
+let data = '';
+process.stdin.on('data', chunk => data += chunk);
+process.stdin.on('end', () => {
+  try {
+    const input = JSON.parse(data);
+    const payload = JSON.stringify({
+      event: input.hook_event || (input.tool_name ? 'PostToolUse' : 'Unknown'),
+      session_id: input.session_id || '',
+      tool_name: input.tool_name || '',
+    });
+
+    const url = new URL(serverUrl + '/hooks/events?instar_sid=' + instarSid);
+    const req = http.request({
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + authToken,
+      },
+      timeout: 3000,
+    }, (res) => {
+      res.resume(); // drain response
+    });
+
+    req.on('error', () => {}); // silent failure
+    req.write(payload);
+    req.end();
+
+    // Don't wait for response — exit immediately
+    setTimeout(() => process.exit(0), 50);
+  } catch (e) {
+    process.exit(0);
+  }
+});
+
+// Timeout safety — don't hang if stdin never closes
+setTimeout(() => process.exit(0), 2000);
+`;
 }
 
 function installHealthWatchdog(projectDir: string, port: number, projectName: string): void {
@@ -3835,7 +3915,7 @@ function installSerendipityCapture(projectDir: string): void {
   fs.writeFileSync(scriptPath, scriptContent, { mode: 0o755 });
 }
 
-function installClaudeSettings(projectDir: string): void {
+function installClaudeSettings(projectDir: string, serverPort?: number): void {
   const claudeDir = path.join(projectDir, '.claude');
   fs.mkdirSync(claudeDir, { recursive: true });
 
@@ -4080,6 +4160,23 @@ function installClaudeSettings(projectDir: string): void {
   );
   if (!hasCheckpoint) {
     stopHooks.push({ matcher: '', hooks: [scopeCheckpointHook] });
+  }
+
+  // HTTP hooks for observability (session telemetry, claudeSessionId population)
+  // Uses resolved localhost URL — NOT env var templates (Claude Code validates URLs at parse time)
+  if (serverPort) {
+    const serverUrl = `http://localhost:${serverPort}`;
+    const httpHookSettings = buildHttpHookSettings(serverUrl);
+    for (const [event, entries] of Object.entries(httpHookSettings)) {
+      if (!hooks[event]) {
+        hooks[event] = [];
+      }
+      // Remove any existing HTTP hooks for this event (avoid duplicates on re-init)
+      hooks[event] = (hooks[event] as Array<{ hooks?: Array<{ type?: string }> }>).filter(e =>
+        !e.hooks?.some(h => h.type === 'http'),
+      );
+      (hooks[event] as unknown[]).push(...entries);
+    }
   }
 
   // Remove stale mcpServers from settings.json — MCP servers belong in

@@ -269,19 +269,22 @@ describe('Session Resume E2E', () => {
       };
 
       // 3. Wire the beforeSessionKill listener (mirrors server.ts wiring)
-      emitter.on('beforeSessionKill', (session: { tmuxSession: string; name: string }) => {
+      // In the real flow, claudeSessionId is populated by hook-event-reporter.js
+      emitter.on('beforeSessionKill', (session: { tmuxSession: string; name: string; claudeSessionId?: string }) => {
         const topicId = getTopicForSession(session.tmuxSession);
         if (!topicId) return;
-        const foundUuid = resumeMap.findUuidForSession(session.tmuxSession);
+        const foundUuid = resumeMap.findUuidForSession(session.tmuxSession, session.claudeSessionId);
         if (foundUuid) {
           resumeMap.save(topicId, foundUuid, session.tmuxSession);
         }
       });
 
       // 4. Fire the event (simulating SessionManager.tick() idle kill)
+      // claudeSessionId is set because hook-event-reporter.js fired during the session
       emitter.emit('beforeSessionKill', {
         tmuxSession: 'echo-my-topic',
         name: 'my-topic',
+        claudeSessionId: uuid,
       });
 
       // 5. Verify UUID was saved
@@ -331,19 +334,20 @@ describe('Session Resume E2E', () => {
       const sessionToTopic = new Map<string, number>();
       sessionToTopic.set('echo-test-topic', 99);
 
-      // Wire listener
-      emitter.on('beforeSessionKill', (session: { tmuxSession: string }) => {
+      // Wire listener — claudeSessionId passed from Session object
+      emitter.on('beforeSessionKill', (session: { tmuxSession: string; claudeSessionId?: string }) => {
         eventOrder.push('beforeSessionKill');
         const topicId = sessionToTopic.get(session.tmuxSession) ?? null;
         if (topicId) {
-          const foundUuid = resumeMap.findUuidForSession(session.tmuxSession);
+          const foundUuid = resumeMap.findUuidForSession(session.tmuxSession, session.claudeSessionId);
           if (foundUuid) resumeMap.save(topicId, foundUuid, session.tmuxSession);
         }
       });
 
       // Simulate the SessionManager.tick() sequence
+      // claudeSessionId is set because hook-event-reporter.js fired during the session
       eventOrder.push('tick-start');
-      emitter.emit('beforeSessionKill', { tmuxSession: 'echo-test-topic' });
+      emitter.emit('beforeSessionKill', { tmuxSession: 'echo-test-topic', claudeSessionId: uuid });
       eventOrder.push('tmux-kill');  // In real code: execFileAsync('tmux', ['kill-session', ...])
       eventOrder.push('sessionComplete');
 

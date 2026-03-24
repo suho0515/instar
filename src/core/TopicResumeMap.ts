@@ -101,20 +101,19 @@ export class TopicResumeMap {
   /**
    * Find the Claude session UUID for a specific tmux session.
    *
-   * When claudeSessionId is provided (from hook events), use it directly —
-   * this is the authoritative source. Falls back to mtime-based heuristic
-   * only when there's a single active session (no ambiguity risk).
+   * Only uses the authoritative claudeSessionId from hook events.
+   * The mtime-based heuristic was removed because it causes cross-topic
+   * contamination when multiple sessions are active — it always picks
+   * the most recent JSONL file regardless of which session it belongs to.
    */
   findUuidForSession(tmuxSession: string, claudeSessionId?: string): string | null {
-    // Prefer the authoritative Claude session ID from hook events
     if (claudeSessionId && this.jsonlExists(claudeSessionId)) {
       return claudeSessionId;
     }
 
-    // Fallback: mtime-based heuristic, but ONLY safe with a single active session.
-    // With multiple concurrent sessions, mtime ordering is ambiguous and causes
-    // cross-topic contamination. Return null to avoid wrong assignment.
-    return this.findClaudeSessionUuid();
+    // No authoritative source — refuse to guess. Better to fall back
+    // to thread history than resume the wrong conversation.
+    return null;
   }
 
   /**

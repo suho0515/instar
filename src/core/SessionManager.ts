@@ -97,6 +97,9 @@ export class SessionManager extends EventEmitter {
   /** Track when each session was first seen idle at the Claude prompt. Key = session ID */
   private idlePromptSince = new Map<string, number>();
 
+  /** Throttle stale session cleanup to every 5 minutes */
+  private lastCleanupAt = 0;
+
   /** Optional callback to check if a session has active subagents (prevents false zombie kills) */
   private subagentChecker?: (session: Session) => boolean;
 
@@ -370,6 +373,13 @@ export class SessionManager extends EventEmitter {
             this.idlePromptSince.delete(session.id);
           }
         }
+      }
+
+      // Periodically clean up stale killed/completed session state files (every 5 min)
+      const CLEANUP_INTERVAL_MS = 5 * 60 * 1000;
+      if (Date.now() - this.lastCleanupAt > CLEANUP_INTERVAL_MS) {
+        this.lastCleanupAt = Date.now();
+        this.cleanupStaleSessions();
       }
     } finally {
       this.monitoringInProgress = false;
@@ -858,6 +868,40 @@ export class SessionManager extends EventEmitter {
     }
 
     return reaped;
+  }
+
+  /**
+   * Remove stale session state files for sessions that have been
+   * killed or completed beyond the retention period.
+   * Killed sessions: removed after 1 hour.
+   * Completed sessions: removed after 24 hours.
+   */
+  cleanupStaleSessions(): string[] {
+    const allSessions = this.state.listSessions();
+    const now = Date.now();
+    const KILLED_TTL_MS = 60 * 60 * 1000;        // 1 hour
+    const COMPLETED_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+    const cleaned: string[] = [];
+
+    for (const session of allSessions) {
+      if (session.status !== 'killed' && session.status !== 'completed') continue;
+      const endedAt = session.endedAt ? new Date(session.endedAt).getTime() : 0;
+      if (!endedAt) continue;
+
+      const age = now - endedAt;
+      const ttl = session.status === 'killed' ? KILLED_TTL_MS : COMPLETED_TTL_MS;
+
+      if (age > ttl) {
+        if (this.state.removeSession(session.id)) {
+          cleaned.push(session.id);
+        }
+      }
+    }
+
+    if (cleaned.length > 0) {
+      console.log(`[SessionManager] Cleaned up ${cleaned.length} stale session(s): ${cleaned.join(', ')}`);
+    }
+    return cleaned;
   }
 
   /**

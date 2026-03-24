@@ -515,7 +515,7 @@ async function spawnSessionForTopic(
   // Proactive UUID save — schedule discovery after spawn.
   // Prefer authoritative claudeSessionId from hook events (populated within seconds).
   // Falls back to mtime-based JSONL scan only when there's no ambiguity.
-  if (_topicResumeMap && !resumeSessionId) {
+  if (_topicResumeMap) {
     setTimeout(() => {
       try {
         // Check if hook events have already populated the authoritative UUID
@@ -3967,6 +3967,35 @@ export async function startServer(options: StartOptions): Promise<void> {
     // Graceful shutdown
     const shutdown = async () => {
       console.log('\nShutting down...');
+
+      // Save resume UUIDs for ALL active topic-linked sessions before exit.
+      // Without this, server restarts lose all resume mappings because:
+      // 1. Resume entries are consumed (removed) on spawn
+      // 2. Proactive save may not have run yet
+      // 3. beforeSessionKill doesn't fire for bulk process exit
+      if (_topicResumeMap && telegram) {
+        try {
+          const runningSessions = sessionManager.listRunningSessions();
+          const topicSessions = telegram.getAllTopicSessions?.();
+          if (topicSessions) {
+            let saved = 0;
+            for (const [topicId, sessionName] of topicSessions) {
+              const session = runningSessions.find(s => s.tmuxSession === sessionName);
+              const uuid = _topicResumeMap.findUuidForSession(sessionName, session?.claudeSessionId ?? undefined);
+              if (uuid) {
+                _topicResumeMap.save(topicId, uuid, sessionName);
+                saved++;
+              }
+            }
+            if (saved > 0) {
+              console.log(`[shutdown] Saved ${saved} resume UUID(s) for active sessions`);
+            }
+          }
+        } catch (err) {
+          console.error('[shutdown] Failed to save resume UUIDs:', err);
+        }
+      }
+
       gitSync?.stop();
       coordinator.stop();
       coherenceMonitor.stop();

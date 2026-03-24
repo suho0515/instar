@@ -2342,6 +2342,11 @@ export function createRoutes(ctx: RouteContext): Router {
     res.json(enriched);
   });
 
+  router.post('/sessions/cleanup-stale', (_req, res) => {
+    const cleaned = ctx.sessionManager.cleanupStaleSessions();
+    res.json({ cleaned: cleaned.length, sessionIds: cleaned });
+  });
+
   router.get('/sessions/:name/output', (req, res) => {
     if (!SESSION_NAME_RE.test(req.params.name)) {
       res.status(400).json({ error: 'Invalid session name' });
@@ -4539,8 +4544,8 @@ export function createRoutes(ctx: RouteContext): Router {
             reg.topicToSession[String(topicId)] = newSessionName;
             fs.writeFileSync(sdRegistryPath, JSON.stringify(reg, null, 2));
           } catch { /* @silent-fallback-ok — registry write non-critical */ }
-          // Proactive UUID save — prefer authoritative hook-based UUID
-          if (ctx.topicResumeMap && !resumeSessionId) {
+          // Proactive UUID save — always run, even after --resume (new session = new UUID)
+          if (ctx.topicResumeMap) {
             setTimeout(() => {
               try {
                 const sessions = ctx.sessionManager?.listRunningSessions() ?? [];
@@ -4833,8 +4838,8 @@ export function createRoutes(ctx: RouteContext): Router {
             reg.topicToSession[String(topicId)] = newSessionName;
             fs.writeFileSync(registryPath, JSON.stringify(reg, null, 2));
           } catch { /* @silent-fallback-ok — registry write non-critical */ }
-          // Proactive UUID save — prefer authoritative hook-based UUID
-          if (ctx.topicResumeMap && !resumeSessionId) {
+          // Proactive UUID save — always run, even after --resume (new session = new UUID)
+          if (ctx.topicResumeMap) {
             setTimeout(() => {
               try {
                 const sessions = ctx.sessionManager?.listRunningSessions() ?? [];

@@ -21,6 +21,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { TreeGenerator } from '../knowledge/TreeGenerator.js';
+import { HTTP_HOOK_TEMPLATES, buildHttpHookSettings } from '../data/http-hook-templates.js';
 
 export interface MigrationResult {
   /** What was upgraded */
@@ -373,6 +374,212 @@ export class PostUpdateMigrator {
     }
 
     return patched;
+  }
+
+  /**
+   * Ensure HTTP hooks from the template exist in settings.json.
+   * Previous migrations only patched existing HTTP hooks (adding instar_sid param)
+   * but never added them from scratch. Agents initialized before HTTP hooks were
+   * introduced have no HTTP hooks at all, causing claudeSessionId to never be
+   * populated — which breaks session resume (falls back to mtime cross-contamination).
+   */
+  private ensureHttpHooksExist(
+    hooks: Record<string, unknown[]>,
+    result: MigrationResult,
+  ): boolean {
+    const serverUrl = `http://localhost:${this.config.port}`;
+
+    // Check if ANY event reporter hook already exists (HTTP or command-based)
+    const hasEventReporterHook = Object.values(hooks).some(entries => {
+      if (!Array.isArray(entries)) return false;
+      return entries.some(entry => {
+        if (typeof entry !== 'object' || entry === null) return false;
+        const e = entry as Record<string, unknown>;
+        if (Array.isArray(e.hooks)) {
+          return (e.hooks as Array<Record<string, unknown>>).some(h => {
+            // Check for command hook (new style)
+            if (h.type === 'command' && typeof h.command === 'string' && (h.command as string).includes('hook-event-reporter')) return true;
+            // Check for HTTP hook (old style, with valid URL)
+            if (h.type === 'http' && typeof h.url === 'string' && !(h.url as string).includes('${INSTAR_SERVER_URL}')) return true;
+            return false;
+          });
+        }
+        // Check direct entry
+        if (e.type === 'command' && typeof e.command === 'string' && (e.command as string).includes('hook-event-reporter')) return true;
+        if (e.type === 'http' && typeof e.url === 'string' && !(e.url as string).includes('${INSTAR_SERVER_URL}')) return true;
+        return false;
+      });
+    });
+
+    if (hasEventReporterHook) return false;
+
+    // Remove any existing broken HTTP hooks (with unresolved template vars)
+    for (const [event, entries] of Object.entries(hooks)) {
+      if (!Array.isArray(entries)) continue;
+      hooks[event] = entries.filter(entry => {
+        if (typeof entry !== 'object' || entry === null) return true;
+        const e = entry as Record<string, unknown>;
+        if (Array.isArray(e.hooks)) {
+          const hooksArr = e.hooks as Array<Record<string, unknown>>;
+          return !hooksArr.some(h =>
+            h.type === 'http' && typeof h.url === 'string' && (h.url as string).includes('${INSTAR_SERVER_URL}'),
+          );
+        }
+        return !(e.type === 'http' && typeof e.url === 'string' && (e.url as string).includes('${INSTAR_SERVER_URL}'));
+      });
+      // Clean up empty arrays
+      if ((hooks[event] as unknown[]).length === 0) {
+        delete hooks[event];
+      }
+    }
+
+    // Add HTTP hooks using the resolved localhost URL
+    const httpHookSettings = buildHttpHookSettings(serverUrl);
+    for (const [event, entries] of Object.entries(httpHookSettings)) {
+      if (!hooks[event]) {
+        hooks[event] = [];
+      }
+      (hooks[event] as unknown[]).push(...entries);
+    }
+
+    result.upgraded.push(
+      `.claude/settings.json: added ${HTTP_HOOK_TEMPLATES.length} HTTP hooks for observability (url: ${serverUrl}/hooks/events)`,
+    );
+    return true;
+  }
+
+  /**
+   * Replace HTTP hooks with command hooks that use hook-event-reporter.js.
+   * Claude Code HTTP hooks (type: "http") silently fail to fire as of v2.1.78.
+   * This migration converts them to command hooks which reliably fire.
+   * Also installs the hook-event-reporter.js script if missing.
+   */
+  private migrateHttpHooksToCommandHooks(
+    hooks: Record<string, unknown[]>,
+    result: MigrationResult,
+  ): boolean {
+    let patched = false;
+    const commandHook = {
+      type: 'command',
+      command: 'node .instar/hooks/instar/hook-event-reporter.js',
+      timeout: 3000,
+    };
+
+    for (const [event, entries] of Object.entries(hooks)) {
+      if (!Array.isArray(entries)) continue;
+
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const entry = entries[i];
+        if (typeof entry !== 'object' || entry === null) continue;
+        const entryObj = entry as Record<string, unknown>;
+
+        // Check nested hooks arrays for HTTP hooks
+        if (Array.isArray(entryObj.hooks)) {
+          const hooksArr = entryObj.hooks as Array<Record<string, unknown>>;
+          const hasHttpHook = hooksArr.some(h =>
+            h.type === 'http' && typeof h.url === 'string' && (h.url as string).includes('/hooks/events'),
+          );
+          if (hasHttpHook) {
+            // Replace the entire entry with a command hook entry
+            entries[i] = {
+              matcher: (entryObj.matcher as string) ?? '',
+              hooks: [commandHook],
+            };
+            patched = true;
+          }
+        }
+
+        // Check direct HTTP hook entries
+        if (entryObj.type === 'http' && typeof entryObj.url === 'string' && (entryObj.url as string).includes('/hooks/events')) {
+          entries[i] = {
+            matcher: '',
+            hooks: [commandHook],
+          };
+          patched = true;
+        }
+      }
+    }
+
+    // Install the hook-event-reporter.js script if it doesn't exist
+    const hooksDir = path.join(this.config.stateDir, 'hooks', 'instar');
+    const reporterPath = path.join(hooksDir, 'hook-event-reporter.js');
+    if (!fs.existsSync(reporterPath)) {
+      try {
+        fs.mkdirSync(hooksDir, { recursive: true });
+        // Import the script content inline to avoid circular dependency
+        const script = this.getHookEventReporterScript();
+        fs.writeFileSync(reporterPath, script, { mode: 0o755 });
+        if (!patched) {
+          result.upgraded.push('.instar/hooks/instar/hook-event-reporter.js installed');
+        }
+      } catch (err) {
+        result.errors.push(`hook-event-reporter.js install: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
+    if (patched) {
+      result.upgraded.push('.claude/settings.json: replaced HTTP hooks with command hooks (HTTP hooks silently fail in Claude Code <=2.1.78)');
+    }
+
+    return patched;
+  }
+
+  private getHookEventReporterScript(): string {
+    return `#!/usr/bin/env node
+// Hook Event Reporter — command hook replacement for HTTP hooks.
+//
+// Claude Code HTTP hooks (type: "http") silently fail to fire as of v2.1.78.
+// This command hook achieves the same result: POST hook event data to the
+// Instar server, which populates claudeSessionId for session resumption.
+
+const http = require('http');
+
+const serverUrl = process.env.INSTAR_SERVER_URL || 'http://localhost:4042';
+const authToken = process.env.INSTAR_AUTH_TOKEN || '';
+const instarSid = process.env.INSTAR_SESSION_ID || '';
+
+if (!authToken || !instarSid) {
+  process.exit(0);
+}
+
+let data = '';
+process.stdin.on('data', chunk => data += chunk);
+process.stdin.on('end', () => {
+  try {
+    const input = JSON.parse(data);
+    const payload = JSON.stringify({
+      event: input.hook_event || (input.tool_name ? 'PostToolUse' : 'Unknown'),
+      session_id: input.session_id || '',
+      tool_name: input.tool_name || '',
+    });
+
+    const url = new URL(serverUrl + '/hooks/events?instar_sid=' + instarSid);
+    const req = http.request({
+      hostname: url.hostname,
+      port: url.port,
+      path: url.pathname + url.search,
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + authToken,
+      },
+      timeout: 3000,
+    }, (res) => {
+      res.resume();
+    });
+
+    req.on('error', () => {});
+    req.write(payload);
+    req.end();
+
+    setTimeout(() => process.exit(0), 50);
+  } catch (e) {
+    process.exit(0);
+  }
+});
+
+setTimeout(() => process.exit(0), 2000);
+`;
   }
 
   /**
@@ -957,6 +1164,19 @@ The user has been talking to you (possibly for days). A generic greeting like "H
     // Without this, the server can't map Claude Code's session_id to the instar session,
     // and zombie cleanup may kill sessions that are waiting for subagent results.
     if (this.migrateHttpHookSessionId(hooks, result)) {
+      patched = true;
+    }
+
+    // Replace HTTP hooks with command hooks. Claude Code HTTP hooks (type: "http")
+    // silently fail to fire as of v2.1.78, which means claudeSessionId is never
+    // populated and session resume falls back to unreliable mtime heuristic.
+    // Command hooks reliably fire, so we use hook-event-reporter.js instead.
+    if (this.migrateHttpHooksToCommandHooks(hooks, result)) {
+      patched = true;
+    }
+
+    // Ensure event reporter hooks exist for observability events (session resume, telemetry).
+    if (this.ensureHttpHooksExist(hooks, result)) {
       patched = true;
     }
 

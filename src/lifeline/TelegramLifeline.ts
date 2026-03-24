@@ -198,6 +198,11 @@ export class TelegramLifeline {
     // Wire supervisor events
     this.supervisor.on('serverUp', () => {
       console.log('[Lifeline] Server is up — replaying queued messages');
+      if (this.hasNotifiedServerDown) {
+        this.hasNotifiedServerDown = false;
+        this.suppressedServerDownCount = 0;
+        this.saveRateLimitState();
+      }
       this.replayQueue();
     });
 
@@ -889,12 +894,10 @@ export class TelegramLifeline {
 
   // ── Notifications ─────────────────────────────────────────
 
-  /** Timestamp of last "server down" notification — for rate limiting. */
-  private lastServerDownNotifyAt = 0;
-  /** Suppressed "server down" count during rate limit window. */
+  /** Whether we've already notified for the current outage. Reset on recovery. */
+  private hasNotifiedServerDown = false;
+  /** Suppressed "server down" count during current outage. */
   private suppressedServerDownCount = 0;
-  /** Minimum interval between "server down" notifications (30 minutes). */
-  private static readonly SERVER_DOWN_RATE_LIMIT_MS = 30 * 60_000;
 
   /** Per-topic timestamps for rate-limiting queue acknowledgment messages. */
   private lastQueueAckAt = new Map<number, number>();
@@ -913,7 +916,7 @@ export class TelegramLifeline {
       const rateLimitPath = path.join(this.projectConfig.stateDir, 'state', 'lifeline-rate-limit.json');
       if (fs.existsSync(rateLimitPath)) {
         const data = JSON.parse(fs.readFileSync(rateLimitPath, 'utf-8'));
-        this.lastServerDownNotifyAt = data.lastServerDownNotifyAt ?? 0;
+        this.hasNotifiedServerDown = data.hasNotifiedServerDown ?? false;
         this.suppressedServerDownCount = data.suppressedServerDownCount ?? 0;
       }
     } catch {
@@ -928,7 +931,7 @@ export class TelegramLifeline {
       const rateLimitPath = path.join(stateSubdir, 'lifeline-rate-limit.json');
       const tmpPath = `${rateLimitPath}.${process.pid}.tmp`;
       fs.writeFileSync(tmpPath, JSON.stringify({
-        lastServerDownNotifyAt: this.lastServerDownNotifyAt,
+        hasNotifiedServerDown: this.hasNotifiedServerDown,
         suppressedServerDownCount: this.suppressedServerDownCount,
         savedAt: new Date().toISOString(),
       }));
@@ -959,27 +962,20 @@ export class TelegramLifeline {
   }
 
   private async notifyServerDown(reason: string): Promise<void> {
-    const now = Date.now();
-    const elapsed = now - this.lastServerDownNotifyAt;
-
-    // Rate limit: don't spam "server went down" if it keeps cycling
-    if (this.lastServerDownNotifyAt > 0 && elapsed < TelegramLifeline.SERVER_DOWN_RATE_LIMIT_MS) {
+    // Only notify once per outage — reset happens on serverUp
+    if (this.hasNotifiedServerDown) {
       this.suppressedServerDownCount++;
       this.saveRateLimitState();
-      console.log(`[Lifeline] Suppressing duplicate "server down" notification (${this.suppressedServerDownCount} suppressed, next allowed in ${Math.round((TelegramLifeline.SERVER_DOWN_RATE_LIMIT_MS - elapsed) / 60_000)}m)`);
+      console.log(`[Lifeline] Suppressing duplicate "server down" notification (${this.suppressedServerDownCount} suppressed this outage)`);
       return;
     }
 
-    this.lastServerDownNotifyAt = now;
+    this.hasNotifiedServerDown = true;
     const topicId = this.lifelineTopicId ?? 1;
-    const status = this.supervisor.getStatus();
 
-    let message = `Server went down: ${reason}\n\n` +
+    const message = `Server went down: ${reason}\n\n` +
       `Your messages will be queued until recovery. Use /lifeline status to check.`;
 
-    if (this.suppressedServerDownCount > 0) {
-      message += `\n\n(${this.suppressedServerDownCount} similar notifications were suppressed since the last alert)`;
-    }
     this.suppressedServerDownCount = 0;
     this.saveRateLimitState();
 
