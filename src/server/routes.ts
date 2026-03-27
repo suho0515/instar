@@ -4680,6 +4680,22 @@ export function createRoutes(ctx: RouteContext): Router {
       return;
     }
 
+    // Log the message so it appears in JSONL + TopicMemory even when
+    // the normal polling handler didn't receive it (Lifeline forwarding).
+    // Only log if we have a real Telegram messageId — re-deliveries from
+    // injectionDropped don't have one and the original was already logged.
+    if (ctx.telegram && messageId) {
+      ctx.telegram.logInboundMessage({
+        messageId,
+        topicId,
+        text,
+        timestamp: req.body.timestamp || new Date().toISOString(),
+        senderName: fromFirstName,
+        senderUsername: fromUsername,
+        telegramUserId: fromUserId,
+      });
+    }
+
     // Build a Message object and fire the onTopicMessage callback
     if (ctx.telegram?.onTopicMessage) {
       const message = {

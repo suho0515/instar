@@ -726,6 +726,34 @@ export class TelegramAdapter implements MessagingAdapter {
   }
 
   /**
+   * Log an inbound user message that arrived via an external path (e.g. Lifeline
+   * forwarding through /internal/telegram-forward). This ensures the message
+   * appears in both JSONL and TopicMemory even when the normal polling handler
+   * didn't receive it.
+   */
+  logInboundMessage(entry: {
+    messageId: number;
+    topicId: number;
+    text: string;
+    timestamp: string;
+    senderName?: string;
+    senderUsername?: string;
+    telegramUserId?: number;
+  }): void {
+    this.appendToLog({
+      messageId: entry.messageId,
+      topicId: entry.topicId,
+      text: entry.text,
+      fromUser: true,
+      timestamp: entry.timestamp,
+      sessionName: this.topicToSession.get(entry.topicId) ?? null,
+      senderName: entry.senderName,
+      senderUsername: entry.senderUsername,
+      telegramUserId: entry.telegramUserId,
+    });
+  }
+
+  /**
    * Send a message to a specific forum topic.
    * Returns the Telegram message ID for delivery confirmation.
    */
