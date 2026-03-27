@@ -220,6 +220,16 @@ export class TelegramLifeline {
       this.notifyCircuitBroken(totalFailures, lastCrashOutput);
     });
 
+    this.supervisor.on('updateApplied', (targetVersion: string) => {
+      console.log(`[Lifeline] Update to v${targetVersion} applied — scheduling self-restart to pick up new code`);
+      // Delay the self-exit to allow queue replay and notifications to flush.
+      // launchd KeepAlive will respawn the process with the updated shadow install.
+      setTimeout(() => {
+        console.log(`[Lifeline] Self-restarting for v${targetVersion}...`);
+        process.exit(0);
+      }, 5_000);
+    });
+
     this.supervisor.on('debugRestartRequested', (request: { fixDescription: string; requestedBy: string }) => {
       this.sendToTopic(this.lifelineTopicId ?? 1,
         `🔧 Doctor session applied fix: "${request.fixDescription}"\n` +

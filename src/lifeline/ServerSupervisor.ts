@@ -35,6 +35,9 @@ export interface SupervisorEvents {
   circuitBroken: [totalFailures: number, lastCrashOutput: string];
   debugRestartRequested: [request: { fixDescription: string; requestedBy: string }];
   debugRestartSkipped: [info: { fixDescription: string; reason: string }];
+  /** Emitted when the server recovers after a planned update restart.
+   *  The lifeline should self-restart to pick up new code from the shadow install. */
+  updateApplied: [targetVersion: string];
 }
 
 export class ServerSupervisor extends EventEmitter {
@@ -62,6 +65,7 @@ export class ServerSupervisor extends EventEmitter {
   // Planned restart / maintenance wait — suppress alerts during expected downtime
   private maintenanceWaitStartedAt = 0;
   private maintenanceWaitMs = 5 * 60_000; // 5 minutes default (configurable via maintenanceWaitMinutes)
+  private pendingUpdateVersion: string | null = null; // Version being applied — triggers lifeline self-restart on recovery
 
   // Circuit breaker — give up after too many total failures, but retry periodically
   private totalFailures = 0;
@@ -398,6 +402,12 @@ export class ServerSupervisor extends EventEmitter {
               this.clearPlannedExitMarker();
               // Still replay queued messages (important!) but skip serverDown notification
               this.emit('serverUp');
+              // Signal the lifeline to self-restart so it picks up new code
+              if (this.pendingUpdateVersion) {
+                console.log(`[Supervisor] Update to v${this.pendingUpdateVersion} applied — signaling lifeline self-restart`);
+                this.emit('updateApplied', this.pendingUpdateVersion);
+                this.pendingUpdateVersion = null;
+              }
             } else {
               this.emit('serverUp');
             }
@@ -519,6 +529,7 @@ export class ServerSupervisor extends EventEmitter {
       // Enter maintenance wait if this is a planned restart (suppress serverDown alerts)
       if (data.plannedRestart) {
         this.maintenanceWaitStartedAt = Date.now();
+        this.pendingUpdateVersion = data.targetVersion ?? null;
         console.log(`[Supervisor] Planned restart — entering maintenance wait (${Math.round(this.maintenanceWaitMs / 60_000)}m window)`);
       }
 
@@ -926,6 +937,7 @@ export class ServerSupervisor extends EventEmitter {
       // Marker exists and is fresh — enter maintenance wait mode
       console.log(`[Supervisor] Found planned-exit marker (target: v${data.targetVersion}) — entering maintenance wait`);
       this.maintenanceWaitStartedAt = new Date(data.exitedAt).getTime() || Date.now();
+      this.pendingUpdateVersion = data.targetVersion ?? null;
       return true;
     } catch {
       return false;
