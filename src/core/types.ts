@@ -1690,6 +1690,9 @@ export interface DispatchConfig {
 export interface UpdateConfig {
   /** Whether to auto-apply updates without user confirmation (default: true) */
   autoApply: boolean;
+  /** Preferred restart window (24h local time). Restarts deferred until this window.
+   *  Example: { start: "02:00", end: "05:00" }. Manual triggers bypass the window. */
+  restartWindow?: { start: string; end: string } | null;
 }
 
 export interface MessagingAdapterConfig {

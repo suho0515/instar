@@ -2887,6 +2887,7 @@ export async function startServer(options: StartOptions): Promise<void> {
         checkIntervalMinutes: 30,
         autoApply: config.updates?.autoApply ?? true,
         autoRestart: true,
+        restartWindow: config.updates?.restartWindow ?? null,
       },
       telegram,
       liveConfig,
@@ -3853,6 +3854,16 @@ export async function startServer(options: StartOptions): Promise<void> {
         alertTopicId,
       });
     }
+
+    // Periodic housekeeping — calls orphaned cleanup methods every 6 hours.
+    // These methods exist on their respective classes but were never scheduled.
+    const HOUSEKEEPING_INTERVAL_MS = 6 * 60 * 60 * 1000;
+    setInterval(() => {
+      try { triageOrchestrator?.cleanup(); } catch { /* best-effort */ }
+      try { sessionRecovery?.cleanup(); } catch { /* best-effort */ }
+      try { messageStore?.cleanup(); } catch { /* best-effort */ }
+      console.log('[Housekeeping] Periodic cleanup completed');
+    }, HOUSEKEEPING_INTERVAL_MS);
 
     // Start tunnel AFTER server is listening (with retry on failure)
     if (tunnel) {

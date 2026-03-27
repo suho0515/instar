@@ -3699,7 +3699,7 @@ export function createRoutes(ctx: RouteContext): Router {
     // Prefer AutoUpdater path (coalescing + session-aware gating)
     if (ctx.autoUpdater) {
       try {
-        await ctx.autoUpdater.applyPendingUpdate();
+        await ctx.autoUpdater.applyPendingUpdate({ bypassWindow: true });
         res.json(ctx.autoUpdater.getStatus());
       } catch (err) {
         // @silent-fallback-ok — returns HTTP 500 with error details to caller; not a silent degradation
