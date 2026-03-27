@@ -1902,6 +1902,43 @@ export interface BaselineAgentMetrics {
   blocksLast24h: number;
   /** Watchdog intervention metrics — optional for backward compatibility */
   watchdog?: BaselineWatchdogMetrics;
+  /** Session recovery metrics (mechanical JSONL-based recovery) */
+  recovery?: BaselineRecoveryMetrics;
+  /** Triage orchestrator decision metrics */
+  triage?: BaselineTriageMetrics;
+  /** Notification batching effectiveness */
+  notifications?: BaselineNotificationMetrics;
+  /** Process staleness detection */
+  staleness?: BaselineStalenessMetrics;
+}
+
+/** Mechanical session recovery metrics */
+export interface BaselineRecoveryMetrics {
+  attempts: { stall: number; crash: number; errorLoop: number };
+  successes: { stall: number; crash: number; errorLoop: number };
+}
+
+/** Triage orchestrator decision metrics */
+export interface BaselineTriageMetrics {
+  activations: number;
+  heuristicResolutions: number;
+  llmResolutions: number;
+  failures: number;
+  actionCounts: Record<string, number>;
+}
+
+/** Notification batching metrics */
+export interface BaselineNotificationMetrics {
+  flushed: number;
+  suppressed: number;
+  summaryQueueSize: number;
+  digestQueueSize: number;
+}
+
+/** Process staleness metrics */
+export interface BaselineStalenessMetrics {
+  versionMismatch: boolean;
+  driftCount: number;
 }
 
 /** Full Baseline telemetry submission payload */

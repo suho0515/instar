@@ -1,8 +1,8 @@
 {
   "$schema": "./builtin-manifest.schema.json",
   "schemaVersion": 1,
-  "generatedAt": "2026-03-26T22:17:59.787Z",
-  "instarVersion": "0.24.5",
+  "generatedAt": "2026-03-27T01:09:33.721Z",
+  "instarVersion": "0.24.7",
   "entryCount": 176,
   "entries": {
     "hook:session-start": {
@@ -1384,7 +1384,7 @@
       "type": "subsystem",
       "domain": "communication",
       "sourcePath": "src/lifeline/TelegramLifeline.ts",
-      "contentHash": "10712c676fc38e7bea76dc76f05eafd0e35b7e2d767797efdb0b75f2c3ed5c1f",
+      "contentHash": "dc1ac63ffd130f5b3276a0cab6c3a0d21ca3a27184b9a9a040c13a3083df3ac1",
       "since": "2025-01-01"
     },
     "subsystem:orphan-process-reaper": {

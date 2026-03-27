@@ -72,6 +72,14 @@ export interface CollectorDeps {
   getConfig: () => Record<string, unknown>;
   /** Returns watchdog stats for a time window (optional) */
   getWatchdogStats?: (sinceMs: number) => { interventionsTotal: number; interventionsByLevel: Record<string, number>; recoveries: number; sessionDeaths: number; llmGateOverrides: number };
+  /** Returns mechanical recovery stats (optional) */
+  getRecoveryStats?: (sinceMs: number) => { attempts: { stall: number; crash: number; errorLoop: number }; successes: { stall: number; crash: number; errorLoop: number } };
+  /** Returns triage orchestrator stats (optional) */
+  getTriageStats?: (sinceMs: number) => { activations: number; heuristicResolutions: number; llmResolutions: number; failures: number; actionCounts: Record<string, number> };
+  /** Returns notification batcher stats (optional) */
+  getNotificationStats?: () => { flushed: number; suppressed: number; summaryQueueSize: number; digestQueueSize: number };
+  /** Returns process staleness info (optional) */
+  getStalenessStats?: () => { versionMismatch: boolean; driftCount: number };
 }
 
 export class TelemetryCollector {
@@ -140,6 +148,45 @@ export class TelemetryCollector {
         deaths: cap(wdStats.sessionDeaths),
         llmGateOverrides: cap(wdStats.llmGateOverrides),
       };
+    }
+
+    // Mechanical recovery metrics (if available)
+    if (this.deps.getRecoveryStats) {
+      const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
+      const rs = this.deps.getRecoveryStats(sinceMs);
+      metrics.recovery = {
+        attempts: { stall: cap(rs.attempts.stall), crash: cap(rs.attempts.crash), errorLoop: cap(rs.attempts.errorLoop) },
+        successes: { stall: cap(rs.successes.stall), crash: cap(rs.successes.crash), errorLoop: cap(rs.successes.errorLoop) },
+      };
+    }
+
+    // Triage orchestrator metrics (if available)
+    if (this.deps.getTriageStats) {
+      const sinceMs = Date.now() - 24 * 60 * 60 * 1000;
+      const ts = this.deps.getTriageStats(sinceMs);
+      metrics.triage = {
+        activations: cap(ts.activations),
+        heuristicResolutions: cap(ts.heuristicResolutions),
+        llmResolutions: cap(ts.llmResolutions),
+        failures: cap(ts.failures),
+        actionCounts: ts.actionCounts,
+      };
+    }
+
+    // Notification batcher metrics (if available)
+    if (this.deps.getNotificationStats) {
+      const ns = this.deps.getNotificationStats();
+      metrics.notifications = {
+        flushed: cap(ns.flushed),
+        suppressed: cap(ns.suppressed),
+        summaryQueueSize: cap(ns.summaryQueueSize),
+        digestQueueSize: cap(ns.digestQueueSize),
+      };
+    }
+
+    // Process staleness metrics (if available)
+    if (this.deps.getStalenessStats) {
+      metrics.staleness = this.deps.getStalenessStats();
     }
 
     return metrics;
