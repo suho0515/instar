@@ -1957,144 +1957,256 @@
       color: var(--text);
     }
 
-    .systems-summary {
-      display: flex;
-      gap: 16px;
-      margin-bottom: 24px;
-      flex-wrap: wrap;
-    }
-
-    .systems-summary-card {
-      flex: 1;
-      min-width: 140px;
-      padding: 14px 18px;
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      text-align: center;
-    }
-
-    .systems-summary-card .summary-value {
-      font-size: 22px;
-      font-weight: 700;
-      color: var(--text-bright);
-    }
-
-    .systems-summary-card .summary-label {
-      font-size: 11px;
-      color: var(--text-dim);
-      margin-top: 4px;
-    }
-
-    .systems-section {
-      margin-bottom: 24px;
-    }
-
-    .systems-section h3 {
-      font-size: 13px;
-      font-weight: 600;
-      color: var(--text-bright);
-      margin-bottom: 12px;
-    }
-
-    .systems-category {
-      background: var(--bg-panel);
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      margin-bottom: 8px;
-      overflow: hidden;
-    }
-
-    .systems-category-header {
+    /* Health Banner */
+    .health-banner {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 12px 16px;
-      cursor: pointer;
-      user-select: none;
-      transition: background 0.15s;
+      gap: 16px;
+      padding: 20px 24px;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
     }
 
-    .systems-category-header:hover {
-      background: var(--bg-hover);
+    .health-banner.healthy {
+      background: rgba(76, 175, 80, 0.08);
+      border-color: rgba(76, 175, 80, 0.25);
     }
 
-    .systems-category-arrow {
-      font-size: 10px;
-      color: var(--text-dim);
-      transition: transform 0.2s;
-      width: 12px;
+    .health-banner.error {
+      background: rgba(244, 67, 54, 0.08);
+      border-color: rgba(244, 67, 54, 0.25);
     }
 
-    .systems-category.expanded .systems-category-arrow {
-      transform: rotate(90deg);
+    .health-banner.degraded {
+      background: rgba(255, 152, 0, 0.08);
+      border-color: rgba(255, 152, 0, 0.25);
     }
 
-    .systems-category-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
+    .health-icon {
+      font-size: 28px;
+      line-height: 1;
       flex-shrink: 0;
     }
 
-    .systems-category-name {
+    .health-banner.healthy .health-icon { color: var(--accent); }
+    .health-banner.error .health-icon { color: var(--red); }
+    .health-banner.degraded .health-icon { color: var(--orange); }
+
+    .health-text {
+      flex: 1;
+    }
+
+    .health-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-bright);
+      margin-bottom: 4px;
+    }
+
+    .health-meta {
+      font-size: 12px;
+      color: var(--text-dim);
+    }
+
+    /* Issues Panel */
+    .issues-panel {
+      margin-bottom: 24px;
+    }
+
+    .issue-card {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px 16px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-left: 3px solid var(--red);
+      border-radius: 6px;
+      margin-bottom: 8px;
+    }
+
+    .issue-card.warning {
+      border-left-color: var(--orange);
+    }
+
+    .issue-card-icon {
+      font-size: 14px;
+      margin-top: 1px;
+      flex-shrink: 0;
+    }
+
+    .issue-card-content {
+      flex: 1;
+    }
+
+    .issue-card-label {
       font-size: 13px;
       font-weight: 500;
       color: var(--text-bright);
-      flex: 1;
+      margin-bottom: 2px;
     }
 
-    .systems-category-count {
-      font-size: 11px;
+    .issue-card-desc {
+      font-size: 12px;
       color: var(--text-dim);
     }
 
-    .systems-category-body {
-      display: none;
-      padding: 0 16px 12px;
+    /* Capabilities Grid */
+    .capabilities-section {
+      margin-bottom: 24px;
+    }
+
+    .capabilities-section-title {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+    }
+
+    .capabilities-grid {
+      display: flex;
+      flex-wrap: wrap;
       gap: 8px;
     }
 
-    .systems-category.expanded .systems-category-body {
-      display: flex;
-      flex-wrap: wrap;
-    }
-
-    .systems-process-card {
+    .capability-pill {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 8px 12px;
-      background: var(--bg);
+      padding: 10px 16px;
+      background: var(--bg-panel);
       border: 1px solid var(--border);
-      border-radius: 6px;
-      min-width: 200px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+      user-select: none;
     }
 
-    .systems-process-dot {
-      width: 6px;
-      height: 6px;
+    .capability-pill:hover {
+      background: var(--bg-hover);
+      border-color: var(--text-dim);
+    }
+
+    .capability-pill.expanded {
+      border-color: var(--accent);
+      background: var(--bg-hover);
+    }
+
+    .cap-dot {
+      width: 7px;
+      height: 7px;
       border-radius: 50%;
       flex-shrink: 0;
     }
 
-    .systems-process-name {
-      font-size: 12px;
-      color: var(--text);
+    .cap-dot.active { background: var(--accent); }
+    .cap-dot.error { background: var(--red); }
+
+    .cap-label {
+      font-size: 13px;
+      color: var(--text-bright);
+      font-weight: 500;
     }
 
-    .systems-process-status {
-      font-size: 10px;
+    .cap-count {
+      font-size: 11px;
       color: var(--text-dim);
       margin-left: auto;
     }
 
-    .systems-events {
+    /* Capability Detail (inline expand) */
+    .capability-detail {
+      display: none;
+      padding: 12px 16px;
+      background: var(--bg-panel);
+      border: 1px solid var(--border);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      margin-top: -8px;
+      margin-bottom: 8px;
+    }
+
+    .capability-detail.visible {
+      display: block;
+    }
+
+    .cap-detail-desc {
+      font-size: 12px;
+      color: var(--text-dim);
+      margin-bottom: 10px;
+    }
+
+    .cap-detail-processes {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .cap-detail-proc {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 11px;
+      color: var(--text);
+    }
+
+    .cap-detail-proc-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+    }
+
+    /* Events Disclosure */
+    .events-disclosure {
+      margin-top: 8px;
+    }
+
+    .events-disclosure-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 0;
+      cursor: pointer;
+      user-select: none;
+      font-size: 12px;
+      color: var(--text-dim);
+      border: none;
+      background: none;
+      width: 100%;
+      text-align: left;
+    }
+
+    .events-disclosure-toggle:hover {
+      color: var(--text);
+    }
+
+    .events-disclosure-arrow {
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    .events-disclosure.expanded .events-disclosure-arrow {
+      transform: rotate(90deg);
+    }
+
+    .events-disclosure-body {
+      display: none;
       background: var(--bg-panel);
       border: 1px solid var(--border);
       border-radius: 8px;
       max-height: 300px;
       overflow-y: auto;
+    }
+
+    .events-disclosure.expanded .events-disclosure-body {
+      display: block;
     }
 
     .systems-event-row {
@@ -2864,19 +2976,15 @@
     <div class="systems-container" id="systemsTab" style="display:none">
       <div class="systems-main">
         <div class="systems-header">
-          <h2>Systems Status</h2>
+          <h2>Systems</h2>
           <button class="systems-refresh" onclick="loadSystems()">Refresh</button>
         </div>
-        <div class="systems-summary" id="systemsSummary">
+        <div id="systemsBanner">
           <div style="padding:20px;color:var(--text-dim);text-align:center">Loading...</div>
         </div>
-        <div class="systems-categories" id="systemsCategories"></div>
-        <div class="systems-section">
-          <h3>Recent Degradation Events</h3>
-          <div class="systems-events" id="systemsEvents">
-            <div style="padding:12px;color:var(--text-dim);text-align:center">No events</div>
-          </div>
-        </div>
+        <div id="systemsIssues"></div>
+        <div id="systemsCapabilities"></div>
+        <div id="systemsEvents"></div>
       </div>
     </div>
 
@@ -5476,94 +5584,117 @@
         systemsData = await apiFetch('/systems/status');
         renderSystems();
       } catch (e) {
-        document.getElementById('systemsSummary').innerHTML =
+        document.getElementById('systemsBanner').innerHTML =
           '<div style="padding:20px;color:var(--red);text-align:center">Failed to load systems status</div>';
       }
     }
 
     function renderSystems() {
       if (!systemsData) return;
-      const { uptime, categories, recentEvents } = systemsData;
-
-      // Summary
-      let totalProcesses = 0;
-      let healthyProcesses = 0;
-      let errorProcesses = 0;
-      for (const cat of categories) {
-        for (const p of cat.processes) {
-          totalProcesses++;
-          if (p.status === 'running') healthyProcesses++;
-          if (p.status === 'error') errorProcesses++;
-        }
-      }
+      const { uptime, health, healthSummary, activeCapabilities, issues, recentEvents } = systemsData;
       const uptimeStr = formatUptimeClient(uptime);
 
-      document.getElementById('systemsSummary').innerHTML = `
-        <div class="systems-summary-card">
-          <div class="summary-value" style="color:var(--accent)">${healthyProcesses}/${totalProcesses}</div>
-          <div class="summary-label">Processes Healthy</div>
-        </div>
-        <div class="systems-summary-card">
-          <div class="summary-value" style="color:${errorProcesses > 0 ? 'var(--red)' : 'var(--text-dim)'}">${errorProcesses}</div>
-          <div class="summary-label">Errors</div>
-        </div>
-        <div class="systems-summary-card">
-          <div class="summary-value">${esc(uptimeStr)}</div>
-          <div class="summary-label">Uptime</div>
-        </div>
-        <div class="systems-summary-card">
-          <div class="summary-value">${recentEvents.length}</div>
-          <div class="summary-label">Recent Events</div>
+      // Zone 1: Health Banner
+      const bannerClass = health === 'healthy' ? 'healthy' : health === 'error' ? 'error' : 'degraded';
+      const icon = health === 'healthy' ? '&#10003;' : '&#9888;';
+
+      document.getElementById('systemsBanner').innerHTML = `
+        <div class="health-banner ${bannerClass}">
+          <span class="health-icon">${icon}</span>
+          <div class="health-text">
+            <div class="health-title">${esc(healthSummary)}</div>
+            <div class="health-meta">Uptime: ${esc(uptimeStr)}  &middot;  ${activeCapabilities.length} capabilities active${issues.length > 0 ? '  &middot;  ' + issues.length + ' issue' + (issues.length > 1 ? 's' : '') : ''}</div>
+          </div>
         </div>`;
 
-      // Categories
-      const catEl = document.getElementById('systemsCategories');
-      catEl.innerHTML = categories.map(cat => {
-        const running = cat.processes.filter(p => p.status === 'running').length;
-        const hasError = cat.processes.some(p => p.status === 'error');
-        const hasDisabled = cat.processes.some(p => p.status === 'not tracked' || p.status === 'disabled');
-        const dotColor = hasError ? 'var(--red)' : (running === 0 ? 'var(--text-dim)' : (hasDisabled ? 'var(--orange)' : 'var(--accent)'));
-
-        const processCards = cat.processes.map(p => {
-          const pDotColor = p.status === 'running' ? 'var(--accent)' :
-                            p.status === 'error' ? 'var(--red)' :
-                            p.status === 'disabled' ? 'var(--orange)' : 'var(--text-dim)';
-          return `<div class="systems-process-card">
-            <span class="systems-process-dot" style="background:${pDotColor}"></span>
-            <span class="systems-process-name">${esc(p.name)}</span>
-            <span class="systems-process-status">${esc(p.status)}</span>
+      // Zone 2: Issues (only if any)
+      const issuesEl = document.getElementById('systemsIssues');
+      if (issues.length > 0) {
+        issuesEl.innerHTML = '<div class="issues-panel">' + issues.map(issue => {
+          const cls = issue.severity === 'warning' ? ' warning' : '';
+          const icon = issue.severity === 'warning' ? '&#9888;' : '&#10060;';
+          return `<div class="issue-card${cls}">
+            <span class="issue-card-icon">${icon}</span>
+            <div class="issue-card-content">
+              <div class="issue-card-label">${esc(issue.label)}</div>
+              <div class="issue-card-desc">${esc(issue.description)}</div>
+            </div>
           </div>`;
+        }).join('') + '</div>';
+      } else {
+        issuesEl.innerHTML = '';
+      }
+
+      // Zone 3: Active Capabilities Grid
+      const capsEl = document.getElementById('systemsCapabilities');
+      if (activeCapabilities.length > 0) {
+        const pills = activeCapabilities.map(cap => {
+          const dotClass = cap.status === 'error' ? 'error' : 'active';
+          const countLabel = cap.processes.length > 1 ? cap.processes.length + ' processes' : '';
+          return `<div class="capability-pill" data-cap-id="${esc(cap.id)}" onclick="toggleCapabilityDetail('${esc(cap.id)}')">
+              <span class="cap-dot ${dotClass}"></span>
+              <span class="cap-label">${esc(cap.label)}</span>
+              ${countLabel ? '<span class="cap-count">' + esc(countLabel) + '</span>' : ''}
+            </div>
+            <div class="capability-detail" id="cap-detail-${esc(cap.id)}">
+              <div class="cap-detail-desc">${esc(cap.description)}</div>
+              <div class="cap-detail-processes">
+                ${cap.processes.map(p => {
+                  const pDotColor = p.status === 'running' ? 'var(--accent)' : 'var(--red)';
+                  return '<div class="cap-detail-proc"><span class="cap-detail-proc-dot" style="background:' + pDotColor + '"></span>' + esc(p.name) + '</div>';
+                }).join('')}
+              </div>
+            </div>`;
         }).join('');
 
-        return `<div class="systems-category" data-cat="${esc(cat.id)}">
-          <div class="systems-category-header" onclick="toggleSystemsCategory(this)">
-            <span class="systems-category-arrow">&#9654;</span>
-            <span class="systems-category-dot" style="background:${dotColor}"></span>
-            <span class="systems-category-name">${esc(cat.name)}</span>
-            <span class="systems-category-count">${running}/${cat.processes.length} active</span>
-          </div>
-          <div class="systems-category-body">${processCards}</div>
-        </div>`;
-      }).join('');
-
-      // Events
-      const eventsEl = document.getElementById('systemsEvents');
-      if (recentEvents.length === 0) {
-        eventsEl.innerHTML = '<div style="padding:12px;color:var(--text-dim);text-align:center">No degradation events</div>';
+        capsEl.innerHTML = `
+          <div class="capabilities-section">
+            <div class="capabilities-section-title">Active Capabilities</div>
+            <div class="capabilities-grid">${pills}</div>
+          </div>`;
       } else {
-        eventsEl.innerHTML = recentEvents.map(e => {
+        capsEl.innerHTML = '';
+      }
+
+      // Zone 4: Events (collapsed disclosure, only if events exist)
+      const eventsEl = document.getElementById('systemsEvents');
+      if (recentEvents.length > 0) {
+        const eventRows = recentEvents.map(e => {
           const time = e.timestamp ? new Date(e.timestamp).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
           return `<div class="systems-event-row">
             <span class="systems-event-time">${esc(time)}</span>
             <span class="systems-event-text">${esc(e.narrative || e.subsystem || 'Unknown event')}</span>
           </div>`;
         }).join('');
+
+        eventsEl.innerHTML = `
+          <div class="events-disclosure" id="eventsDisclosure">
+            <button class="events-disclosure-toggle" onclick="document.getElementById('eventsDisclosure').classList.toggle('expanded')">
+              <span class="events-disclosure-arrow">&#9654;</span>
+              Recent Events (${recentEvents.length})
+            </button>
+            <div class="events-disclosure-body">${eventRows}</div>
+          </div>`;
+      } else {
+        eventsEl.innerHTML = '';
       }
     }
 
-    function toggleSystemsCategory(headerEl) {
-      const cat = headerEl.closest('.systems-category');
-      cat.classList.toggle('expanded');
+    function toggleCapabilityDetail(capId) {
+      const detail = document.getElementById('cap-detail-' + capId);
+      const pill = document.querySelector('[data-cap-id="' + capId + '"]');
+      if (!detail || !pill) return;
+
+      const isExpanded = detail.classList.contains('visible');
+
+      // Close all others first
+      document.querySelectorAll('.capability-detail.visible').forEach(el => el.classList.remove('visible'));
+      document.querySelectorAll('.capability-pill.expanded').forEach(el => el.classList.remove('expanded'));
+
+      if (!isExpanded) {
+        detail.classList.add('visible');
+        pill.classList.add('expanded');
+      }
     }
 
     function formatUptimeClient(ms) {

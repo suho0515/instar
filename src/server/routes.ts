@@ -5835,121 +5835,211 @@ export function createRoutes(ctx: RouteContext): Router {
   router.get('/systems/status', (_req, res) => {
     const uptimeMs = Date.now() - ctx.startTime.getTime();
 
-    interface ProcessInfo {
-      name: string;
-      enabled: boolean;
-      status: 'running' | 'disabled' | 'error' | 'not tracked';
-      details?: unknown;
-    }
-
-    interface Category {
+    // ── Capability metadata: maps internal subsystems to user-friendly labels ──
+    interface CapabilityDef {
       id: string;
-      name: string;
-      processes: ProcessInfo[];
+      label: string;
+      description: string;
+      processes: { name: string; subsystem: unknown; statusFn?: () => unknown }[];
     }
 
-    function proc(name: string, subsystem: unknown, statusFn?: () => unknown): ProcessInfo {
-      if (!subsystem) return { name, enabled: false, status: 'not tracked' };
-      try {
-        const details = statusFn ? statusFn() : undefined;
-        return { name, enabled: true, status: 'running', details };
-      } catch {
-        return { name, enabled: true, status: 'error' };
-      }
-    }
-
-    const categories: Category[] = [
+    const capabilityDefs: CapabilityDef[] = [
       {
-        id: 'session-management',
-        name: 'Session Management & Recovery',
+        id: 'session-recovery',
+        label: 'Session Recovery',
+        description: 'Detects stuck or crashed sessions and automatically recovers them',
         processes: [
-          proc('SessionWatchdog', ctx.watchdog, () => ctx.watchdog?.getStatus()),
-          proc('StallTriageNurse', ctx.triageNurse, () => ctx.triageNurse?.getStatus()),
-          proc('SessionActivitySentinel', ctx.activitySentinel),
-          proc('SessionSummarySentinel', ctx.summarySentinel),
-          proc('SpawnRequestManager', ctx.spawnManager),
+          { name: 'SessionWatchdog', subsystem: ctx.watchdog, statusFn: () => ctx.watchdog?.getStatus() },
+          { name: 'StallTriageNurse', subsystem: ctx.triageNurse, statusFn: () => ctx.triageNurse?.getStatus() },
+          { name: 'SpawnRequestManager', subsystem: ctx.spawnManager },
         ],
       },
       {
-        id: 'coherence-integrity',
-        name: 'Coherence & Integrity',
+        id: 'session-intelligence',
+        label: 'Session Intelligence',
+        description: 'Monitors session activity and generates summaries for smart routing',
         processes: [
-          proc('CoherenceMonitor', ctx.coherenceMonitor, () => ctx.coherenceMonitor?.getLastReport()),
-          proc('CoherenceGate (Scope)', ctx.coherenceGate),
-          proc('ResponseReviewGate', ctx.responseReviewGate),
-          proc('CanonicalState', ctx.canonicalState),
-          proc('InstructionsVerifier', ctx.instructionsVerifier),
+          { name: 'SessionActivitySentinel', subsystem: ctx.activitySentinel },
+          { name: 'SessionSummarySentinel', subsystem: ctx.summarySentinel },
         ],
       },
       {
-        id: 'resource-monitoring',
-        name: 'Resource Monitoring',
+        id: 'health-monitoring',
+        label: 'Health Monitoring',
+        description: 'Continuous self-checks for config drift, resource pressure, and system integrity',
         processes: [
-          proc('MemoryPressureMonitor', ctx.memoryMonitor, () => ctx.memoryMonitor?.getState()),
-          proc('OrphanProcessReaper', ctx.orphanReaper, () => ctx.orphanReaper?.getLastReport()),
-          proc('QuotaTracker', ctx.quotaTracker, () => ctx.quotaTracker?.getState()),
-          proc('QuotaManager', ctx.quotaManager),
-        ],
-      },
-      {
-        id: 'scheduling-jobs',
-        name: 'Scheduling & Jobs',
-        processes: [
-          proc('JobScheduler', ctx.scheduler),
-          proc('CommitmentTracker', ctx.commitmentTracker, () => ({ active: ctx.commitmentTracker?.getActive().length ?? 0 })),
-        ],
-      },
-      {
-        id: 'messaging-communication',
-        name: 'Messaging & Communication',
-        processes: [
-          proc('Telegram', ctx.telegram),
-          proc('WhatsApp', ctx.whatsapp),
-          proc('MessageBridge', ctx.messageBridge),
-          proc('MessageRouter', ctx.messageRouter),
-        ],
-      },
-      {
-        id: 'knowledge-memory',
-        name: 'Knowledge & Memory',
-        processes: [
-          proc('TopicMemory', ctx.topicMemory),
-          proc('SemanticMemory', ctx.semanticMemory),
-          proc('WorkingMemoryAssembler', ctx.workingMemory),
-          proc('SelfKnowledgeTree', ctx.selfKnowledgeTree),
+          { name: 'CoherenceMonitor', subsystem: ctx.coherenceMonitor, statusFn: () => ctx.coherenceMonitor?.getLastReport() },
+          { name: 'SystemReviewer', subsystem: ctx.systemReviewer, statusFn: () => ctx.systemReviewer?.getHealthStatus() },
+          { name: 'MemoryPressureMonitor', subsystem: ctx.memoryMonitor, statusFn: () => ctx.memoryMonitor?.getState() },
+          { name: 'OrphanProcessReaper', subsystem: ctx.orphanReaper, statusFn: () => ctx.orphanReaper?.getLastReport() },
         ],
       },
       {
         id: 'safety-trust',
-        name: 'Safety & Trust',
+        label: 'Safety & Trust',
+        description: 'Gates external operations, validates messages, and manages trust levels',
         processes: [
-          proc('ExternalOperationGate', ctx.operationGate),
-          proc('MessageSentinel', ctx.sentinel),
-          proc('AdaptiveTrust', ctx.adaptiveTrust),
-          proc('AutonomyManager', ctx.autonomyManager),
+          { name: 'ExternalOperationGate', subsystem: ctx.operationGate },
+          { name: 'MessageSentinel', subsystem: ctx.sentinel },
+          { name: 'AdaptiveTrust', subsystem: ctx.adaptiveTrust },
+          { name: 'AutonomyManager', subsystem: ctx.autonomyManager },
         ],
       },
       {
-        id: 'evolution-discovery',
-        name: 'Evolution & Discovery',
+        id: 'coherence',
+        label: 'Coherence & Integrity',
+        description: 'Ensures project state, scope boundaries, and response quality remain consistent',
         processes: [
-          proc('EvolutionManager', ctx.evolution),
-          proc('AutonomousEvolution', ctx.autonomousEvolution),
-          proc('CapabilityMapper', ctx.capabilityMapper),
-          proc('CoverageAuditor', ctx.coverageAuditor),
+          { name: 'CoherenceGate', subsystem: ctx.coherenceGate },
+          { name: 'ResponseReviewGate', subsystem: ctx.responseReviewGate },
+          { name: 'CanonicalState', subsystem: ctx.canonicalState },
+          { name: 'InstructionsVerifier', subsystem: ctx.instructionsVerifier },
+        ],
+      },
+      {
+        id: 'scheduled-jobs',
+        label: 'Scheduled Jobs',
+        description: 'Runs tasks on cron schedules and tracks commitments',
+        processes: [
+          { name: 'JobScheduler', subsystem: ctx.scheduler },
+          { name: 'CommitmentTracker', subsystem: ctx.commitmentTracker, statusFn: () => ({ active: ctx.commitmentTracker?.getActive().length ?? 0 }) },
+        ],
+      },
+      {
+        id: 'quota',
+        label: 'Quota Management',
+        description: 'Tracks API usage, enforces limits, and switches accounts when needed',
+        processes: [
+          { name: 'QuotaTracker', subsystem: ctx.quotaTracker, statusFn: () => ctx.quotaTracker?.getState() },
+          { name: 'QuotaManager', subsystem: ctx.quotaManager },
+        ],
+      },
+      {
+        id: 'telegram',
+        label: 'Telegram',
+        description: 'Sends and receives messages through Telegram',
+        processes: [
+          { name: 'TelegramAdapter', subsystem: ctx.telegram },
+        ],
+      },
+      {
+        id: 'whatsapp',
+        label: 'WhatsApp',
+        description: 'Sends and receives messages through WhatsApp',
+        processes: [
+          { name: 'WhatsAppAdapter', subsystem: ctx.whatsapp },
+        ],
+      },
+      {
+        id: 'slack',
+        label: 'Slack',
+        description: 'Sends and receives messages through Slack',
+        processes: [
+          { name: 'SlackAdapter', subsystem: ctx.slack },
+        ],
+      },
+      {
+        id: 'message-routing',
+        label: 'Message Routing',
+        description: 'Routes messages between platforms and sessions intelligently',
+        processes: [
+          { name: 'MessageBridge', subsystem: ctx.messageBridge },
+          { name: 'MessageRouter', subsystem: ctx.messageRouter },
+        ],
+      },
+      {
+        id: 'memory',
+        label: 'Memory & Context',
+        description: 'Topic memory, semantic search, and context assembly for sessions',
+        processes: [
+          { name: 'TopicMemory', subsystem: ctx.topicMemory },
+          { name: 'SemanticMemory', subsystem: ctx.semanticMemory },
+          { name: 'WorkingMemoryAssembler', subsystem: ctx.workingMemory },
+          { name: 'SelfKnowledgeTree', subsystem: ctx.selfKnowledgeTree },
+        ],
+      },
+      {
+        id: 'evolution',
+        label: 'Self-Improvement',
+        description: 'Detects capability gaps and proposes improvements autonomously',
+        processes: [
+          { name: 'EvolutionManager', subsystem: ctx.evolution },
+          { name: 'AutonomousEvolution', subsystem: ctx.autonomousEvolution },
+          { name: 'CapabilityMapper', subsystem: ctx.capabilityMapper },
+          { name: 'CoverageAuditor', subsystem: ctx.coverageAuditor },
         ],
       },
       {
         id: 'infrastructure',
-        name: 'Infrastructure & Networking',
+        label: 'Infrastructure',
+        description: 'Tunnel access, worktree management, and agent networking',
         processes: [
-          proc('TunnelManager', ctx.tunnel),
-          proc('WorktreeMonitor', ctx.worktreeMonitor),
-          proc('ThreadlineRouter', ctx.threadlineRouter),
-          proc('SystemReviewer', ctx.systemReviewer, () => ctx.systemReviewer?.getHealthStatus()),
+          { name: 'TunnelManager', subsystem: ctx.tunnel },
+          { name: 'WorktreeMonitor', subsystem: ctx.worktreeMonitor },
+          { name: 'ThreadlineRouter', subsystem: ctx.threadlineRouter },
         ],
       },
     ];
+
+    // Build active capabilities (only include if at least one process is configured)
+    interface ActiveCapability {
+      id: string;
+      label: string;
+      description: string;
+      status: 'active' | 'error';
+      processes: { name: string; status: 'running' | 'error' }[];
+    }
+
+    interface Issue {
+      severity: 'error' | 'warning';
+      label: string;
+      description: string;
+      capability: string;
+      process: string;
+    }
+
+    const activeCapabilities: ActiveCapability[] = [];
+    const issues: Issue[] = [];
+
+    for (const def of capabilityDefs) {
+      const configuredProcesses = def.processes.filter(p => p.subsystem != null);
+      if (configuredProcesses.length === 0) continue; // Skip entirely unconfigured capabilities
+
+      const processResults: { name: string; status: 'running' | 'error'; details?: unknown }[] = [];
+      let hasError = false;
+
+      for (const p of configuredProcesses) {
+        try {
+          const details = p.statusFn ? p.statusFn() : undefined;
+          processResults.push({ name: p.name, status: 'running', details });
+        } catch {
+          processResults.push({ name: p.name, status: 'error' });
+          hasError = true;
+          issues.push({
+            severity: 'error',
+            label: `${def.label} issue`,
+            description: `${p.name} encountered an error`,
+            capability: def.id,
+            process: p.name,
+          });
+        }
+      }
+
+      activeCapabilities.push({
+        id: def.id,
+        label: def.label,
+        description: def.description,
+        status: hasError ? 'error' : 'active',
+        processes: processResults.map(p => ({ name: p.name, status: p.status })),
+      });
+    }
+
+    // Determine overall health
+    const errorCount = issues.filter(i => i.severity === 'error').length;
+    const health = errorCount > 0 ? 'error' as const : 'healthy' as const;
+    const healthSummary = health === 'healthy'
+      ? 'All systems operational'
+      : `${errorCount} issue${errorCount > 1 ? 's' : ''} need${errorCount === 1 ? 's' : ''} attention`;
 
     // Recent degradation events
     const allEvents = DegradationReporter.getInstance().getEvents();
@@ -5958,7 +6048,14 @@ export function createRoutes(ctx: RouteContext): Router {
       narrative: DegradationReporter.narrativeFor(e),
     }));
 
-    res.json({ uptime: uptimeMs, categories, recentEvents });
+    res.json({
+      uptime: uptimeMs,
+      health,
+      healthSummary,
+      activeCapabilities,
+      issues,
+      recentEvents,
+    });
   });
 
   // ── External Operation Safety ────────────────────────────────────
