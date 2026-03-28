@@ -322,49 +322,67 @@ export class InputDetector extends EventEmitter {
    * and determine if the session is waiting for user input.
    * Fires asynchronously — emits 'prompt' event if detected.
    */
+  /** Per-session LLM detection rate limit: max 1 LLM relay per session per 5 minutes */
+  private llmRelayTimestamps = new Map<string, number>();
+  private static readonly LLM_RELAY_COOLDOWN_MS = 300_000; // 5 minutes
+
   private async llmDetect(sessionName: string, lines: string[]): Promise<void> {
     const intelligence = this.config.intelligence;
     if (!intelligence) return;
 
+    // Per-session rate limit for LLM-based relays
+    const lastLlmRelay = this.llmRelayTimestamps.get(sessionName);
+    if (lastLlmRelay && Date.now() - lastLlmRelay < InputDetector.LLM_RELAY_COOLDOWN_MS) return;
+
+    // Pre-filter: skip if terminal shows Claude Code's standard status bar UI
+    // These are persistent UI elements, NOT interactive prompts
+    const tailText = lines.slice(-3).join('\n');
+    if (/bypass permissions on/i.test(tailText)) return;
+    if (/esc to interrupt/i.test(tailText) && !/Do you want|Would you like|proceed\?/i.test(tailText)) return;
+    if (/shift\+tab to cycle/i.test(tailText) && !/proceed\?|approve/i.test(tailText)) return;
+
+    // Skip if terminal shows active Claude Code work (tool calls, thinking)
+    if (/Scampering|Thinking|Reading \d+ file|Writing to|Editing/i.test(tailText)) return;
+
     // Sanitize: take last 20 lines, strip any remaining ANSI
     const context = lines.slice(-20).join('\n').slice(0, 3000);
 
-    const prompt = `You are analyzing terminal output from a Claude Code AI agent session to determine if the session is waiting for user input.
+    const prompt = `You are analyzing terminal output from a Claude Code AI agent session to determine if the session is waiting for EXPLICIT user input — a real question or decision that blocks the session.
 
 Terminal output (last 20 lines):
 <terminal>
 ${context}
 </terminal>
 
-Is this terminal waiting for user input? Analyze carefully:
-- Look for questions directed at the user (ending with ?)
-- Look for numbered options (1. Yes  2. No  3. ...)
-- Look for y/n confirmation prompts
-- Look for "Press Enter", "Esc to cancel", "Do you want to proceed", "Would you like to proceed"
-- Look for plan approval prompts with options
-- Look for permission requests (create/edit/delete files)
-- Look for any cursor waiting at a prompt
+CRITICAL — These are NOT prompts (respond NO_PROMPT for all of these):
+- "⏵⏵ bypass permissions on (shift+tab to cycle)" — This is a STATUS BAR, not a prompt
+- "esc to interrupt" — This is a status indicator showing the agent is WORKING
+- "shift+tab to cycle" — This is a UI hint, not a question
+- The agent actively reading, writing, or editing files
+- The agent running bash commands
+- Token counters, progress indicators, or thinking indicators
+- "Scampering", "Thinking", "Reading N files" — agent is working
+- An empty prompt line (❯) with a status bar below it — agent is idle, not blocked
 
-If the terminal is NOT waiting for input (e.g., it's actively running code, showing logs, or displaying output), respond with exactly: NO_PROMPT
+A REAL prompt looks like:
+- "Do you want to create src/foo.ts?" with numbered options (1. Yes  2. No)
+- "Claude has written up a plan... Would you like to proceed?" with numbered options
+- A direct question to the user: "What email address should I use?"
+- "Do you want to proceed? (y/n)"
 
-If the terminal IS waiting for input, respond with a JSON object (no markdown fences):
+If the terminal is NOT waiting for user input, respond with exactly: NO_PROMPT
+
+If the terminal IS genuinely waiting for a blocking decision, respond with JSON (no markdown fences):
 {
   "type": "plan" | "permission" | "question" | "confirmation" | "selection",
-  "summary": "Brief human-readable description of what's being asked",
+  "summary": "Brief description of what's being asked",
   "options": [
     {"key": "1", "label": "Description of option 1"},
     {"key": "2", "label": "Description of option 2"}
   ]
 }
 
-For yes/no prompts, use: [{"key": "y", "label": "Yes"}, {"key": "n", "label": "No"}]
-For Enter/Escape prompts: [{"key": "Enter", "label": "Confirm"}, {"key": "Escape", "label": "Cancel"}]
-
-IMPORTANT: Only detect REAL interactive prompts. Do NOT detect:
-- Text in file content being displayed
-- Questions in code comments or documentation
-- Error messages that contain question marks
-- Output from running processes`;
+When in doubt, respond NO_PROMPT. False negatives are far better than false positives.`;
 
     try {
       const response = await intelligence.evaluate(prompt, {
@@ -401,7 +419,10 @@ IMPORTANT: Only detect REAL interactive prompts. Do NOT detect:
         options: options.length > 0 ? options : undefined,
       };
 
-      this.emitIfNew(sessionName, match, tailLines);
+      const emitted = this.emitIfNew(sessionName, match, tailLines);
+      if (emitted) {
+        this.llmRelayTimestamps.set(sessionName, Date.now());
+      }
     } catch {
       // LLM call failed — silent fallback (regex-only detection continues)
     }
@@ -434,6 +455,8 @@ IMPORTANT: Only detect REAL interactive prompts. Do NOT detect:
     this.stableCount.delete(sessionName);
     this.emittedPrompts.delete(sessionName);
     this.lastEmissionTime.delete(sessionName);
+    this.llmRelayTimestamps.delete(sessionName);
+    this.pendingLlmDetection.delete(sessionName);
   }
 
   /**
