@@ -2098,13 +2098,9 @@ export async function startServer(options: StartOptions): Promise<void> {
       notificationBatcher.setSendFunction(
         async (topicId, text) => {
           await telegram!.sendToTopic(topicId, text);
-          // Mirror batched notifications to Slack attention channel
-          if (_slackAdapter) {
-            const slackAttentionChannel = state.get<string>('slack-attention-channel');
-            if (slackAttentionChannel) {
-              _slackAdapter.sendToChannel(slackAttentionChannel, text).catch(() => {});
-            }
-          }
+          // NOTE: Batched notifications (SUMMARY/DIGEST) are NOT mirrored to Slack.
+          // Only IMMEDIATE notifications reach Slack (via the notify() gateway).
+          // This prevents notification spam in the attention channel.
           return { messageId: 0 };
         }
       );
@@ -3442,11 +3438,18 @@ export async function startServer(options: StartOptions): Promise<void> {
               throw new Error(`Reply failed: ${response.status}`);
             }
 
-            // Mirror standby messages to Slack if available
+            // Mirror standby messages to the CORRECT Slack channel (not attention channel).
+            // PresenceProxy fires with a Telegram topicId. We need to find the session
+            // bound to that topic, then find the Slack channel bound to that session.
             if (_slackAdapter && text.startsWith('🔭')) {
-              const slackAttentionChannel = state.get<string>('slack-attention-channel');
-              if (slackAttentionChannel) {
-                _slackAdapter.sendToChannel(slackAttentionChannel, text).catch(() => {});
+              // Find which session owns this Telegram topic
+              const sessionName = telegram?.getSessionForTopic?.(topicId);
+              if (sessionName) {
+                // Find the Slack channel bound to that session
+                const slackChannelId = _slackAdapter.getChannelForSession(sessionName);
+                if (slackChannelId) {
+                  _slackAdapter.sendToChannel(slackChannelId, text).catch(() => {});
+                }
               }
             }
           },
