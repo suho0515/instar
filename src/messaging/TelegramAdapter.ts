@@ -3699,6 +3699,11 @@ export class TelegramAdapter implements MessagingAdapter {
       return false; // Expired — fall through to normal routing
     }
 
+    // Reject forwarded messages — prevents forwarding attack
+    if ((msg as any).forward_origin || (msg as any).forward_from || (msg as any).forward_date) {
+      return false; // Forwarded message — reject silently
+    }
+
     // Verify sender is the authorized owner
     const ownerId = this.config.promptGate?.ownerId;
     if (ownerId && msg.from.id !== ownerId) {

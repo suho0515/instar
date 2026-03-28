@@ -1978,8 +1978,22 @@ export async function startServer(options: StartOptions): Promise<void> {
 
       // Wire Prompt Gate callbacks — connect Telegram relay responses to sessions
       if (promptGateConfig?.enabled) {
-        telegram.onPromptResponse = (sessionName, key) => sessionManager.sendKey(sessionName, key);
-        telegram.onPromptTextResponse = (sessionName, text) => sessionManager.sendInput(sessionName, text);
+        telegram.onPromptResponse = (sessionName, key) => {
+          // Pre-injection verification: confirm session is still alive
+          if (!sessionManager.isSessionAlive(sessionName)) {
+            console.warn(`[PromptGate] Skipping injection — session "${sessionName}" is no longer alive`);
+            return false;
+          }
+          return sessionManager.sendKey(sessionName, key);
+        };
+        telegram.onPromptTextResponse = (sessionName, text) => {
+          // Pre-injection verification: confirm session is still alive
+          if (!sessionManager.isSessionAlive(sessionName)) {
+            console.warn(`[PromptGate] Skipping text injection — session "${sessionName}" is no longer alive`);
+            return false;
+          }
+          return sessionManager.sendInput(sessionName, text);
+        };
         telegram.onRelayLeaseStart = (sessionName) => {
           // Find the session by tmux name and grant a relay lease
           const sessions = sessionManager.listRunningSessions();

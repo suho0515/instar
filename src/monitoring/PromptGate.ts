@@ -73,7 +73,7 @@ interface PatternMatch {
  */
 const PROMPT_PATTERNS: Array<{
   type: PromptType;
-  test: (lines: string[]) => PatternMatch | null;
+  test: (lines: string[], fullWindow?: string[]) => PatternMatch | null;
 }> = [
   // File creation/edit permission: "Do you want to create <path>?" with numbered options
   {
@@ -104,20 +104,38 @@ const PROMPT_PATTERNS: Array<{
     },
   },
 
-  // Plan approval: "Plan:" header + "Do you want to proceed?"
+  // Plan approval: Claude Code plan prompt
+  // Matches both old format ("Plan:" + "Do you want to proceed?")
+  // and current format ("written up a plan" + "Would you like to proceed?")
+  // Uses fullWindow because plan text + options can span >5 lines
   {
     type: 'plan',
-    test(lines) {
-      const joined = lines.join('\n');
-      if (!/Plan:/i.test(joined)) return null;
-      if (!/Do you want to proceed/i.test(joined)) return null;
+    test(lines, fullWindow) {
+      // Check the full detection window since plan prompts span many lines
+      const searchLines = fullWindow ?? lines;
+      const joined = searchLines.join('\n');
+      const hasPlanHeader = /Plan:/i.test(joined) || /written up a plan/i.test(joined);
+      const hasProceedQuestion = /(?:Do|Would) you (?:want|like) to proceed/i.test(joined);
+      if (!hasPlanHeader || !hasProceedQuestion) return null;
+
+      // Extract numbered options if present (Claude Code plan prompt format)
+      const options: PromptOption[] = [];
+      for (const line of searchLines) {
+        const optMatch = line.match(/^\s*[❯\s]*(\d)\.\s+(.+)$/);
+        if (optMatch) {
+          options.push({ key: optMatch[1], label: optMatch[2].trim() });
+        }
+      }
+
+      // Fall back to y/n if no numbered options found
+      if (options.length === 0) {
+        options.push({ key: 'y', label: 'Approve' }, { key: 'n', label: 'Reject' });
+      }
+
       return {
         type: 'plan',
         summary: 'Plan approval requested',
-        options: [
-          { key: 'y', label: 'Approve' },
-          { key: 'n', label: 'Reject' },
-        ],
+        options,
       };
     },
   },
@@ -258,11 +276,12 @@ export class InputDetector extends EventEmitter {
     }
 
     // --- Quiescence gating: only match at buffer tail (last 5 lines) ---
+    // Some prompts (plans) span more than 5 lines, so pass full window too
     const tailLines = lines.slice(-5);
 
     // --- Pattern matching ---
     for (const pattern of PROMPT_PATTERNS) {
-      const match = pattern.test(tailLines);
+      const match = pattern.test(tailLines, lines);
       if (!match) continue;
 
       // Fingerprint for dedup
