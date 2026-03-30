@@ -2566,14 +2566,14 @@ export async function startServer(options: StartOptions): Promise<void> {
           lines.push('--- End Thread History ---');
           lines.push('');
           lines.push('CRITICAL: You MUST relay your response back to Slack after responding.');
-          lines.push('Use the relay script:');
+          lines.push('Use the relay script (write ONLY your reply text — do NOT pipe or cat this file into the script):');
           lines.push('');
           lines.push(`cat <<'EOF' | .claude/scripts/slack-reply.sh ${channelId}`);
           lines.push('Your response text here');
           lines.push('EOF');
           lines.push('');
           lines.push('Strip the [slack:] prefix before interpreting the message.');
-          lines.push('Only relay conversational text — not tool output or internal reasoning.');
+          lines.push('Only relay conversational text — not tool output, file contents, or internal reasoning.');
 
           const contextData = lines.join('\n');
           fs.writeFileSync(ctxPath, contextData);
