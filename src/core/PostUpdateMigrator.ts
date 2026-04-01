@@ -1408,6 +1408,28 @@ The user has been talking to you (possibly for days). A generic greeting like "H
       result.skipped.push('config.json: externalOperations already configured');
     }
 
+    // PromptGate — enable by default for all agents.
+    // Without this, permission prompts in sessions are invisible to users and
+    // cause sessions to hang indefinitely waiting for input that never comes.
+    const monitoring = (config.monitoring ?? {}) as Record<string, unknown>;
+    if (!monitoring.promptGate) {
+      monitoring.promptGate = {
+        enabled: true,
+        autoApprove: {
+          enabled: true,
+          fileCreation: true,
+          fileEdits: true,
+          planApproval: false,
+        },
+        dryRun: false,
+      };
+      config.monitoring = monitoring;
+      patched = true;
+      result.upgraded.push('config.json: enabled PromptGate with auto-approve (file edits auto-approved, plans relayed to user)');
+    } else {
+      result.skipped.push('config.json: promptGate already configured');
+    }
+
     // Threadline relay — add config block so infrastructure is ready (opt-in).
     // relayEnabled defaults to false — the agent explains and offers to enable conversationally.
     if (!config.threadline) {
