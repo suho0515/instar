@@ -2081,7 +2081,7 @@ export async function startServer(options: StartOptions): Promise<void> {
     const telegramConfig = config.messaging.find(m => m.type === 'telegram' && m.enabled);
     const skipTelegram = options.telegram === false; // --no-telegram sets telegram: false
     // Standby machines use send-only Telegram — they don't poll for messages
-    const isStandbyTelegram = !coordinator.isAwake && telegramConfig;
+    const isStandbyTelegram = coordinator.enabled && !coordinator.isAwake && telegramConfig;
     if ((skipTelegram || isStandbyTelegram) && telegramConfig) {
       // Send-only mode: no polling, but sendToTopic() works for session replies
       telegram = new TelegramAdapter(telegramConfig.config as any, config.stateDir);

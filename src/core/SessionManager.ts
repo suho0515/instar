@@ -570,10 +570,12 @@ export class SessionManager extends EventEmitter {
     try {
       const paneInfo = execFileSync(
         this.config.tmuxPath,
-        ['display-message', '-t', `=${tmuxSession}:`, '-p', '#{pane_current_command}||#{pane_start_command}'],
+        ['display-message', '-t', `=${tmuxSession}:`, '-p', '#{pane_dead}||#{pane_current_command}||#{pane_start_command}'],
         { encoding: 'utf-8', timeout: 5000 }
       ).trim();
-      const [paneCmd, startCmd] = paneInfo.split('||');
+      const [paneDead, paneCmd, startCmd] = paneInfo.split('||');
+      // pane_dead=1 means process exited but pane remains (remain-on-exit)
+      if (paneDead === '1') return false;
       // Claude Code runs as 'claude' or 'node' process
       if (paneCmd && (paneCmd.includes('claude') || paneCmd.includes('node'))) {
         return true;
@@ -621,11 +623,13 @@ export class SessionManager extends EventEmitter {
     try {
       const { stdout } = await execFileAsync(
         this.config.tmuxPath,
-        ['display-message', '-t', `=${tmuxSession}:`, '-p', '#{pane_current_command}||#{pane_start_command}'],
+        ['display-message', '-t', `=${tmuxSession}:`, '-p', '#{pane_dead}||#{pane_current_command}||#{pane_start_command}'],
         { timeout: 5000 }
       );
       const paneInfo = stdout.trim();
-      const [paneCmd, startCmd] = paneInfo.split('||');
+      const [paneDead, paneCmd, startCmd] = paneInfo.split('||');
+      // pane_dead=1 means process exited but pane remains (remain-on-exit)
+      if (paneDead === '1') return false;
       if (paneCmd && (paneCmd.includes('claude') || paneCmd.includes('node'))) {
         return true;
       }
